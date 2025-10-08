@@ -1,0 +1,22 @@
+<odoo>
+  <data>
+    <record id="action_kh_approval_requests" model="ir.actions.act_window">
+      <field name="name">Approval Requests</field>
+      <field name="res_model">kh.approval.request</field>
+      <field name="view_mode">tree,form,kanban</field>
+      <field name="help" type="html">
+        <p>Create approval requests and route them based on rules.</p>
+      </field>
+    </record>
+
+    <record id="action_kh_approval_rules" model="ir.actions.act_window">
+      <field name="name">Approval Rules</field>
+      <field name="res_model">kh.approval.rule</field>
+      <field name="view_mode">tree,form</field>
+    </record>
+
+    <menuitem id="menu_kh_approvals_root" name="Approvals" sequence="20"/>
+    <menuitem id="menu_kh_approvals_requests" name="Requests" parent="menu_kh_approvals_root" action="action_kh_approval_requests"/>
+    <menuitem id="menu_kh_approvals_rules" name="Rules" parent="menu_kh_approvals_root" action="action_kh_approval_rules"/>
+  </data>
+</odoo>

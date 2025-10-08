@@ -1,0 +1,4 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+kh_approval_rule_user,kh.approval.rule,model_kh_approval_rule,base.group_user,1,1,1,0
+kh_approval_request_user,kh.approval.request,model_kh_approval_request,base.group_user,1,1,1,0
+kh_approval_line_user,kh.approval.line,model_kh_approval_line,base.group_user,1,1,1,0
