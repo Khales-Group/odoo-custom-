@@ -1,16 +1,17 @@
 <odoo>
-  <record id="view_kh_approval_request_tree" model="ir.ui.view">
-    <field name="name">kh.approval.request.tree</field>
-    <field name="model">kh.approval.request</field>
-    <field name="arch" type="xml">
-      <tree>
-        <field name="name"/>
-        <field name="requester_id"/>
-        <field name="amount"/>
-        <field name="state"/>
-      </tree>
-    </field>
-  </record>
+ <record id="view_kh_approval_request_list" model="ir.ui.view">
+  <field name="name">kh.approval.request.list</field>
+  <field name="model">kh.approval.request</field>
+  <field name="arch" type="xml">
+    <list>
+      <field name="name"/>
+      <field name="requester_id"/>
+      <field name="amount"/>
+      <field name="state"/>
+    </list>
+  </field>
+</record>
+
 
   <record id="view_kh_approval_request_form" model="ir.ui.view">
     <field name="name">kh.approval.request.form</field>
@@ -33,14 +34,15 @@
           <notebook>
             <page string="Approval Steps">
               <field name="approval_line_ids">
-                <tree editable="bottom">
-                  <field name="name"/>
-                  <field name="approver_id"/>
-                  <field name="required"/>
-                  <field name="state"/>
-                  <field name="note"/>
-                </tree>
-              </field>
+  <list editable="bottom">
+    <field name="name"/>
+    <field name="approver_id"/>
+    <field name="required"/>
+    <field name="state"/>
+    <field name="note"/>
+  </list>
+</field>
+
             </page>
             <page string="Chatter">
               <field name="message_follower_ids" widget="mail_followers"/>

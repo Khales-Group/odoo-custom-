@@ -3,7 +3,7 @@
     <record id="action_kh_approval_requests" model="ir.actions.act_window">
       <field name="name">Approval Requests</field>
       <field name="res_model">kh.approval.request</field>
-      <field name="view_mode">tree,form,kanban</field>
+<field name="view_mode">list,form,kanban</field>
       <field name="help" type="html">
         <p>Create approval requests and route them based on rules.</p>
       </field>
