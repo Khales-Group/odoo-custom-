@@ -1,30 +1,28 @@
 <odoo>
   <data>
 
-    <!-- Search: My Requests -->
+    <!-- Search view with two filters -->
     <record id="view_kh_approval_request_search" model="ir.ui.view">
       <field name="name">kh.approval.request.search</field>
       <field name="model">kh.approval.request</field>
       <field name="arch" type="xml">
         <search>
           <filter name="my_requests" string="My Requests"
-                  domain="[ '|',
-                    ('requester_id','=',uid),
-                    ('approval_line_ids.approver_id','=',uid)
+                  domain="[('requester_id','=',uid)]"/>
+          <filter name="to_approve" string="To Approve"
+                  domain="[
+                    '&',
+                    ('approval_line_ids.approver_id','=',uid),
+                    ('approval_line_ids.state','=','pending')
                   ]"/>
+          <separator/>
           <field name="state"/>
           <field name="requester_id"/>
         </search>
       </field>
     </record>
 
-    <!-- Update existing main action (use correct id) -->
-    <record id="action_kh_approval_requests" model="ir.actions.act_window">
-      <field name="search_view_id" ref="view_kh_approval_request_search"/>
-      <field name="context">{'search_default_my_requests': 1}</field>
-    </record>
-
-    <!-- REQUEST LIST -->
+    <!-- List -->
     <record id="view_kh_approval_request_list" model="ir.ui.view">
       <field name="name">kh.approval.request.list</field>
       <field name="model">kh.approval.request</field>
@@ -39,23 +37,31 @@
       </field>
     </record>
 
-    <!-- REQUEST FORM -->
+    <!-- Form -->
     <record id="view_kh_approval_request_form" model="ir.ui.view">
       <field name="name">kh.approval.request.form</field>
       <field name="model">kh.approval.request</field>
       <field name="arch" type="xml">
         <form string="Approval Request">
           <header>
-            <!-- Submit -->
-            <button name="action_submit" type="object" string="Submit"
-                    class="oe_highlight" invisible="state != 'draft'"/>
+            <!-- Submit for requester in Draft -->
+            <button name="action_submit"
+                    type="object"
+                    string="Submit"
+                    class="oe_highlight"
+                    invisible="state != 'draft'"/>
 
-            <!-- Approve / Reject -->
-            <button name="action_approve_request" type="object"
-                    string="Approve" class="btn-primary"
+            <!-- Approver actions only when it's their turn -->
+            <button name="action_approve_request"
+                    type="object"
+                    string="Approve"
+                    class="btn-primary"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
-            <button name="action_reject_request" type="object"
-                    string="Reject" class="btn-secondary"
+
+            <button name="action_reject_request"
+                    type="object"
+                    string="Reject"
+                    class="btn-secondary"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
 
             <field name="state" widget="statusbar"
