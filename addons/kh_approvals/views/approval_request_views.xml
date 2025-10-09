@@ -28,10 +28,11 @@
           type="object"
           string="Submit"
           class="oe_highlight"
-          invisible="[('state','!=','draft')]"/>
+          invisible="state != 'draft'"/>
   <field name="state" widget="statusbar"
          statusbar_visible="draft,in_review,approved,rejected"/>
 </header>
+
 
       </header>
 
