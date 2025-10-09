@@ -27,9 +27,7 @@
   <button name="action_submit"
           type="object"
           string="Submit"
-          class="oe_highlight"
-          invisible="['|', ('state','!=','draft'), ('id','=',False)]"/>
-  <!-- Hide submit if not draft OR the record isn’t saved yet -->
+          class="oe_highlight"/>
   <field name="state" widget="statusbar"
          statusbar_visible="draft,in_review,approved,rejected"/>
 </header>
