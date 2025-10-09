@@ -1,47 +1,56 @@
-<record id="view_kh_approval_request_form" model="ir.ui.view">
-  <field name="name">kh.approval.request.form</field>
-  <field name="model">kh.approval.request</field>
-  <field name="arch" type="xml">
-    <form>
-      <header>
-        <button name="action_submit" type="object" string="Submit" class="oe_highlight"
-                invisible="[('state','!=','draft')]"/>
-      </header>
+<odoo>
+  <data>
 
-      <sheet>
-        <group>
-          <group>
-            <field name="name" required="1"/>
-            <field name="requester_id" readonly="1"/>
-            <field name="amount"/>
-            <field name="currency_id"/>
-            <!-- was rule_ids; use the model field name -->
-            <field name="line_rule_ids" widget="many2many_tags" string="Approval Route"/>
-            <!-- remove company_id unless you add it to the model -->
-          </group>
-        </group>
+    <!-- REQUEST LIST -->
+    <record id="view_kh_approval_request_list" model="ir.ui.view">
+      <field name="name">kh.approval.request.list</field>
+      <field name="model">kh.approval.request</field>
+      <field name="arch" type="xml">
+        <list>
+          <field name="name"/>
+          <field name="requester_id"/>
+          <field name="amount"/>
+          <field name="currency_id"/>
+          <field name="state"/>
+        </list>
+      </field>
+    </record>
 
-        <notebook>
-          <page string="Approval Steps">
-            <field name="approval_line_ids">
-              <list editable="bottom">
-                <field name="name"/>
-                <field name="approver_id"/>
-                <field name="required"/>
-                <field name="state"/>
-                <field name="note"/>
-              </list>
-            </field>
-          </page>
-          <page string="Chatter">
-            <field name="message_follower_ids" invisible="1"/>
-            <field name="activity_ids" invisible="1"/>
-            <field name="message_ids" widget="mail_thread"/>
-          </page>
-        </notebook>
-      </sheet>
+    <!-- REQUEST FORM -->
+    <record id="view_kh_approval_request_form" model="ir.ui.view">
+      <field name="name">kh.approval.request.form</field>
+      <field name="model">kh.approval.request</field>
+      <field name="arch" type="xml">
+        <form string="Approval Request">
+          <header>
+            <button name="action_submit" type="object" string="Submit" class="oe_highlight"
+                    invisible="[('state','!=','draft')]"/>
+            <!-- statusbar MUST be in header in v18 -->
+            <field name="state" widget="statusbar"
+                   statusbar_visible="draft,in_review,approved,rejected"/>
+          </header>
 
-      <field name="state" widget="statusbar" statusbar_visible="draft,in_review,approved,rejected"/>
-    </form>
-  </field>
-</record>
+          <sheet>
+            <group>
+              <group>
+                <field name="name" required="1"/>
+                <field name="requester_id" readonly="1"/>
+                <field name="amount"/>
+                <field name="currency_id"/>
+                <!-- use the correct M2M field on the model -->
+                <field name="line_rule_ids" widget="many2many_tags" string="Approval Route"/>
+              </group>
+            </group>
+
+            <notebook>
+              <page string="Approval Steps">
+                <field name="approval_line_ids" context="{'default_request_id': active_id}">
+                  <list editable="bottom">
+                    <field name="name"/>
+                    <field name="approver_id"/>
+                    <field name="required"/>
+                    <field name="state"/>
+                    <field name="note"/>
+                  </list>
+                </field>
+              <
