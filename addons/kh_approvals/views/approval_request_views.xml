@@ -11,7 +11,7 @@
                   domain="[('requester_id','=',uid)]"/>
           <filter name="to_approve" string="To Approve"
                   domain="[
-                    '&',
+                    '&amp;',
                     ('approval_line_ids.approver_id','=',uid),
                     ('approval_line_ids.state','=','pending')
                   ]"/>
@@ -44,26 +44,21 @@
       <field name="arch" type="xml">
         <form string="Approval Request">
           <header>
-            <!-- Submit for requester in Draft -->
             <button name="action_submit"
                     type="object"
                     string="Submit"
                     class="oe_highlight"
                     invisible="state != 'draft'"/>
-
-            <!-- Approver actions only when it's their turn -->
             <button name="action_approve_request"
                     type="object"
                     string="Approve"
                     class="btn-primary"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
-
             <button name="action_reject_request"
                     type="object"
                     string="Reject"
                     class="btn-secondary"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
-
             <field name="state" widget="statusbar"
                    statusbar_visible="draft,in_review,approved,rejected"/>
           </header>
