@@ -23,22 +23,17 @@
   <field name="arch" type="xml">
     <form string="Approval Request">
       <header>
-  <!-- Shows only in Draft -->
+<header>
   <button name="action_submit"
           type="object"
           string="Submit"
           class="oe_highlight"
-          states="draft"/>
-
-  <!-- (optional) buttons you may want later -->
-  <!--
-  <button name="action_reset_to_draft" type="object" string="Reset to Draft" states="in_review,approved,rejected"/>
-  <button name="action_cancel"         type="object" string="Reject"        states="in_review"/>
-  <button name="action_force_approve"  type="object" string="Approve"       states="in_review"/>
-  -->
-
+          invisible="['|', ('state','!=','draft'), ('id','=',False)]"/>
+  <!-- Hide submit if not draft OR the record isn’t saved yet -->
   <field name="state" widget="statusbar"
          statusbar_visible="draft,in_review,approved,rejected"/>
+</header>
+
       </header>
 
       <sheet>
