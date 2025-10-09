@@ -1,6 +1,7 @@
 <odoo>
   <data>
-    <!-- LIST -->
+
+    <!-- List -->
     <record id="view_kh_approval_rule_list" model="ir.ui.view">
       <field name="name">kh.approval.rule.list</field>
       <field name="model">kh.approval.rule</field>
@@ -16,7 +17,7 @@
       </field>
     </record>
 
-    <!-- FORM -->
+    <!-- Form -->
     <record id="view_kh_approval_rule_form" model="ir.ui.view">
       <field name="name">kh.approval.rule.form</field>
       <field name="model">kh.approval.rule</field>
@@ -39,5 +40,6 @@
         </form>
       </field>
     </record>
+
   </data>
 </odoo>

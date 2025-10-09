@@ -1,5 +1,5 @@
 <odoo>
-  <!-- Requests: user can see/edit own or where user is an approver -->
+  <!-- Requests: user can see/edit own or where user is a step approver -->
   <record id="rule_kh_request_own_or_approver" model="ir.rule">
     <field name="name">Requests: Own or Approver</field>
     <field name="model_id" ref="model_kh_approval_request"/>
