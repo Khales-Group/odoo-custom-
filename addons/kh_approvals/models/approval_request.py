@@ -8,165 +8,161 @@ class KhApprovalRequest(models.Model):
     _description = "Khales Approval Request"
     _inherit = ["mail.thread", "mail.activity.mixin"]
 
-    # -----------------------------------------------------------------------------
-    # Fields
-    # -----------------------------------------------------------------------------
     name = fields.Char(required=True, tracking=True)
-
     requester_id = fields.Many2one(
-        "res.users",
-        string="Requester",
-        default=lambda self: self.env.user.id,
-        tracking=True,
-    )
-
+        "res.users", string="Requester",
+        default=lambda self: self.env.user.id, tracking=True)
     amount = fields.Monetary(string="Amount", currency_field="currency_id", tracking=True)
-
-    currency_id = fields.Many2one(
-        "res.currency",
-        default=lambda self: self.env.company.currency_id.id,
-        required=True,
-    )
-
+    currency_id = fields.Many2one("res.currency",
+                                  default=lambda self: self.env.company.currency_id.id,
+                                  required=True)
     state = fields.Selection(
-        [
-            ("draft", "Draft"),
-            ("in_review", "In Review"),
-            ("approved", "Approved"),
-            ("rejected", "Rejected"),
-        ],
-        default="draft",
-        required=True,
-        tracking=True,
-    )
+        [("draft", "Draft"), ("in_review", "In Review"),
+         ("approved", "Approved"), ("rejected", "Rejected")],
+        default="draft", required=True, tracking=True)
 
-    # Approval route defined by rules
-    line_rule_ids = fields.Many2many(
-        "kh.approval.rule",
-        string="Approval Route",
-    )
+    line_rule_ids = fields.Many2many("kh.approval.rule", string="Approval Route")
+    approval_line_ids = fields.One2many("kh.approval.line", "request_id",
+                                        string="Approval Steps", copy=False)
 
-    # Concrete approval steps generated from rules
-    approval_line_ids = fields.One2many(
-        "kh.approval.line",
-        "request_id",
-        string="Approval Steps",
-        copy=False,
-    )
+    pending_line_id = fields.Many2one("kh.approval.line", compute="_compute_pending_line", store=False)
+    is_current_user_approver = fields.Boolean(compute="_compute_pending_line", store=False)
 
-    # First pending line & flag to show buttons to current user
-    pending_line_id = fields.Many2one(
-        "kh.approval.line",
-        compute="_compute_pending_line",
-        store=False,
-    )
-    is_current_user_approver = fields.Boolean(
-        compute="_compute_pending_line",
-        store=False,
-    )
-
-    # -----------------------------------------------------------------------------
-    # Computes
-    # -----------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Computed
+    # -------------------------------------------------------------------------
     def _compute_pending_line(self):
         for rec in self:
             line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
             rec.pending_line_id = line.id if line else False
-            rec.is_current_user_approver = bool(
-                line and line.approver_id.id == rec.env.user.id
-            )
+            rec.is_current_user_approver = bool(line and line.approver_id.id == rec.env.user.id)
 
-    # -----------------------------------------------------------------------------
-    # Helpers
-    # -----------------------------------------------------------------------------
-    def _build_approval_lines(self):
-        """
-        (Re)generate approval steps based on selected rules and request amount.
-        Uses sudo() to remove previous steps even if the end-user lacks unlink rights.
-        """
+    # -------------------------------------------------------------------------
+    # Helpers - FOLLOWERS & NOTIFICATIONS
+    # -------------------------------------------------------------------------
+    def _ensure_followers(self):
+        """Subscribe requester + all approvers so they see inbox notifications."""
         for rec in self:
-            # wipe previous steps safely
-            rec.approval_line_ids.sudo().unlink()
+            partners = rec.requester_id.partner_id
+            partners |= rec.approval_line_ids.mapped("approver_id.partner_id")
+            if partners:
+                rec.message_subscribe(partner_ids=partners.ids)
 
-            rules = rec.line_rule_ids.sorted(key=lambda r: (r.sequence, r.id))
-            vals_list = []
-            for rule in rules:
-                if rule.min_amount and rec.amount < rule.min_amount:
-                    continue
-                if not rule.user_id:
-                    continue
-                vals_list.append(
-                    {
-                        "request_id": rec.id,
-                        "name": rule.name,
-                        "approver_id": rule.user_id.id,
-                        "required": True,
-                        "state": "pending",
-                    }
-                )
-
-            if not vals_list:
-                raise UserError(_("No matching approval rules or missing approvers."))
-
-            self.env["kh.approval.line"].create(vals_list)
+    def _close_my_open_todos(self):
+        """Mark my open To-Do activities on this request as done."""
+        for rec in self:
+            acts = rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid)
+            for a in acts:
+                a.action_feedback(feedback=_("Done"))
 
     def _notify_first_pending(self):
-        """Create a To-Do activity for the first pending approver."""
+        """Create a To-Do for the first pending approver and ping them in chatter."""
         for rec in self:
             line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
             if line and line.approver_id:
+                # schedule activity (clock)
                 rec.activity_schedule(
                     "mail.mail_activity_data_todo",
+                    user_id=line.approver_id.id,
                     summary=_("Approval needed"),
                     note=_("Please review approval request: %s", rec.name),
-                    user_id=line.approver_id.id,
+                )
+                # post message (bell/inbox)
+                rec.message_post(
+                    body=_("Approval needed from <b>%s</b>.") % line.approver_id.name,
+                    partner_ids=[line.approver_id.partner_id.id],
+                    subtype_xmlid="mail.mt_comment",
                 )
 
-    # -----------------------------------------------------------------------------
-    # Actions (buttons)
-    # -----------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Actions
+    # -------------------------------------------------------------------------
     def action_submit(self):
-        """Requester submits: build steps, move to in_review, ping first approver."""
         for rec in self:
             if rec.state != "draft":
                 continue
             rec._build_approval_lines()
+            rec._ensure_followers()
             rec.state = "in_review"
+            rec.message_post(body=_("Request submitted for approval."))
             rec._notify_first_pending()
         return True
 
     def action_approve_request(self):
-        """Current approver approves their step; finish or notify next approver."""
         for rec in self:
             if rec.state != "in_review":
                 continue
 
             line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
-            if not line or line.approver_id.id != self.env.user.id:
+            if not line or line.approver_id.id != self.env.uid:
                 raise UserError(_("You are not the current approver."))
 
-            line.write({"state": "approved"})
+            # close my To-Do on this document
+            rec._close_my_open_todos()
 
+            # approve my step
+            line.write({"state": "approved"})
+            rec.message_post(
+                body=_("Approved by <b>%s</b>.") % self.env.user.name,
+                subtype_xmlid="mail.mt_comment",
+                partner_ids=[rec.requester_id.partner_id.id],
+            )
+
+            # next approver or finished
             next_line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
             if next_line:
                 rec._notify_first_pending()
             else:
                 rec.state = "approved"
+                rec.message_post(
+                    body=_("✅ Request approved."),
+                    partner_ids=[rec.requester_id.partner_id.id],
+                    subtype_xmlid="mail.mt_comment",
+                )
         return True
 
     def action_reject_request(self):
-        """Current approver rejects; request becomes Rejected."""
         for rec in self:
             if rec.state != "in_review":
                 continue
 
             line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
-            if not line or line.approver_id.id != self.env.user.id:
+            if not line or line.approver_id.id != self.env.uid:
                 raise UserError(_("You are not the current approver."))
 
+            rec._close_my_open_todos()
             line.write({"state": "rejected"})
             rec.state = "rejected"
+            rec.message_post(
+                body=_("❌ Rejected by <b>%s</b>.") % self.env.user.name,
+                partner_ids=[rec.requester_id.partner_id.id],
+                subtype_xmlid="mail.mt_comment",
+            )
         return True
+
+    # -------------------------------------------------------------------------
+    # Existing lines/rules code (unchanged)
+    # -------------------------------------------------------------------------
+    def _build_approval_lines(self):
+        for rec in self:
+            rec.approval_line_ids.sudo().unlink()
+            rules = rec.line_rule_ids.sorted(key=lambda r: (r.sequence, r.id))
+            vals = []
+            for rule in rules:
+                if rule.min_amount and rec.amount < rule.min_amount:
+                    continue
+                if not rule.user_id:
+                    continue
+                vals.append({
+                    "request_id": rec.id,
+                    "name": rule.name,
+                    "approver_id": rule.user_id.id,
+                    "required": True,
+                    "state": "pending",
+                })
+            if not vals:
+                raise UserError(_("No matching approval rules or missing approvers."))
+            self.env["kh.approval.line"].create(vals)
 
 
 class KhApprovalRule(models.Model):
@@ -175,18 +171,13 @@ class KhApprovalRule(models.Model):
 
     name = fields.Char(required=True)
     sequence = fields.Integer(default=10)
-    role = fields.Selection(
-        [("manager", "Management"), ("finance", "Finance")],
-        default="manager",
-        required=True,
-    )
+    role = fields.Selection([("manager", "Management"), ("finance", "Finance")],
+                            default="manager", required=True)
     user_id = fields.Many2one("res.users", string="Approver")
     min_amount = fields.Monetary(currency_field="currency_id")
-    currency_id = fields.Many2one(
-        "res.currency",
-        default=lambda self: self.env.company.currency_id.id,
-        required=True,
-    )
+    currency_id = fields.Many2one("res.currency",
+                                  default=lambda self: self.env.company.currency_id.id,
+                                  required=True)
 
 
 class KhApprovalLine(models.Model):
@@ -194,32 +185,11 @@ class KhApprovalLine(models.Model):
     _description = "Approval Step"
     _order = "id"
 
-    request_id = fields.Many2one(
-        "kh.approval.request",
-        required=True,
-        ondelete="cascade",
-    )
+    request_id = fields.Many2one("kh.approval.request", required=True, ondelete="cascade")
     name = fields.Char()
     approver_id = fields.Many2one("res.users", required=True)
     required = fields.Boolean(default=True)
     state = fields.Selection(
         [("pending", "Pending"), ("approved", "Approved"), ("rejected", "Rejected")],
-        default="pending",
-        required=True,
-    )
+        default="pending", required=True)
     note = fields.Char()
-
-    # Optional line-level actions (kept for completeness; the flow uses request actions)
-    def action_approve(self):
-        for rec in self:
-            rec.state = "approved"
-            req = rec.request_id
-            if all(l.state == "approved" or not l.required for l in req.approval_line_ids):
-                req.state = "approved"
-        return True
-
-    def action_reject(self):
-        for rec in self:
-            rec.state = "rejected"
-            rec.request_id.state = "rejected"
-        return True
