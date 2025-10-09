@@ -1,5 +1,7 @@
 <odoo>
   <data>
+
+    <!-- Search: My Requests -->
     <record id="view_kh_approval_request_search" model="ir.ui.view">
       <field name="name">kh.approval.request.search</field>
       <field name="model">kh.approval.request</field>
@@ -16,7 +18,8 @@
       </field>
     </record>
 
-    <record id="action_kh_approval_request" model="ir.actions.act_window">
+    <!-- Update existing main action (use correct id) -->
+    <record id="action_kh_approval_requests" model="ir.actions.act_window">
       <field name="search_view_id" ref="view_kh_approval_request_search"/>
       <field name="context">{'search_default_my_requests': 1}</field>
     </record>
@@ -37,73 +40,62 @@
     </record>
 
     <!-- REQUEST FORM -->
-  <record id="view_kh_approval_request_form" model="ir.ui.view">
-  <field name="name">kh.approval.request.form</field>
-  <field name="model">kh.approval.request</field>
-  <field name="arch" type="xml">
-    <form string="Approval Request">
-<header>
-  <!-- Submit for requester in Draft -->
-  <button name="action_submit"
-          type="object"
-          string="Submit"
-          class="oe_highlight"
-          invisible="state != 'draft'"/>
+    <record id="view_kh_approval_request_form" model="ir.ui.view">
+      <field name="name">kh.approval.request.form</field>
+      <field name="model">kh.approval.request</field>
+      <field name="arch" type="xml">
+        <form string="Approval Request">
+          <header>
+            <!-- Submit -->
+            <button name="action_submit" type="object" string="Submit"
+                    class="oe_highlight" invisible="state != 'draft'"/>
 
-  <!-- Approver actions only when it's their turn -->
-  <button name="action_approve_request"
-          type="object"
-          string="Approve"
-          class="btn-primary"
-          invisible="state != 'in_review' or not is_current_user_approver"/>
+            <!-- Approve / Reject -->
+            <button name="action_approve_request" type="object"
+                    string="Approve" class="btn-primary"
+                    invisible="state != 'in_review' or not is_current_user_approver"/>
+            <button name="action_reject_request" type="object"
+                    string="Reject" class="btn-secondary"
+                    invisible="state != 'in_review' or not is_current_user_approver"/>
 
-  <button name="action_reject_request"
-          type="object"
-          string="Reject"
-          class="btn-secondary"
-          invisible="state != 'in_review' or not is_current_user_approver"/>
+            <field name="state" widget="statusbar"
+                   statusbar_visible="draft,in_review,approved,rejected"/>
+          </header>
 
-  <field name="state" widget="statusbar"
-         statusbar_visible="draft,in_review,approved,rejected"/>
-</header>
+          <sheet>
+            <group>
+              <group>
+                <field name="name" required="1"/>
+                <field name="requester_id" readonly="1"/>
+                <field name="amount"/>
+                <field name="currency_id"/>
+                <field name="line_rule_ids" widget="many2many_tags" string="Approval Route"/>
+              </group>
+            </group>
 
+            <notebook>
+              <page string="Approval Steps">
+                <field name="approval_line_ids">
+                  <list editable="bottom">
+                    <field name="name"/>
+                    <field name="approver_id"/>
+                    <field name="required"/>
+                    <field name="state"/>
+                    <field name="note"/>
+                  </list>
+                </field>
+              </page>
+            </notebook>
+          </sheet>
 
+          <chatter>
+            <field name="message_follower_ids"/>
+            <field name="activity_ids"/>
+            <field name="message_ids"/>
+          </chatter>
+        </form>
+      </field>
+    </record>
 
-
-      <sheet>
-        <group>
-          <group>
-            <field name="name" required="1"/>
-            <field name="requester_id" readonly="1"/>
-            <field name="amount"/>
-            <field name="currency_id"/>
-            <field name="line_rule_ids" widget="many2many_tags" string="Approval Route"/>
-          </group>
-        </group>
-
-        <notebook>
-          <page string="Approval Steps">
-<field name="approval_line_ids">
-  <list editable="bottom">
-                <field name="name"/>
-                <field name="approver_id"/>
-                <field name="required"/>
-                <field name="state"/>
-                <field name="note"/>
-              </list>
-            </field>
-          </page>
-        </notebook>
-      </sheet>
-
-      <!-- ✅ v18 chatter: use <chatter>, not <div> or a notebook page -->
-      <chatter>
-        <field name="message_follower_ids"/>
-        <field name="activity_ids"/>
-        <field name="message_ids"/>
-      </chatter>
-    </form>
-  </field>
-</record>
   </data>
 </odoo>

@@ -1,5 +1,6 @@
 <odoo>
   <data noupdate="1">
+    <!-- Simple manager group -->
     <record id="group_kh_approvals_manager" model="res.groups">
       <field name="name">Approvals Manager</field>
     </record>
