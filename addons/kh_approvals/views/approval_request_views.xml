@@ -22,7 +22,6 @@
   <field name="model">kh.approval.request</field>
   <field name="arch" type="xml">
     <form string="Approval Request">
-      <header>
 <header>
   <!-- Submit for requester in Draft -->
   <button name="action_submit"
@@ -50,7 +49,6 @@
 
 
 
-      </header>
 
       <sheet>
         <group>
