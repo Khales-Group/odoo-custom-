@@ -17,40 +17,52 @@
     </record>
 
     <!-- REQUEST FORM -->
-    <record id="view_kh_approval_request_form" model="ir.ui.view">
-      <field name="name">kh.approval.request.form</field>
-      <field name="model">kh.approval.request</field>
-      <field name="arch" type="xml">
-        <form string="Approval Request">
-          <header>
-            <button name="action_submit" type="object" string="Submit" class="oe_highlight"
-                    invisible="[('state','!=','draft')]"/>
-            <!-- statusbar MUST be in header in v18 -->
-            <field name="state" widget="statusbar"
-                   statusbar_visible="draft,in_review,approved,rejected"/>
-          </header>
+  <record id="view_kh_approval_request_form" model="ir.ui.view">
+  <field name="name">kh.approval.request.form</field>
+  <field name="model">kh.approval.request</field>
+  <field name="arch" type="xml">
+    <form string="Approval Request">
+      <header>
+        <button name="action_submit" type="object" string="Submit" class="oe_highlight"
+                invisible="[('state','!=','draft')]"/>
+        <field name="state" widget="statusbar"
+               statusbar_visible="draft,in_review,approved,rejected"/>
+      </header>
 
-          <sheet>
-            <group>
-              <group>
-                <field name="name" required="1"/>
-                <field name="requester_id" readonly="1"/>
-                <field name="amount"/>
-                <field name="currency_id"/>
-                <!-- use the correct M2M field on the model -->
-                <field name="line_rule_ids" widget="many2many_tags" string="Approval Route"/>
-              </group>
-            </group>
+      <sheet>
+        <group>
+          <group>
+            <field name="name" required="1"/>
+            <field name="requester_id" readonly="1"/>
+            <field name="amount"/>
+            <field name="currency_id"/>
+            <field name="line_rule_ids" widget="many2many_tags" string="Approval Route"/>
+          </group>
+        </group>
 
-            <notebook>
-              <page string="Approval Steps">
-                <field name="approval_line_ids" context="{'default_request_id': active_id}">
-                  <list editable="bottom">
-                    <field name="name"/>
-                    <field name="approver_id"/>
-                    <field name="required"/>
-                    <field name="state"/>
-                    <field name="note"/>
-                  </list>
-                </field>
-              <
+        <notebook>
+          <page string="Approval Steps">
+            <field name="approval_line_ids" context="{'default_request_id': active_id}">
+              <list editable="bottom">
+                <field name="name"/>
+                <field name="approver_id"/>
+                <field name="required"/>
+                <field name="state"/>
+                <field name="note"/>
+              </list>
+            </field>
+          </page>
+        </notebook>
+      </sheet>
+
+      <!-- ✅ v18 chatter: use <chatter>, not <div> or a notebook page -->
+      <chatter>
+        <field name="message_follower_ids"/>
+        <field name="activity_ids"/>
+        <field name="message_ids"/>
+      </chatter>
+    </form>
+  </field>
+</record>
+  </data>
+</odoo>
