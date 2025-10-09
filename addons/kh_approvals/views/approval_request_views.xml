@@ -23,10 +23,13 @@
   <field name="arch" type="xml">
     <form string="Approval Request">
       <header>
-        <button name="action_submit" type="object" string="Submit" class="oe_highlight"
-                invisible="[('state','!=','draft')]"/>
-        <field name="state" widget="statusbar"
-               statusbar_visible="draft,in_review,approved,rejected"/>
+  <button name="action_submit"
+          type="object"
+          string="Submit"
+          class="oe_highlight"
+          invisible="[('state','!=','draft')]"/>
+  <field name="state" widget="statusbar"
+         statusbar_visible="draft,in_review,approved,rejected"/>
       </header>
 
       <sheet>
