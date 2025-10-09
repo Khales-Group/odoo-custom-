@@ -1,0 +1,55 @@
+<odoo>
+  <!-- Requests: user can see/edit own or where user is an approver -->
+  <record id="rule_kh_request_own_or_approver" model="ir.rule">
+    <field name="name">Requests: Own or Approver</field>
+    <field name="model_id" ref="model_kh_approval_request"/>
+    <field name="domain_force">[ '|',
+      ('requester_id', '=', user.id),
+      ('approval_line_ids.approver_id', '=', user.id)
+    ]</field>
+    <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    <field name="perm_read" eval="1"/>
+    <field name="perm_write" eval="1"/>
+    <field name="perm_create" eval="1"/>
+    <field name="perm_unlink" eval="0"/>
+  </record>
+
+  <!-- Requests: managers see all -->
+  <record id="rule_kh_request_manager_all" model="ir.rule">
+    <field name="name">Requests: Manager All</field>
+    <field name="model_id" ref="model_kh_approval_request"/>
+    <field name="domain_force">[(1,'=',1)]</field>
+    <field name="groups" eval="[(4, ref('kh_approvals.group_kh_approvals_manager'))]"/>
+    <field name="perm_read" eval="1"/>
+    <field name="perm_write" eval="1"/>
+    <field name="perm_create" eval="1"/>
+    <field name="perm_unlink" eval="1"/>
+  </record>
+
+  <!-- Lines: user sees lines of their own requests OR where they're the approver -->
+  <record id="rule_kh_line_own_or_approver" model="ir.rule">
+    <field name="name">Lines: Own request or approver</field>
+    <field name="model_id" ref="model_kh_approval_line"/>
+    <field name="domain_force">[ '|',
+      ('request_id.requester_id', '=', user.id),
+      ('approver_id', '=', user.id)
+    ]</field>
+    <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    <field name="perm_read" eval="1"/>
+    <field name="perm_write" eval="1"/>
+    <field name="perm_create" eval="0"/>
+    <field name="perm_unlink" eval="0"/>
+  </record>
+
+  <!-- Lines: managers see all -->
+  <record id="rule_kh_line_manager_all" model="ir.rule">
+    <field name="name">Lines: Manager All</field>
+    <field name="model_id" ref="model_kh_approval_line"/>
+    <field name="domain_force">[(1,'=',1)]</field>
+    <field name="groups" eval="[(4, ref('kh_approvals.group_kh_approvals_manager'))]"/>
+    <field name="perm_read" eval="1"/>
+    <field name="perm_write" eval="1"/>
+    <field name="perm_create" eval="1"/>
+    <field name="perm_unlink" eval="1"/>
+  </record>
+</odoo>

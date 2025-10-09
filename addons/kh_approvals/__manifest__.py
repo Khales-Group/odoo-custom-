@@ -11,6 +11,7 @@
         "security/ir.model.access.csv",
         "security/kh_approvals_security.xml",
         "views/menu.xml",
+        "security/kh_approvals_rules.xml",   # <-- add this
         "views/approval_rule_views.xml",
         "views/approval_request_views.xml"
     ],

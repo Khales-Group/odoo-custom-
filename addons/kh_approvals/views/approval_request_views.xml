@@ -1,5 +1,25 @@
 <odoo>
   <data>
+    <record id="view_kh_approval_request_search" model="ir.ui.view">
+      <field name="name">kh.approval.request.search</field>
+      <field name="model">kh.approval.request</field>
+      <field name="arch" type="xml">
+        <search>
+          <filter name="my_requests" string="My Requests"
+                  domain="[ '|',
+                    ('requester_id','=',uid),
+                    ('approval_line_ids.approver_id','=',uid)
+                  ]"/>
+          <field name="state"/>
+          <field name="requester_id"/>
+        </search>
+      </field>
+    </record>
+
+    <record id="action_kh_approval_request" model="ir.actions.act_window">
+      <field name="search_view_id" ref="view_kh_approval_request_search"/>
+      <field name="context">{'search_default_my_requests': 1}</field>
+    </record>
 
     <!-- REQUEST LIST -->
     <record id="view_kh_approval_request_list" model="ir.ui.view">
