@@ -14,8 +14,10 @@ class KhApprovalRequest(models.Model):
     name = fields.Char(required=True, tracking=True)
 
     requester_id = fields.Many2one(
-        "res.users", string="Requester",
-        default=lambda self: self.env.user.id, tracking=True
+        "res.users",
+        string="Requester",
+        default=lambda self: self.env.user.id,
+        tracking=True,
     )
 
     amount = fields.Monetary(string="Amount", currency_field="currency_id", tracking=True)
@@ -47,8 +49,12 @@ class KhApprovalRequest(models.Model):
     )
 
     # Helper fields for UI logic
-    pending_line_id = fields.Many2one("kh.approval.line", compute="_compute_pending_line", store=False)
-    is_current_user_approver = fields.Boolean(compute="_compute_pending_line", store=False)
+    pending_line_id = fields.Many2one(
+        "kh.approval.line", compute="_compute_pending_line", store=False
+    )
+    is_current_user_approver = fields.Boolean(
+        compute="_compute_pending_line", store=False
+    )
 
     # -------------------------------------------------------------------------
     # Computes
@@ -57,7 +63,9 @@ class KhApprovalRequest(models.Model):
         for rec in self:
             line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
             rec.pending_line_id = line.id if line else False
-            rec.is_current_user_approver = bool(line and line.approver_id.id == rec.env.user.id)
+            rec.is_current_user_approver = bool(
+                line and line.approver_id.id == rec.env.user.id
+            )
 
     # -------------------------------------------------------------------------
     # Helpers - Followers & Notifications (incl. desktop popup + sound)
@@ -79,29 +87,63 @@ class KhApprovalRequest(models.Model):
 
     def _dm_ping(self, partner, body_html):
         """
-        Send a direct chat message to `partner` (native browser popup + sound
-        when the user allowed notifications). Also gives a quick link to the doc.
+        Send a direct chat message that triggers the browser popup + sound
+        (when the user allowed notifications). Supports Odoo 16 (mail.channel)
+        and Odoo 17/18 (discuss.channel).
         """
         self.ensure_one()
-        Channel = self.env["mail.channel"].sudo().with_context(mail_create_nolog=True)
+        me_partner = self.env.user.partner_id
 
-        # find an existing 1:1 chat, otherwise create one
-        me = self.env.user.partner_id
-        channel = Channel.search([
-            ("channel_type", "=", "chat"),
-            ("channel_partner_ids", "in", [partner.id]),
-            ("channel_partner_ids", "in", [me.id]),
-        ], limit=1)
-        if not channel:
-            channel = Channel.create({
-                "name": f"{me.name} ↔ {partner.name}",
-                "channel_type": "chat",
-                "channel_partner_ids": [(6, 0, [partner.id, me.id])],
-            })
+        # Odoo 17/18
+        if "discuss.channel" in self.env:
+            Channel = self.env["discuss.channel"].sudo().with_context(mail_create_nolog=True)
+            # find 1:1 chat between me and partner
+            channel = Channel.search([
+                ("channel_type", "=", "chat"),
+                ("channel_member_ids.partner_id", "in", [partner.id]),
+                ("channel_member_ids.partner_id", "in", [me_partner.id]),
+            ], limit=1)
+            if not channel:
+                channel = Channel.create({
+                    "name": f"{me_partner.name} ↔ {partner.name}",
+                    "channel_type": "chat",
+                    "channel_member_ids": [
+                        (0, 0, {"partner_id": me_partner.id}),
+                        (0, 0, {"partner_id": partner.id}),
+                    ],
+                })
+            channel.message_post(
+                body=body_html,
+                message_type="comment",
+                subtype_xmlid="mail.mt_comment",
+            )
+            return
 
-        channel.message_post(
+        # Odoo 16 and earlier
+        if "mail.channel" in self.env:
+            Channel = self.env["mail.channel"].sudo().with_context(mail_create_nolog=True)
+            channel = Channel.search([
+                ("channel_type", "=", "chat"),
+                ("channel_partner_ids", "in", [partner.id]),
+                ("channel_partner_ids", "in", [me_partner.id]),
+            ], limit=1)
+            if not channel:
+                channel = Channel.create({
+                    "name": f"{me_partner.name} ↔ {partner.name}",
+                    "channel_type": "chat",
+                    "channel_partner_ids": [(6, 0, [partner.id, me_partner.id])],
+                })
+            channel.message_post(
+                body=body_html,
+                message_type="comment",
+                subtype_xmlid="mail.mt_comment",
+            )
+            return
+
+        # Fallback: chatter message
+        self.message_post(
             body=body_html,
-            message_type="comment",
+            partner_ids=[partner.id],
             subtype_xmlid="mail.mt_comment",
         )
 
@@ -131,7 +173,7 @@ class KhApprovalRequest(models.Model):
             )
 
             # 3) Direct chat ping (native notification + sound)
-            link = f"#id={rec.id}&model=kh.approval.request&view_type=form"
+            link = f"/web#id={rec.id}&model=kh.approval.request&view_type=form"
             html = _(
                 "🔔 <b>Approval needed</b> for: "
                 "<a href='%s'>%s</a><br/>Requester: %s"
@@ -182,7 +224,7 @@ class KhApprovalRequest(models.Model):
                     subtype_xmlid="mail.mt_comment",
                 )
                 # DM the requester with a popup + sound
-                link = f"#id={rec.id}&model=kh.approval.request&view_type=form"
+                link = f"/web#id={rec.id}&model=kh.approval.request&view_type=form"
                 rec._dm_ping(
                     rec.requester_id.partner_id,
                     _("✅ <b>Approved</b>: <a href='%s'>%s</a>") % (link, rec.name),
@@ -209,7 +251,7 @@ class KhApprovalRequest(models.Model):
             )
 
             # DM the requester with a popup + sound
-            link = f"#id={rec.id}&model=kh.approval.request&view_type=form"
+            link = f"/web#id={rec.id}&model=kh.approval.request&view_type=form"
             rec._dm_ping(
                 rec.requester_id.partner_id,
                 _("❌ <b>Rejected</b>: <a href='%s'>%s</a>") % (link, rec.name),
@@ -256,7 +298,8 @@ class KhApprovalRule(models.Model):
     sequence = fields.Integer(default=10)
     role = fields.Selection(
         [("manager", "Management"), ("finance", "Finance")],
-        default="manager", required=True
+        default="manager",
+        required=True,
     )
     user_id = fields.Many2one("res.users", string="Approver")
     min_amount = fields.Monetary(currency_field="currency_id")
@@ -278,6 +321,7 @@ class KhApprovalLine(models.Model):
     required = fields.Boolean(default=True)
     state = fields.Selection(
         [("pending", "Pending"), ("approved", "Approved"), ("rejected", "Rejected")],
-        default="pending", required=True
+        default="pending",
+        required=True,
     )
     note = fields.Char()
