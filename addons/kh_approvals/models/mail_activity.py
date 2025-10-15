@@ -20,11 +20,10 @@ class MailActivity(models.Model):
         return super().unlink()
 
     def write(self, vals):
-        if vals:
-            if set(vals.keys()) & PROTECTED_FIELDS:
-                for act in self:
-                    if act._applies_to_kh_approval() and act.user_id.id == self.env.uid:
-                        raise UserError(_("You are the assignee of this activity. You cannot edit it; please ask the creator or a manager."))
+        if vals and (set(vals.keys()) & PROTECTED_FIELDS):
+            for act in self:
+                if act._applies_to_kh_approval() and act.user_id.id == self.env.uid:
+                    raise UserError(_("You are the assignee of this activity. You cannot edit it; please ask the creator or a manager."))
         return super().write(vals)
 
     def action_feedback(self, feedback=False, attachment_ids=None, **kwargs):
