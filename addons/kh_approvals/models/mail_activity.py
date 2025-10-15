@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-from odoo import api, fields, models, _
+from odoo import models, _
 from odoo.exceptions import UserError
 
 PROTECTED_FIELDS = {
@@ -22,13 +21,11 @@ class MailActivity(models.Model):
 
     def write(self, vals):
         if vals:
-            editing_keys = set(vals.keys())
-            if editing_keys & PROTECTED_FIELDS:
+            if set(vals.keys()) & PROTECTED_FIELDS:
                 for act in self:
                     if act._applies_to_kh_approval() and act.user_id.id == self.env.uid:
                         raise UserError(_("You are the assignee of this activity. You cannot edit it; please ask the creator or a manager."))
         return super().write(vals)
 
     def action_feedback(self, feedback=False, attachment_ids=None, **kwargs):
-        # marking done is allowed
         return super().action_feedback(feedback=feedback, attachment_ids=attachment_ids, **kwargs)
