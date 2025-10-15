@@ -59,6 +59,7 @@ class KhApprovalRequest(models.Model):
     # -------------------------------------------------------------------------
     # Computes
     # -------------------------------------------------------------------------
+    @api.depends("approval_line_ids.state", "approval_line_ids.approver_id")
     def _compute_pending_line(self):
         for rec in self:
             line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
@@ -66,6 +67,14 @@ class KhApprovalRequest(models.Model):
             rec.is_current_user_approver = bool(
                 line and line.approver_id.id == rec.env.user.id
             )
+
+    # -------------------------------------------------------------------------
+    # Helpers - Links
+    # -------------------------------------------------------------------------
+    def _deeplink(self):
+        """Return a stable /web# deeplink to this record (form view)."""
+        self.ensure_one()
+        return f"/web#id={self.id}&model=kh.approval.request&view_type=form"
 
     # -------------------------------------------------------------------------
     # Helpers - Followers & Notifications (incl. desktop popup + sound)
@@ -76,7 +85,9 @@ class KhApprovalRequest(models.Model):
             partners = rec.requester_id.partner_id
             partners |= rec.approval_line_ids.mapped("approver_id.partner_id")
             if partners:
-                rec.message_subscribe(partner_ids=partners.ids)
+                # Do not let subscription failures roll back the main transaction
+                with rec.env.cr.savepoint():
+                    rec.message_subscribe(partner_ids=partners.ids)
 
     def _close_my_open_todos(self):
         """Mark my open To-Do activities on this request as done for the current user."""
@@ -162,27 +173,29 @@ class KhApprovalRequest(models.Model):
                 continue
 
             # 1) Activity (clock icon)
-            rec.activity_schedule(
-                "mail.mail_activity_data_todo",
-                user_id=line.approver_id.id,
-                summary=_("Approval needed"),
-                note=_("Please review approval request: %s") % rec.name,
-            )
+            with rec.env.cr.savepoint():
+                rec.activity_schedule(
+                    "mail.mail_activity_data_todo",
+                    user_id=line.approver_id.id,
+                    summary=_("Approval needed"),
+                    note=_("Please review approval request: %s") % rec.name,
+                )
 
             # 2) Chatter (bell/inbox)
-            rec.message_post(
-                body=_("Approval needed from <b>%s</b>.") % line.approver_id.name,
-                partner_ids=[line.approver_id.partner_id.id],
-                subtype_xmlid="mail.mt_comment",
-            )
+            with rec.env.cr.savepoint():
+                rec.message_post(
+                    body=_("Approval needed from <b>%s</b>.") % line.approver_id.name,
+                    partner_ids=[line.approver_id.partner_id.id],
+                    subtype_xmlid="mail.mt_comment",
+                )
 
             # 3) Direct chat ping (native notification + sound)
-            link = f"/web#id={rec.id}&model=kh.approval.request&view_type=form"
-            html = _(
-                "🔔 <b>Approval needed</b> for: "
-                "<a href='%(link)s'>%(name)s</a><br/>Requester: %(req)s"
-            ) % {"link": link, "name": rec.name, "req": rec.requester_id.name}
-            rec._dm_ping(line.approver_id.partner_id, html)
+            with rec.env.cr.savepoint():
+                html = _(
+                    "🔔 <b>Approval needed</b> for: "
+                    "<a href='%(link)s'>%(name)s</a><br/>Requester: %(req)s"
+                ) % {"link": rec._deeplink(), "name": rec.name, "req": rec.requester_id.name}
+                rec._dm_ping(line.approver_id.partner_id, html)
 
     # -------------------------------------------------------------------------
     # Actions (buttons)
@@ -193,10 +206,13 @@ class KhApprovalRequest(models.Model):
             if rec.state != "draft":
                 continue
             rec._build_approval_lines()
-            rec._ensure_followers()
+            with rec.env.cr.savepoint():
+                rec._ensure_followers()
             rec.state = "in_review"
-            rec.message_post(body=_("Request submitted for approval."))
-            rec._notify_first_pending()
+            with rec.env.cr.savepoint():
+                rec.message_post(body=_("Request submitted for approval."))
+            with rec.env.cr.savepoint():
+                rec._notify_first_pending()
         return True
 
     def action_approve_request(self):
@@ -214,29 +230,32 @@ class KhApprovalRequest(models.Model):
 
             # Approve my step
             line.write({"state": "approved"})
-            rec.message_post(
-                body=_("Approved by <b>%s</b>.") % self.env.user.name,
-                partner_ids=[rec.requester_id.partner_id.id],
-                subtype_xmlid="mail.mt_comment",
-            )
+            with rec.env.cr.savepoint():
+                rec.message_post(
+                    body=_("Approved by <b>%s</b>.") % self.env.user.name,
+                    partner_ids=[rec.requester_id.partner_id.id],
+                    subtype_xmlid="mail.mt_comment",
+                )
 
             # Next approver or finished
             next_line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
             if next_line:
-                rec._notify_first_pending()
+                with rec.env.cr.savepoint():
+                    rec._notify_first_pending()
             else:
                 rec.state = "approved"
-                rec.message_post(
-                    body=_("✅ Request approved."),
-                    partner_ids=[rec.requester_id.partner_id.id],
-                    subtype_xmlid="mail.mt_comment",
-                )
+                with rec.env.cr.savepoint():
+                    rec.message_post(
+                        body=_("✅ Request approved."),
+                        partner_ids=[rec.requester_id.partner_id.id],
+                        subtype_xmlid="mail.mt_comment",
+                    )
                 # DM the requester with a popup + sound
-                link = f"/web#id={rec.id}&model=kh.approval.request&view_type=form"
-                rec._dm_ping(
-                    rec.requester_id.partner_id,
-                    _("✅ <b>Approved</b>: <a href='%s'>%s</a>") % (link, rec.name),
-                )
+                with rec.env.cr.savepoint():
+                    rec._dm_ping(
+                        rec.requester_id.partner_id,
+                        _("✅ <b>Approved</b>: <a href='%s'>%s</a>") % (rec._deeplink(), rec.name),
+                    )
         return True
 
     def action_reject_request(self):
@@ -252,18 +271,19 @@ class KhApprovalRequest(models.Model):
             rec._close_my_open_todos()
             line.write({"state": "rejected"})
             rec.state = "rejected"
-            rec.message_post(
-                body=_("❌ Rejected by <b>%s</b>.") % self.env.user.name,
-                partner_ids=[rec.requester_id.partner_id.id],
-                subtype_xmlid="mail.mt_comment",
-            )
+            with rec.env.cr.savepoint():
+                rec.message_post(
+                    body=_("❌ Rejected by <b>%s</b>.") % self.env.user.name,
+                    partner_ids=[rec.requester_id.partner_id.id],
+                    subtype_xmlid="mail.mt_comment",
+                )
 
             # DM the requester with a popup + sound
-            link = f"/web#id={rec.id}&model=kh.approval.request&view_type=form"
-            rec._dm_ping(
-                rec.requester_id.partner_id,
-                _("❌ <b>Rejected</b>: <a href='%s'>%s</a>") % (link, rec.name),
-            )
+            with rec.env.cr.savepoint():
+                rec._dm_ping(
+                    rec.requester_id.partner_id,
+                    _("❌ <b>Rejected</b>: <a href='%s'>%s</a>") % (rec._deeplink(), rec.name),
+                )
         return True
 
     # -------------------------------------------------------------------------
@@ -280,6 +300,8 @@ class KhApprovalRequest(models.Model):
             rules = rec.line_rule_ids.sorted(key=lambda r: (r.sequence, r.id))
             vals = []
             for rule in rules:
+                # NOTE: simple same-currency comparison; if you mix currencies
+                # add conversion: rule.currency_id._convert(rule.min_amount, rec.currency_id, rec.company_id, fields.Date.today())
                 if rule.min_amount and rec.amount < rule.min_amount:
                     continue
                 if not rule.user_id:
