@@ -79,7 +79,7 @@ class KhApprovalRequest(models.Model):
                 rec.message_subscribe(partner_ids=partners.ids)
 
     def _close_my_open_todos(self):
-        """Mark my open To-Do activities on this request as done."""
+        """Mark my open To-Do activities on this request as done for the current user."""
         for rec in self:
             acts = rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid)
             for a in acts:
@@ -87,60 +87,64 @@ class KhApprovalRequest(models.Model):
 
     def _dm_ping(self, partner, body_html):
         """
-        Send a direct chat message that triggers the browser popup + sound
-        (when the user allowed notifications). Supports Odoo 16 (mail.channel)
-        and Odoo 17/18 (discuss.channel).
+        Try to send a direct chat message (native browser popup + sound when allowed).
+        Supports Odoo 17/18 (discuss.channel) and Odoo 16- (mail.channel).
+        Never raises; falls back to a chatter message if chat models are unavailable.
         """
         self.ensure_one()
         me_partner = self.env.user.partner_id
 
-        # Odoo 17/18
-        if "discuss.channel" in self.env:
-            Channel = self.env["discuss.channel"].sudo().with_context(mail_create_nolog=True)
-            # find 1:1 chat between me and partner
-            channel = Channel.search([
-                ("channel_type", "=", "chat"),
-                ("channel_member_ids.partner_id", "in", [partner.id]),
-                ("channel_member_ids.partner_id", "in", [me_partner.id]),
-            ], limit=1)
-            if not channel:
-                channel = Channel.create({
-                    "name": f"{me_partner.name} ↔ {partner.name}",
-                    "channel_type": "chat",
-                    "channel_member_ids": [
-                        (0, 0, {"partner_id": me_partner.id}),
-                        (0, 0, {"partner_id": partner.id}),
-                    ],
-                })
-            channel.message_post(
-                body=body_html,
-                message_type="comment",
-                subtype_xmlid="mail.mt_comment",
-            )
-            return
+        try:
+            # Odoo 17/18 – discuss.channel
+            if "discuss.channel" in self.env:
+                Channel = self.env["discuss.channel"].sudo().with_context(mail_create_nolog=True)
+                channel = Channel.search([
+                    ("channel_type", "=", "chat"),
+                    ("channel_member_ids.partner_id", "in", [partner.id]),
+                    ("channel_member_ids.partner_id", "in", [me_partner.id]),
+                ], limit=1)
+                if not channel:
+                    channel = Channel.create({
+                        "name": f"{me_partner.name} ↔ {partner.name}",
+                        "channel_type": "chat",
+                        "channel_member_ids": [
+                            (0, 0, {"partner_id": me_partner.id}),
+                            (0, 0, {"partner_id": partner.id}),
+                        ],
+                    })
+                channel.message_post(
+                    body=body_html,
+                    message_type="comment",
+                    subtype_xmlid="mail.mt_comment",
+                )
+                return
 
-        # Odoo 16 and earlier
-        if "mail.channel" in self.env:
-            Channel = self.env["mail.channel"].sudo().with_context(mail_create_nolog=True)
-            channel = Channel.search([
-                ("channel_type", "=", "chat"),
-                ("channel_partner_ids", "in", [partner.id]),
-                ("channel_partner_ids", "in", [me_partner.id]),
-            ], limit=1)
-            if not channel:
-                channel = Channel.create({
-                    "name": f"{me_partner.name} ↔ {partner.name}",
-                    "channel_type": "chat",
-                    "channel_partner_ids": [(6, 0, [partner.id, me_partner.id])],
-                })
-            channel.message_post(
-                body=body_html,
-                message_type="comment",
-                subtype_xmlid="mail.mt_comment",
-            )
-            return
+            # Odoo 16 and earlier – mail.channel
+            if "mail.channel" in self.env:
+                Channel = self.env["mail.channel"].sudo().with_context(mail_create_nolog=True)
+                channel = Channel.search([
+                    ("channel_type", "=", "chat"),
+                    ("channel_partner_ids", "in", [partner.id]),
+                    ("channel_partner_ids", "in", [me_partner.id]),
+                ], limit=1)
+                if not channel:
+                    channel = Channel.create({
+                        "name": f"{me_partner.name} ↔ {partner.name}",
+                        "channel_type": "chat",
+                        "channel_partner_ids": [(6, 0, [partner.id, me_partner.id])],
+                    })
+                channel.message_post(
+                    body=body_html,
+                    message_type="comment",
+                    subtype_xmlid="mail.mt_comment",
+                )
+                return
 
-        # Fallback: chatter message
+        except Exception:
+            # Do not break the main flow if DM fails for any reason
+            pass
+
+        # Fallback: regular chatter ping so the user still gets notified in Inbox
         self.message_post(
             body=body_html,
             partner_ids=[partner.id],
@@ -157,12 +161,12 @@ class KhApprovalRequest(models.Model):
             if not line or not line.approver_id:
                 continue
 
-            # 1) Activity (clock)
+            # 1) Activity (clock icon)
             rec.activity_schedule(
                 "mail.mail_activity_data_todo",
                 user_id=line.approver_id.id,
                 summary=_("Approval needed"),
-                note=_("Please review approval request: %s", rec.name),
+                note=_("Please review approval request: %s") % rec.name,
             )
 
             # 2) Chatter (bell/inbox)
@@ -176,12 +180,12 @@ class KhApprovalRequest(models.Model):
             link = f"/web#id={rec.id}&model=kh.approval.request&view_type=form"
             html = _(
                 "🔔 <b>Approval needed</b> for: "
-                "<a href='%s'>%s</a><br/>Requester: %s"
-            ) % (link, rec.name, rec.requester_id.name)
+                "<a href='%(link)s'>%(name)s</a><br/>Requester: %(req)s"
+            ) % {"link": link, "name": rec.name, "req": rec.requester_id.name}
             rec._dm_ping(line.approver_id.partner_id, html)
 
     # -------------------------------------------------------------------------
-    # Actions
+    # Actions (buttons)
     # -------------------------------------------------------------------------
     def action_submit(self):
         """Requester submits: build steps, move to in_review, ping first approver."""
@@ -205,7 +209,10 @@ class KhApprovalRequest(models.Model):
             if not line or line.approver_id.id != self.env.uid:
                 raise UserError(_("You are not the current approver."))
 
+            # Close my To-Do on this document
             rec._close_my_open_todos()
+
+            # Approve my step
             line.write({"state": "approved"})
             rec.message_post(
                 body=_("Approved by <b>%s</b>.") % self.env.user.name,
@@ -213,6 +220,7 @@ class KhApprovalRequest(models.Model):
                 subtype_xmlid="mail.mt_comment",
             )
 
+            # Next approver or finished
             next_line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
             if next_line:
                 rec._notify_first_pending()
