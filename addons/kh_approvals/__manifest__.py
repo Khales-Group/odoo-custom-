@@ -12,7 +12,7 @@
         "security/ir.model.access.csv",
         "security/kh_approvals_security.xml",
         "security/kh_approvals_rules.xml",
-        "views/mail_activity_views.xml",
+        # "views/mail_activity_views.xml",
         "views/approval_rule_views.xml",
         "views/approval_request_views.xml",
         "views/menu.xml",
