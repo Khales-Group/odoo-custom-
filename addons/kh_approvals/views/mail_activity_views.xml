@@ -1,13 +1,19 @@
 <odoo>
-  <!-- Change the label of the "Mark as done" button in the activity popup -->
+  <!-- Rename the primary complete button in the activity popup to "Finish" -->
   <record id="mail_activity_form_finish_label" model="ir.ui.view">
     <field name="name">mail.activity.form.finish.label</field>
     <field name="model">mail.activity</field>
     <field name="inherit_id" ref="mail.mail_activity_view_form_popup"/>
     <field name="arch" type="xml">
-      <!-- The button in the footer that completes the activity -->
-      <xpath expr="//footer//button[@name='action_feedback']" position="attributes">
+      <!-- Odoo 18 may mark the button with name='action_feedback' or a CSS class.
+           Use a union selector so either variant is matched. -->
+      <xpath expr="//footer//button[@name='action_feedback'] | //footer//button[contains(@class,'o_activity_done')]" position="attributes">
         <attribute name="string">Finish</attribute>
+      </xpath>
+
+      <!-- (Optional) If your popup shows the “Done & Schedule Next” button, rename it too -->
+      <xpath expr="//footer//button[@name='action_feedback_schedule_next'] | //footer//button[contains(@class,'o_activity_done_next')]" position="attributes">
+        <attribute name="string">Finish &amp; Schedule Next</attribute>
       </xpath>
     </field>
   </record>
