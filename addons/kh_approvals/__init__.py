@@ -1,2 +1,2 @@
-pass
+from . import models
 
