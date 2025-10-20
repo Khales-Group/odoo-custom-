@@ -12,7 +12,7 @@ class MailActivity(models.Model):
 
     def _applies_to_kh_approval(self):
         self.ensure_one()
-        return self.res_model == "kh.approval.request"
+        return True
 
     def _assignee_not_creator(self):
         self.ensure_one()
