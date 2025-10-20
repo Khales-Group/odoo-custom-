@@ -12,12 +12,9 @@
         "security/ir.model.access.csv",
         "security/kh_approvals_security.xml",
         "security/kh_approvals_rules.xml",
-
-        # views and actions that define XMLIDs we will reference from menus
+        "views/mail_activity_views.xml",
         "views/approval_rule_views.xml",
         "views/approval_request_views.xml",
-
-        # menus and actions that reference the above views
         "views/menu.xml",
     ],
     "application": True,

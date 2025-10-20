@@ -1,0 +1,14 @@
+<odoo>
+  <!-- Change the label of the "Mark as done" button in the activity popup -->
+  <record id="mail_activity_form_finish_label" model="ir.ui.view">
+    <field name="name">mail.activity.form.finish.label</field>
+    <field name="model">mail.activity</field>
+    <field name="inherit_id" ref="mail.mail_activity_view_form_popup"/>
+    <field name="arch" type="xml">
+      <!-- The button in the footer that completes the activity -->
+      <xpath expr="//footer//button[@name='action_feedback']" position="attributes">
+        <attribute name="string">Finish</attribute>
+      </xpath>
+    </field>
+  </record>
+</odoo>
