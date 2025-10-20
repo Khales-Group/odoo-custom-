@@ -4,17 +4,15 @@
     <field name="model">mail.activity</field>
     <field name="inherit_id" ref="mail.mail_activity_view_form_popup"/>
     <field name="arch" type="xml">
-      <!-- Primary Done button: match by name OR by current label -->
-      <xpath expr="//footer//button[@name='action_done'] 
-                   | //footer//button[@name='action_feedback'] 
-                   | //footer//button[@string='Mark as done']" position="attributes">
+      <!-- Primary “Done” button: match by action name only -->
+      <xpath expr="//footer//button[@name='action_done'] | //footer//button[@name='action_feedback']"
+             position="attributes">
         <attribute name="string">Finish</attribute>
       </xpath>
 
-      <!-- Optional: Done & Schedule Next (if present in your build) -->
-      <xpath expr="//footer//button[@name='action_done_schedule_next'] 
-                   | //footer//button[@name='action_feedback_schedule_next'] 
-                   | //footer//button[@string='Done &amp; Schedule Next']" position="attributes">
+      <!-- Optional: “Done & Schedule Next” if present in your build -->
+      <xpath expr="//footer//button[@name='action_done_schedule_next'] | //footer//button[@name='action_feedback_schedule_next']"
+             position="attributes">
         <attribute name="string">Finish &amp; Schedule Next</attribute>
       </xpath>
     </field>
