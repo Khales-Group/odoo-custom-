@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# addons/kh_approvals/models/mail_activity.py
 from odoo import models, _
 from odoo.exceptions import UserError
 
@@ -10,28 +10,39 @@ PROTECTED_FIELDS = {
 class MailActivity(models.Model):
     _inherit = "mail.activity"
 
+    # applies only to activities on our approval requests
     def _applies_to_kh_approval(self):
         self.ensure_one()
-        return True
+        return self.res_model == "kh.approval.request"
 
-    def _assignee_not_creator(self):
-        self.ensure_one()
-        return self.user_id.id == self.env.uid and self.create_uid.id != self.env.uid
+    def _bypass_guard(self):
+        """Allow superuser, Approvals Manager group, or explicit context bypass."""
+        return (
+            self.env.su
+            or self.env.user.has_group("kh_approvals.group_kh_approvals_manager")
+            or self.env.context.get("kh_allow_activity_edit")
+        )
 
-    def unlink(self):
-        allow_done = self.env.context.get("allow_assignee_unlink_for_done")
+    def _check_creator_guard_or_raise(self):
+        """Only the creator of the activity is allowed to edit/cancel it."""
         for act in self:
-            if act._applies_to_kh_approval() and act._assignee_not_creator() and not allow_done:
-                raise UserError(_("You can't cancel this activity because you didn't create it."))
+            if act._applies_to_kh_approval() and not act._bypass_guard():
+                if act.create_uid.id != self.env.uid:
+                    raise UserError(
+                        _("Only the user who created this activity can edit or cancel it.")
+                    )
+
+    # --- Delete (Cancel) ---
+    def unlink(self):
+        self._check_creator_guard_or_raise()
         return super().unlink()
 
+    # --- Edit fields (but not 'Mark Done') ---
     def write(self, vals):
         if vals and (set(vals.keys()) & PROTECTED_FIELDS):
-            for act in self:
-                if act._applies_to_kh_approval() and act._assignee_not_creator():
-                    raise UserError(_("You can't edit this activity because you didn't create it."))
+            self._check_creator_guard_or_raise()
         return super().write(vals)
 
+    # --- Mark Done is allowed for the assignee as usual ---
     def action_feedback(self, feedback=False, attachment_ids=None, **kwargs):
-        self = self.with_context(allow_assignee_unlink_for_done=True)
         return super().action_feedback(feedback=feedback, attachment_ids=attachment_ids, **kwargs)
