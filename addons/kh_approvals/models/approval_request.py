@@ -2,45 +2,48 @@
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
 
-# ---------------------------------------------------------------------------
-# Approval Request
-# ---------------------------------------------------------------------------
 
+# ============================================================================
+# Approval Request
+# ============================================================================
 class KhApprovalRequest(models.Model):
     _name = "kh.approval.request"
-    _description = "Approval Request"
+    _description = "Khales Approval Request"
     _inherit = ["mail.thread", "mail.activity.mixin"]
+    _check_company_auto = True
 
+    # -------------------------------------------------------------------------
+    # Fields
+    # -------------------------------------------------------------------------
     name = fields.Char(required=True, tracking=True)
+
     company_id = fields.Many2one(
         "res.company",
-        string="Company",
+        required=True,
         default=lambda self: self.env.company,
         index=True,
         tracking=True,
     )
+
     department_id = fields.Many2one(
-        "kh.approvals.department",
+        "kh.approvals.department",  # tiny custom model; or switch to hr.department if you prefer
         string="Department",
-        index=True,
-        tracking=True,
-    )
-    requester_id = fields.Many2one(
-        "res.users",
-        string="Requester",
-        default=lambda self: self.env.user,
-        required=True,
-        index=True,
         tracking=True,
     )
 
-    # ORIGINAL flow uses a single rule selected on the request
-    rule_id = fields.Many2one(
-        "kh.approval.rule",
-        string="Approval Rule",
-        required=True,
+    requester_id = fields.Many2one(
+        "res.users",
+        string="Requester",
+        default=lambda self: self.env.user.id,
         tracking=True,
-        ondelete="restrict",
+    )
+
+    amount = fields.Monetary(string="Amount", currency_field="currency_id", tracking=True)
+
+    currency_id = fields.Many2one(
+        "res.currency",
+        default=lambda self: self.env.company.currency_id.id,
+        required=True,
     )
 
     state = fields.Selection(
@@ -51,232 +54,388 @@ class KhApprovalRequest(models.Model):
             ("rejected", "Rejected"),
         ],
         default="draft",
+        required=True,
         tracking=True,
-        index=True,
     )
 
-    # approval lines generated from the chosen rule (or its steps)
+    # Single rule selector (rule defines company/department/approver sequence)
+    rule_id = fields.Many2one(
+        "kh.approval.rule",
+        string="Approval Rule",
+        required=True,
+        domain="[('company_id','in',[False, company_id]), '|', ('department_id','=',False), ('department_id','=',department_id)]",
+        tracking=True,
+    )
+
+    # Concrete steps generated from the rule's step_ids
     approval_line_ids = fields.One2many(
-        "kh.approval.request.line",
-        "request_id",
-        string="Approval Lines",
-        copy=False,
+        "kh.approval.line", "request_id", string="Approval Steps", copy=False
     )
 
-    # -----------------------------------------------------------------------
-    # Button actions (called by form buttons / server actions)
-    # -----------------------------------------------------------------------
+    # Helper fields for UI logic
+    pending_line_id = fields.Many2one(
+        "kh.approval.line", compute="_compute_pending_line", store=False
+    )
+    is_current_user_approver = fields.Boolean(
+        compute="_compute_pending_line", store=False
+    )
+
+    # -------------------------------------------------------------------------
+    # Computes
+    # -------------------------------------------------------------------------
+    @api.depends("approval_line_ids.state", "approval_line_ids.approver_id")
+    def _compute_pending_line(self):
+        for rec in self:
+            line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
+            rec.pending_line_id = line.id if line else False
+            rec.is_current_user_approver = bool(
+                line and line.approver_id.id == rec.env.user.id
+            )
+
+    # -------------------------------------------------------------------------
+    # ORM overrides
+    # -------------------------------------------------------------------------
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Assign company, department (from rule if empty), and company-scoped name/sequence."""
+        for vals in vals_list:
+            # company default
+            vals.setdefault("company_id", self.env.company.id)
+
+            # name from sequence, scoped by company
+            if not vals.get("name"):
+                seq = self.env["ir.sequence"].with_context(
+                    force_company=vals["company_id"]
+                ).next_by_code("kh.approval.request")
+                vals["name"] = seq or _("New")
+
+            # auto-pick department from chosen rule if left empty
+            if vals.get("rule_id") and not vals.get("department_id"):
+                rule = self.env["kh.approval.rule"].browse(vals["rule_id"])
+                vals["department_id"] = rule.department_id.id
+        return super().create(vals_list)
+
+    # -------------------------------------------------------------------------
+    # Helpers - Links
+    # -------------------------------------------------------------------------
+    def _deeplink(self):
+        """Return a stable /web# deeplink to this record (form view)."""
+        self.ensure_one()
+        return f"/web#id={self.id}&model=kh.approval.request&view_type=form"
+
+    # -------------------------------------------------------------------------
+    # Helpers - Followers & Notifications (incl. desktop popup + sound)
+    # -------------------------------------------------------------------------
+    def _ensure_followers(self):
+        """Subscribe requester + all approvers so they see inbox notifications."""
+        for rec in self:
+            partners = rec.requester_id.partner_id
+            partners |= rec.approval_line_ids.mapped("approver_id.partner_id")
+            if partners:
+                # Do not let subscription failures roll back the main transaction
+                with rec.env.cr.savepoint():
+                    rec.message_subscribe(partner_ids=partners.ids)
+
+    def _close_my_open_todos(self):
+        """Mark my open To-Do activities on this request as done for the current user."""
+        for rec in self:
+            acts = rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid)
+            for a in acts:
+                a.action_feedback(feedback=_("Done"))
+
+    def _dm_ping(self, partner, body_html):
+        """
+        Try to send a direct chat message (native browser popup + sound when allowed).
+        Supports Odoo 17/18 (discuss.channel) and Odoo 16- (mail.channel).
+        Never raises; falls back to a chatter message if chat models are unavailable.
+        """
+        self.ensure_one()
+        me_partner = self.env.user.partner_id
+
+        try:
+            # Odoo 17/18 – discuss.channel
+            if "discuss.channel" in self.env:
+                Channel = self.env["discuss.channel"].sudo().with_context(mail_create_nolog=True)
+                channel = Channel.search([
+                    ("channel_type", "=", "chat"),
+                    ("channel_member_ids.partner_id", "in", [partner.id]),
+                    ("channel_member_ids.partner_id", "in", [me_partner.id]),
+                ], limit=1)
+                if not channel:
+                    channel = Channel.create({
+                        "name": f"{me_partner.name} ↔ {partner.name}",
+                        "channel_type": "chat",
+                        "channel_member_ids": [
+                            (0, 0, {"partner_id": me_partner.id}),
+                            (0, 0, {"partner_id": partner.id}),
+                        ],
+                    })
+                channel.message_post(
+                    body=body_html,
+                    message_type="comment",
+                    subtype_xmlid="mail.mt_comment",
+                )
+                return
+
+            # Odoo 16 and earlier – mail.channel
+            if "mail.channel" in self.env:
+                Channel = self.env["mail.channel"].sudo().with_context(mail_create_nolog=True)
+                channel = Channel.search([
+                    ("channel_type", "=", "chat"),
+                    ("channel_partner_ids", "in", [partner.id]),
+                    ("channel_partner_ids", "in", [me_partner.id]),
+                ], limit=1)
+                if not channel:
+                    channel = Channel.create({
+                        "name": f"{me_partner.name} ↔ {partner.name}",
+                        "channel_type": "chat",
+                        "channel_partner_ids": [(6, 0, [partner.id, me_partner.id])],
+                    })
+                channel.message_post(
+                    body=body_html,
+                    message_type="comment",
+                    subtype_xmlid="mail.mt_comment",
+                )
+                return
+
+        except Exception:
+            # Do not break the main flow if DM fails for any reason
+            pass
+
+        # Fallback: regular chatter ping so the user still gets notified in Inbox
+        self.message_post(
+            body=body_html,
+            partner_ids=[partner.id],
+            subtype_xmlid="mail.mt_comment",
+        )
+
+    def _notify_first_pending(self):
+        """
+        Create a To-Do for the first pending approver, post in chatter,
+        and ping them in direct chat (desktop popup + sound).
+        """
+        for rec in self:
+            line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
+            if not line or not line.approver_id:
+                continue
+
+            # 1) Activity (clock icon)
+            with rec.env.cr.savepoint():
+                rec.activity_schedule(
+                    "mail.mail_activity_data_todo",
+                    user_id=line.approver_id.id,
+                    summary=_("Approval needed"),
+                    note=_("Please review approval request: %s") % rec.name,
+                )
+
+            # 2) Chatter (bell/inbox)
+            with rec.env.cr.savepoint():
+                rec.message_post(
+                    body=_("Approval needed from <b>%s</b>.") % line.approver_id.name,
+                    partner_ids=[line.approver_id.partner_id.id],
+                    subtype_xmlid="mail.mt_comment",
+                )
+
+            # 3) Direct chat ping (native notification + sound)
+            with rec.env.cr.savepoint():
+                html = _(
+                    "🔔 <b>Approval needed</b> for: "
+                    "<a href='%(link)s'>%(name)s</a><br/>Requester: %(req)s"
+                ) % {"link": rec._deeplink(), "name": rec.name, "req": rec.requester_id.name}
+                rec._dm_ping(line.approver_id.partner_id, html)
+
+    # -------------------------------------------------------------------------
+    # Actions (buttons)
+    # -------------------------------------------------------------------------
+
+    # -------------------------------------------------------------------------
+    # Steps generation
+    # -------------------------------------------------------------------------
+    def _build_approval_lines(self):
+        """
+        (Re)generate approval steps based on the chosen rule (single rule).
+        Uses sudo() to remove previous steps even if the end-user lacks unlink rights.
+        """
+        for rec in self:
+            # Clear any existing generated steps
+            rec.approval_line_ids.sudo().unlink()
+
+            if not rec.rule_id:
+                raise UserError(_("Please choose an Approval Rule first."))
+
+            rule = rec.rule_id
+
+            # Company/department guardrails
+            if rule.company_id and rule.company_id != rec.company_id:
+                raise UserError(_("Rule belongs to another company."))
+            if rule.department_id and rec.department_id and rule.department_id != rec.department_id:
+                raise UserError(_("Rule belongs to another department."))
+
+            # Amount threshold on rule (optional)
+            if rule.min_amount and rec.amount and rec.amount < rule.min_amount:
+                raise UserError(_("Amount is below this rule's minimum."))
+
+            vals = []
+            for step in rule.step_ids.sorted(key=lambda s: (s.sequence, s.id)):
+                if not step.approver_id:
+                    continue
+                vals.append({
+                    "request_id": rec.id,
+                    "name": step.name or step.approver_id.name,
+                    "approver_id": step.approver_id.id,
+                    "required": True,
+                    "state": "pending",
+                    "company_id": rec.company_id.id,
+                })
+
+            if not vals:
+                raise UserError(_("This rule has no approvers defined."))
+
+            self.env["kh.approval.line"].create(vals)
 
     def action_submit(self):
-        """Requester submits:
-        - (Re)build approval lines from rule
-        - move to in_review
-        - notify first approver (activity), post a note (no emails)
-        """
+        """Requester submits: build steps, move to in_review, ping first approver."""
         for rec in self:
             if rec.state != "draft":
                 continue
-
             rec._build_approval_lines()
-
-            # 🔇 Avoid emails from tracking on state change
+            with rec.env.cr.savepoint():
+                rec._ensure_followers()
+            # 🔇 Avoid email from tracking on state change
             rec.with_context(tracking_disable=True).write({"state": "in_review"})
-
-            # Post chatter note (no email)
-            rec._post_note(_("Request submitted for approval."))
-
-            # Notify the first pending approver
-            rec._notify_first_pending()
+            with rec.env.cr.savepoint():
+                rec.message_post(body=_("Request submitted for approval."))
+            with rec.env.cr.savepoint():
+                rec._notify_first_pending()
         return True
 
     def action_approve_request(self):
         """Current approver approves their step; finish or notify next approver."""
         for rec in self:
             if rec.state != "in_review":
-                raise UserError(_("Only in-review requests can be approved."))
+                continue
 
-            line = rec._current_pending_line_for_user()
-            if not line:
+            line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
+            if not line or line.approver_id.id != self.env.uid:
                 raise UserError(_("You are not the current approver."))
 
-            # close my open TODOs for this request
             rec._close_my_open_todos()
 
-            # approve my step
+            # Approve my step
             line.write({"state": "approved"})
-            rec._post_note(_("Approved by <b>%s</b>.") % rec.env.user.name)
+            with rec.env.cr.savepoint():
+                rec.message_post(
+                    body=_("Approved by <b>%s</b>.") % self.env.user.name,
+                    partner_ids=[rec.requester_id.partner_id.id],
+                )
 
-            # next approver or finish
-            next_line = rec._first_pending_line()
+            # Next approver or finished
+            next_line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
             if next_line:
-                rec._notify_first_pending()
+                with rec.env.cr.savepoint():
+                    rec._notify_first_pending()
             else:
+                # 🔇 Avoid email from tracking on state change
                 rec.with_context(tracking_disable=True).write({"state": "approved"})
-                rec._post_note(_("✅ Request approved."))
-                rec._dm_ping(rec.requester_id.partner_id, _("✅ <b>Approved</b>: %s") % rec.name)
+                with rec.env.cr.savepoint():
+                    rec.message_post(
+                        body=_("✅ Request approved."),
+                        partner_ids=[rec.requester_id.partner_id.id],
+                    )
+                with rec.env.cr.savepoint():
+                    rec._dm_ping(
+                        rec.requester_id.partner_id,
+                        _("✅ <b>Approved</b>: <a href='%s'>%s</a>") % (rec._deeplink(), rec.name),
+                    )
         return True
 
     def action_reject_request(self):
-        """Current approver rejects; request becomes Rejected; requester is pinged."""
+        """Current approver rejects; request becomes Rejected and requester is pinged."""
         for rec in self:
             if rec.state != "in_review":
-                raise UserError(_("Only in-review requests can be rejected."))
+                continue
 
-            line = rec._current_pending_line_for_user()
-            if not line:
+            line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
+            if not line or line.approver_id.id != self.env.uid:
                 raise UserError(_("You are not the current approver."))
 
-            # close my open TODOs for this request
             rec._close_my_open_todos()
-
             line.write({"state": "rejected"})
-            # 🔇 Avoid emails from tracking on state change
+
+            # 🔇 Avoid email from tracking on state change
             rec.with_context(tracking_disable=True).write({"state": "rejected"})
-            rec._post_note(_("❌ Rejected by <b>%s</b>.") % rec.env.user.name)
-            rec._dm_ping(rec.requester_id.partner_id, _("❌ <b>Rejected</b>: %s") % rec.name)
+
+            with rec.env.cr.savepoint():
+                rec.message_post(
+                    body=_("❌ Rejected by <b>%s</b>.") % self.env.user.name,
+                    partner_ids=[rec.requester_id.partner_id.id],
+                )
+            with rec.env.cr.savepoint():
+                rec._dm_ping(
+                    rec.requester_id.partner_id,
+                    _("❌ <b>Rejected</b>: <a href='%s'>%s</a>") % (rec._deeplink(), rec.name),
+                )
         return True
 
-    # -----------------------------------------------------------------------
-    # Helpers
-    # -----------------------------------------------------------------------
-
-    def _build_approval_lines(self):
-        """Regenerate approval lines from the rule. Two sources supported:
-        - kh.approval.rule.step (preferred if present)
-        - rule.user_id as a single approver fallback
-        This method NEVER sends emails.
-        """
-        for rec in self:
-            rec.approval_line_ids.unlink()
-            steps_model = self.env["kh.approval.rule.step"]
-            steps = steps_model.search([("rule_id", "=", rec.rule_id.id)], order="sequence asc")
-
-            lines = []
-            if steps:
-                for st in steps:
-                    if not st.user_id:
-                        # allow rules to be partially defined; skip empty step user
-                        continue
-                    lines.append(
-                        (0, 0, {
-                            "sequence": st.sequence or 10,
-                            "approver_id": st.user_id.id,
-                            "state": "pending",
-                        })
-                    )
-            else:
-                # fallback: single approver from rule.user_id
-                if not rec.rule_id or not rec.rule_id.user_id:
-                    raise UserError(_("The selected rule has no approver configured."))
-                lines.append(
-                    (0, 0, {
-                        "sequence": 10,
-                        "approver_id": rec.rule_id.user_id.id,
-                        "state": "pending",
-                    })
-                )
-            rec.write({"approval_line_ids": lines})
-
-    def _first_pending_line(self):
-        self.ensure_one()
-        return self.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
-
-    def _current_pending_line_for_user(self):
-        self.ensure_one()
-        uid = self.env.uid
-        return self.approval_line_ids.filtered(
-            lambda l: l.state == "pending" and l.approver_id.id == uid
-        )[:1]
-
     def _post_note(self, body, partner_ids=None):
-        """Post an internal note without sending any email."""
-        for rec in self:
-            rec.with_context(
-                mail_notify_force_send=False,
-                mail_create_nosubscribe=True,
-            ).message_post(
-                body=body,
-                message_type="comment",
-                subtype_xmlid="mail.mt_note",
-                partner_ids=partner_ids or [],
-            )
-
-    def _notify_first_pending(self):
-        """Schedule a todo for the first pending approver (no email required)."""
-        for rec in self:
-            line = rec._first_pending_line()
-            if not line or not line.approver_id:
-                continue
-            # schedule an activity on the request for the approver user
-            rec.activity_schedule(
-                activity_type_id=self.env.ref("mail.mail_activity_data_todo").id,
-                user_id=line.approver_id.id,
-                summary=_("Approval required"),
-                note=_("Please review and approve: %s") % rec.name,
-            )
-
-    def _close_my_open_todos(self):
-        """Mark my TODO activities on this record as done (no email)."""
-        me = self.env.user
-        for rec in self:
-            todos = rec.activity_ids.filtered(
-                lambda a: a.user_id.id == me.id and a.activity_type_id.category == "todo"
-            )
-            for act in todos:
-                # mark done without email
-                act.action_feedback(feedback=_("Handled."))
-
-    def _dm_ping(self, partner, body):
-        """Optional: log a silent note addressed to a partner (no email)."""
-        if not partner:
-            return
-        self._post_note(body, partner_ids=[partner.id])
-
-    # Useful deeplink if you want to include it in notes/DMs
-    def _deeplink(self):
+        """
+        Helper to post a chatter message as a note (no notifications by default).
+        This is a convenience wrapper around message_post.
+        """
         self.ensure_one()
-        return "/web#id=%s&model=kh.approval.request&view_type=form" % self.id
+        self.message_post(
+            body=body,
+            partner_ids=partner_ids or [],
+            message_type="notification",
+            subtype_xmlid="mail.mt_note",
+        )
 
 
-# ---------------------------------------------------------------------------
-# Approval Request Line
-# ---------------------------------------------------------------------------
+# ============================================================================
+# Approval Rule (+ Step sequence)
+# ============================================================================
+class KhApprovalRule(models.Model):
+    _name = "kh.approval.rule"
+    _description = "Approval Rule"
+    _check_company_auto = True
 
-class KhApprovalRequestLine(models.Model):
-    _name = "kh.approval.request.line"
-    _description = "Approval Request Line"
-    _order = "sequence, id"
+    name = fields.Char(required=True)
+    active = fields.Boolean(default=True)
 
-    request_id = fields.Many2one(
-        "kh.approval.request",
-        string="Request",
+    company_id = fields.Many2one("res.company", string="Company")
+    department_id = fields.Many2one("kh.approvals.department", string="Department")
+
+    min_amount = fields.Monetary(currency_field="currency_id")
+    currency_id = fields.Many2one(
+        "res.currency",
+        default=lambda self: self.env.company.currency_id.id,
         required=True,
-        ondelete="cascade",
-        index=True,
     )
-    sequence = fields.Integer(default=10)
-    approver_id = fields.Many2one("res.users", string="Approver", required=True, index=True)
+
+    # Ordered approver sequence
+    step_ids = fields.One2many(
+        "kh.approval.rule.step", "rule_id", string="Steps", copy=True
+    )
+
+# ============================================================================
+# Approval Line (generated)
+# ============================================================================
+class KhApprovalLine(models.Model):
+    _name = "kh.approval.line"
+    _description = "Approval Step"
+    _order = "id"
+    _check_company_auto = True
+
+    request_id = fields.Many2one("kh.approval.request", required=True, ondelete="cascade")
+    company_id = fields.Many2one(
+        "res.company", related="request_id.company_id", store=True, index=True
+    )
+    name = fields.Char()
+    approver_id = fields.Many2one("res.users", required=True)
+    required = fields.Boolean(default=True)
     state = fields.Selection(
-        [
-            ("pending", "Pending"),
-            ("approved", "Approved"),
-            ("rejected", "Rejected"),
-        ],
+        [("pending", "Pending"), ("approved", "Approved"), ("rejected", "Rejected")],
         default="pending",
-        index=True,
+        required=True,
     )
-
-
-# ---------------------------------------------------------------------------
-# (Optional) Rule Step model reference — if it’s declared in another file,
-# this stub is harmless; if not present, we simply won’t find any steps
-# and will fall back to rule.user_id in _build_approval_lines().
-# ---------------------------------------------------------------------------
-
-class KhApprovalRuleStep(models.Model):
-    _name = "kh.approval.rule.step"
-    _description = "Approval Rule Step"
-
-    rule_id = fields.Many2one("kh.approval.rule", required=True, ondelete="cascade")
-    sequence = fields.Integer(default=10)
-    user_id = fields.Many2one("res.users", string="Approver")
+    note = fields.Char()
