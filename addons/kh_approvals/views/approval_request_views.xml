@@ -3,7 +3,8 @@
   <data>
     <!-- keep your search/list as you had -->
 
-    <record id="view_kh_approval_request_form" model="ir.ui.view">
+<record id="view_kh_approval_request_form_base" model="ir.ui.view">
+  <field name="priority">20</field>
       <field name="name">kh.approval.request.form</field>
       <field name="model">kh.approval.request</field>
       <field name="arch" type="xml">
