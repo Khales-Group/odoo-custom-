@@ -1,20 +1,42 @@
 <odoo>
   <data>
+    <!-- Department list -->
+    <record id="view_kh_departments_list" model="ir.ui.view">
+      <field name="name">kh.approvals.department.list</field>
+      <field name="model">kh.approvals.department</field>
+      <field name="arch" type="xml">
+        <list>
+          <field name="name"/>
+          <field name="company_id"/>
+          <field name="active"/>
+        </list>
+      </field>
+    </record>
 
-    <!-- Ensure root exists even if menu.xml didn’t load yet (safe to re-apply) -->
-    <menuitem id="menu_kh_approvals_root" name="Approvals" sequence="20"/>
+    <!-- Department form -->
+    <record id="view_kh_departments_form" model="ir.ui.view">
+      <field name="name">kh.approvals.department.form</field>
+      <field name="model">kh.approvals.department</field>
+      <field name="arch" type="xml">
+        <form string="Department">
+          <sheet>
+            <group>
+              <group>
+                <field name="active"/>
+                <field name="name" required="1"/>
+                <field name="company_id"/>
+              </group>
+            </group>
+          </sheet>
+        </form>
+      </field>
+    </record>
 
-    <!-- Departments action + menu -->
+    <!-- Department action -->
     <record id="action_kh_departments" model="ir.actions.act_window">
       <field name="name">Departments</field>
       <field name="res_model">kh.approvals.department</field>
       <field name="view_mode">list,form</field>
     </record>
-
-    <menuitem id="menu_kh_departments"
-              name="Departments"
-              parent="kh_approvals.menu_kh_approvals_root"
-              action="action_kh_departments"
-              sequence="50"/>
   </data>
 </odoo>

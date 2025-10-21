@@ -1,7 +1,9 @@
 <odoo>
   <data>
+    <!-- Root menu -->
+    <menuitem id="menu_kh_approvals_root" name="Approvals" sequence="20"/>
 
-    <!-- Actions (ONE action per purpose; both reuse the same search view) -->
+    <!-- Actions that reference the search view (safe now because views are loaded) -->
     <record id="action_kh_approval_requests_my" model="ir.actions.act_window">
       <field name="name">📝 My Requests</field>
       <field name="res_model">kh.approval.request</field>
@@ -21,33 +23,29 @@
       <field name="context">{'search_default_to_approve': 1}</field>
     </record>
 
-    <!-- Rules browser (unchanged) -->
-    <record id="action_kh_approval_rules" model="ir.actions.act_window">
-      <field name="name">⚙️ Approval Rules</field>
-      <field name="res_model">kh.approval.rule</field>
-      <field name="view_mode">list,form</field>
-    </record>
-
-    <!-- Menu -->
-    <menuitem id="menu_kh_approvals_root" name="Approvals" sequence="20"/>
-
+    <!-- Menus -->
     <menuitem id="menu_kh_approvals_my"
               name="My Requests"
-              parent="menu_kh_approvals_root"
+              parent="kh_approvals.menu_kh_approvals_root"
               action="action_kh_approval_requests_my"
               sequence="1"/>
 
     <menuitem id="menu_kh_approvals_to_approve"
               name="To Approve"
-              parent="menu_kh_approvals_root"
+              parent="kh_approvals.menu_kh_approvals_root"
               action="action_kh_approval_requests_to_approve"
               sequence="2"/>
 
     <menuitem id="menu_kh_approvals_rules"
               name="Rules"
-              parent="menu_kh_approvals_root"
+              parent="kh_approvals.menu_kh_approvals_root"
               action="action_kh_approval_rules"
               sequence="3"/>
 
+    <menuitem id="menu_kh_departments"
+              name="Departments"
+              parent="kh_approvals.menu_kh_approvals_root"
+              action="action_kh_departments"
+              sequence="4"/>
   </data>
 </odoo>

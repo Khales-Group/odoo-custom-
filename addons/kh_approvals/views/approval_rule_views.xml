@@ -1,32 +1,43 @@
-<!-- addons/kh_approvals/views/approval_rule_views.xml -->
 <odoo>
   <data>
+    <!-- RULE list -->
+    <record id="view_kh_approval_rule_list" model="ir.ui.view">
+      <field name="name">kh.approval.rule.list</field>
+      <field name="model">kh.approval.rule</field>
+      <field name="arch" type="xml">
+        <list>
+          <field name="name"/>
+          <field name="active"/>
+          <field name="company_id"/>
+          <field name="department_id"/>
+          <field name="min_amount"/>
+          <field name="currency_id"/>
+        </list>
+      </field>
+    </record>
+
+    <!-- RULE form -->
     <record id="view_kh_approval_rule_form" model="ir.ui.view">
       <field name="name">kh.approval.rule.form</field>
       <field name="model">kh.approval.rule</field>
       <field name="arch" type="xml">
-        <form>
+        <form string="Approval Rule">
           <sheet>
             <group>
               <group>
-                <field name="name" required="1"/>
                 <field name="active"/>
+                <field name="name" required="1"/>
+                <field name="company_id"/>
+                <field name="department_id"/>
               </group>
               <group>
-                <field name="company_id" groups="base.group_multi_company"/>
-                <field name="department_id"/>
+                <field name="min_amount"/>
+                <field name="currency_id"/>
               </group>
             </group>
 
             <notebook>
-              <page string="Threshold">
-                <group>
-                  <field name="min_amount"/>
-                  <field name="currency_id"/>
-                </group>
-              </page>
-
-              <page string="Approver Sequence">
+              <page string="Steps">
                 <field name="step_ids">
                   <list editable="bottom">
                     <field name="sequence"/>
@@ -41,6 +52,11 @@
       </field>
     </record>
 
-    <!-- keep your list view as you like -->
+    <!-- RULE action -->
+    <record id="action_kh_approval_rules" model="ir.actions.act_window">
+      <field name="name">⚙️ Approval Rules</field>
+      <field name="res_model">kh.approval.rule</field>
+      <field name="view_mode">list,form</field>
+    </record>
   </data>
 </odoo>
