@@ -11,7 +11,6 @@
     "security/ir.model.access.csv",
     "security/kh_approvals_security.xml",
     "security/kh_approvals_rules.xml",
-    "security/kh_approvals_mc_rules.xml",  # ← multi-company rules
     "data/sequence.xml",                    # ← company-scoped sequence
     "views/department_views.xml",           # ← optional dept master
     "views/approval_rule_views.xml",
