@@ -7,7 +7,10 @@
     "website": "https://khales.ae",
     "category": "Operations/Approvals",
     "depends": ["base", "mail"],   # no need to add 'discuss' because we guard its usage
-    "data": [
+    "data": [      
+        "security/kh_approvals_mc_rules.xml",
+        "data/sequence.xml",
+        "views/department_views.xml",
         # security first
         "security/ir.model.access.csv",
         "security/kh_approvals_security.xml",

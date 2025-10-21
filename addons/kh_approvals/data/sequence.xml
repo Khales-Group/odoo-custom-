@@ -1,0 +1,10 @@
+<odoo>
+  <!-- Global default sequence (you can create per-company copies in Settings > Technical > Sequences) -->
+  <record id="seq_kh_approval_request" model="ir.sequence">
+    <field name="name">Approval Request</field>
+    <field name="code">kh.approval.request</field>
+    <field name="prefix">APR/%(year)s/</field>
+    <field name="padding">4</field>
+    <field name="company_id" eval="False"/>  <!-- global; add per-company records via UI if desired -->
+  </record>
+</odoo>
