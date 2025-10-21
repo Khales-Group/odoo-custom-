@@ -247,91 +247,91 @@ class KhApprovalRequest(models.Model):
     # -------------------------------------------------------------------------
     # Actions (buttons)
     # -------------------------------------------------------------------------
-    def action_submit(self):
-        """Requester submits: build steps, move to in_review, ping first approver."""
-        for rec in self:
-            if rec.state != "draft":
-                continue
-            rec._build_approval_lines()
-            with rec.env.cr.savepoint():
-                rec._ensure_followers()
-            rec.state = "in_review"
-            with rec.env.cr.savepoint():
-                rec.message_post(body=_("Request submitted for approval."))
+# ... imports and model fields unchanged ...
+
+def action_submit(self):
+    """Requester submits: build steps, move to in_review, ping first approver."""
+    for rec in self:
+        if rec.state != "draft":
+            continue
+        rec._build_approval_lines()
+        with rec.env.cr.savepoint():
+            rec._ensure_followers()
+        # 🔇 Avoid email from tracking on state change
+        rec.with_context(tracking_disable=True).write({"state": "in_review"})
+        with rec.env.cr.savepoint():
+            rec._post_note(_("Request submitted for approval."))
+        with rec.env.cr.savepoint():
+            rec._notify_first_pending()
+    return True
+
+def action_approve_request(self):
+    """Current approver approves their step; finish or notify next approver."""
+    for rec in self:
+        if rec.state != "in_review":
+            continue
+
+        line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
+        if not line or line.approver_id.id != self.env.uid:
+            raise UserError(_("You are not the current approver."))
+
+        rec._close_my_open_todos()
+
+        # Approve my step
+        line.write({"state": "approved"})
+        with rec.env.cr.savepoint():
+            rec._post_note(
+                _("Approved by <b>%s</b>.") % self.env.user.name,
+                partner_ids=[rec.requester_id.partner_id.id],
+            )
+
+        # Next approver or finished
+        next_line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
+        if next_line:
             with rec.env.cr.savepoint():
                 rec._notify_first_pending()
-        return True
-
-    def action_approve_request(self):
-        """Current approver approves their step; finish or notify next approver."""
-        for rec in self:
-            if rec.state != "in_review":
-                continue
-
-            line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
-            if not line or line.approver_id.id != self.env.uid:
-                raise UserError(_("You are not the current approver."))
-
-            # Close my To-Do on this document
-            rec._close_my_open_todos()
-
-            # Approve my step
-            line.write({"state": "approved"})
+        else:
+            # 🔇 Avoid email from tracking on state change
+            rec.with_context(tracking_disable=True).write({"state": "approved"})
             with rec.env.cr.savepoint():
-                rec.message_post(
-                    body=_("Approved by <b>%s</b>.") % self.env.user.name,
+                rec._post_note(
+                    _("✅ Request approved."),
                     partner_ids=[rec.requester_id.partner_id.id],
-                    subtype_xmlid="mail.mt_comment",
                 )
-
-            # Next approver or finished
-            next_line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
-            if next_line:
-                with rec.env.cr.savepoint():
-                    rec._notify_first_pending()
-            else:
-                rec.state = "approved"
-                with rec.env.cr.savepoint():
-                    rec.message_post(
-                        body=_("✅ Request approved."),
-                        partner_ids=[rec.requester_id.partner_id.id],
-                        subtype_xmlid="mail.mt_comment",
-                    )
-                # DM the requester with a popup + sound
-                with rec.env.cr.savepoint():
-                    rec._dm_ping(
-                        rec.requester_id.partner_id,
-                        _("✅ <b>Approved</b>: <a href='%s'>%s</a>") % (rec._deeplink(), rec.name),
-                    )
-        return True
-
-    def action_reject_request(self):
-        """Current approver rejects; request becomes Rejected and requester is pinged."""
-        for rec in self:
-            if rec.state != "in_review":
-                continue
-
-            line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
-            if not line or line.approver_id.id != self.env.uid:
-                raise UserError(_("You are not the current approver."))
-
-            rec._close_my_open_todos()
-            line.write({"state": "rejected"})
-            rec.state = "rejected"
-            with rec.env.cr.savepoint():
-                rec.message_post(
-                    body=_("❌ Rejected by <b>%s</b>.") % self.env.user.name,
-                    partner_ids=[rec.requester_id.partner_id.id],
-                    subtype_xmlid="mail.mt_comment",
-                )
-
-            # DM the requester with a popup + sound
             with rec.env.cr.savepoint():
                 rec._dm_ping(
                     rec.requester_id.partner_id,
-                    _("❌ <b>Rejected</b>: <a href='%s'>%s</a>") % (rec._deeplink(), rec.name),
+                    _("✅ <b>Approved</b>: <a href='%s'>%s</a>") % (rec._deeplink(), rec.name),
                 )
-        return True
+    return True
+
+def action_reject_request(self):
+    """Current approver rejects; request becomes Rejected and requester is pinged."""
+    for rec in self:
+        if rec.state != "in_review":
+            continue
+
+        line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
+        if not line or line.approver_id.id != self.env.uid:
+            raise UserError(_("You are not the current approver."))
+
+        rec._close_my_open_todos()
+        line.write({"state": "rejected"})
+
+        # 🔇 Avoid email from tracking on state change
+        rec.with_context(tracking_disable=True).write({"state": "rejected"})
+
+        with rec.env.cr.savepoint():
+            rec._post_note(
+                _("❌ Rejected by <b>%s</b>.") % self.env.user.name,
+                partner_ids=[rec.requester_id.partner_id.id],
+            )
+        with rec.env.cr.savepoint():
+            rec._dm_ping(
+                rec.requester_id.partner_id,
+                _("❌ <b>Rejected</b>: <a href='%s'>%s</a>") % (rec._deeplink(), rec.name),
+            )
+    return True
 
     # -------------------------------------------------------------------------
     # Steps generation
