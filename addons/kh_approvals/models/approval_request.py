@@ -414,6 +414,64 @@ class KhApprovalRuleStep(models.Model):
     name = fields.Char()
     approver_id = fields.Many2one("res.users", string="Approver", required=True)
 
+class KhApprovalRule(models.Model):
+    _name = "kh.approval.rule"
+    _description = "Approval Rule"
+
+    active = fields.Boolean(default=True)
+    name = fields.Char(required=True)
+    company_id = fields.Many2one("res.company")
+    department_id = fields.Many2one("kh.approvals.department")
+    min_amount = fields.Monetary(currency_field="currency_id")
+    currency_id = fields.Many2one(
+        "res.currency",
+        default=lambda self: self.env.company.currency_id.id,
+        required=True,
+    )
+
+    # NEW: steps you edit in the rule form
+    step_ids = fields.One2many(
+        "kh.approval.rule.step",
+        "rule_id",
+        string="Steps",
+        copy=True,
+    )
+def _build_approval_lines(self):
+    """
+    (Re)generate approval steps from selected rule (rule_id) and amount.
+    """
+    for rec in self:
+        # Clear previous generated steps
+        rec.approval_line_ids.sudo().unlink()
+
+        rule = rec.rule_id
+        if not rule or not rule.active:
+            raise UserError(_("Please select an active approval rule."))
+
+        # Amount guard (same currency; add conversion if you need multi-currency)
+        if rule.min_amount and rec.amount < rule.min_amount:
+            raise UserError(_("This request amount is below the selected rule threshold."))
+
+        steps = rule.step_ids.sorted(key=lambda s: (s.sequence, s.id))
+        if not steps:
+            raise UserError(_("The selected rule has no steps. Add at least one approver."))
+
+        vals = []
+        for s in steps:
+            if not s.approver_id:
+                continue
+            vals.append({
+                "request_id": rec.id,
+                "name": s.name or (s.approver_id.name or _("Step")),
+                "approver_id": s.approver_id.id,
+                "required": True,
+                "state": "pending",
+            })
+
+        if not vals:
+            raise UserError(_("No approvers found in the selected rule's steps."))
+
+        self.env["kh.approval.line"].create(vals)
 
 # ============================================================================
 # Approval Line (generated)
