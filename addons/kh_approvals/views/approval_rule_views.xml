@@ -1,23 +1,6 @@
+<!-- addons/kh_approvals/views/approval_rule_views.xml -->
 <odoo>
   <data>
-
-    <!-- List -->
-    <record id="view_kh_approval_rule_list" model="ir.ui.view">
-      <field name="name">kh.approval.rule.list</field>
-      <field name="model">kh.approval.rule</field>
-      <field name="arch" type="xml">
-        <list>
-          <field name="sequence"/>
-          <field name="name"/>
-          <field name="role"/>
-          <field name="user_id"/>
-          <field name="min_amount"/>
-          <field name="currency_id"/>
-        </list>
-      </field>
-    </record>
-
-    <!-- Form -->
     <record id="view_kh_approval_rule_form" model="ir.ui.view">
       <field name="name">kh.approval.rule.form</field>
       <field name="model">kh.approval.rule</field>
@@ -26,20 +9,38 @@
           <sheet>
             <group>
               <group>
-                <field name="sequence"/>
                 <field name="name" required="1"/>
-                <field name="role"/>
+                <field name="active"/>
               </group>
               <group>
-                <field name="user_id" string="Approver"/>
-                <field name="min_amount"/>
-                <field name="currency_id"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="department_id"/>
               </group>
             </group>
+
+            <notebook>
+              <page string="Threshold">
+                <group>
+                  <field name="min_amount"/>
+                  <field name="currency_id"/>
+                </group>
+              </page>
+
+              <page string="Approver Sequence">
+                <field name="step_ids">
+                  <list editable="bottom">
+                    <field name="sequence"/>
+                    <field name="name"/>
+                    <field name="approver_id"/>
+                  </list>
+                </field>
+              </page>
+            </notebook>
           </sheet>
         </form>
       </field>
     </record>
 
+    <!-- keep your list view as you like -->
   </data>
 </odoo>

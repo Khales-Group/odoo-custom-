@@ -3,15 +3,33 @@ from odoo import api, fields, models, _
 from odoo.exceptions import UserError
 
 
+# ============================================================================
+# Approval Request
+# ============================================================================
 class KhApprovalRequest(models.Model):
     _name = "kh.approval.request"
     _description = "Khales Approval Request"
     _inherit = ["mail.thread", "mail.activity.mixin"]
+    _check_company_auto = True
 
     # -------------------------------------------------------------------------
     # Fields
     # -------------------------------------------------------------------------
     name = fields.Char(required=True, tracking=True)
+
+    company_id = fields.Many2one(
+        "res.company",
+        required=True,
+        default=lambda self: self.env.company,
+        index=True,
+        tracking=True,
+    )
+
+    department_id = fields.Many2one(
+        "kh.approvals.department",  # tiny custom model; or switch to hr.department if you prefer
+        string="Department",
+        tracking=True,
+    )
 
     requester_id = fields.Many2one(
         "res.users",
@@ -40,10 +58,16 @@ class KhApprovalRequest(models.Model):
         tracking=True,
     )
 
-    # Approval route (rules chosen by user)
-    line_rule_ids = fields.Many2many("kh.approval.rule", string="Approval Route")
+    # Single rule selector (rule defines company/department/approver sequence)
+    rule_id = fields.Many2one(
+        "kh.approval.rule",
+        string="Approval Rule",
+        required=True,
+        domain="[('company_id','in',[False, company_id]), '|', ('department_id','=',False), ('department_id','=',department_id)]",
+        tracking=True,
+    )
 
-    # Concrete steps generated from rules
+    # Concrete steps generated from the rule's step_ids
     approval_line_ids = fields.One2many(
         "kh.approval.line", "request_id", string="Approval Steps", copy=False
     )
@@ -67,6 +91,29 @@ class KhApprovalRequest(models.Model):
             rec.is_current_user_approver = bool(
                 line and line.approver_id.id == rec.env.user.id
             )
+
+    # -------------------------------------------------------------------------
+    # ORM overrides
+    # -------------------------------------------------------------------------
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Assign company, department (from rule if empty), and company-scoped name/sequence."""
+        for vals in vals_list:
+            # company default
+            vals.setdefault("company_id", self.env.company.id)
+
+            # name from sequence, scoped by company
+            if not vals.get("name"):
+                seq = self.env["ir.sequence"].with_context(
+                    force_company=vals["company_id"]
+                ).next_by_code("kh.approval.request")
+                vals["name"] = seq or _("New")
+
+            # auto-pick department from chosen rule if left empty
+            if vals.get("rule_id") and not vals.get("department_id"):
+                rule = self.env["kh.approval.rule"].browse(vals["rule_id"])
+                vals["department_id"] = rule.department_id.id
+        return super().create(vals_list)
 
     # -------------------------------------------------------------------------
     # Helpers - Links
@@ -291,47 +338,61 @@ class KhApprovalRequest(models.Model):
     # -------------------------------------------------------------------------
     def _build_approval_lines(self):
         """
-        (Re)generate approval steps based on selected rules and request amount.
+        (Re)generate approval steps based on the chosen rule (single rule).
         Uses sudo() to remove previous steps even if the end-user lacks unlink rights.
         """
         for rec in self:
+            # Clear any existing generated steps
             rec.approval_line_ids.sudo().unlink()
 
-            rules = rec.line_rule_ids.sorted(key=lambda r: (r.sequence, r.id))
+            if not rec.rule_id:
+                raise UserError(_("Please choose an Approval Rule first."))
+
+            rule = rec.rule_id
+
+            # Company/department guardrails
+            if rule.company_id and rule.company_id != rec.company_id:
+                raise UserError(_("Rule belongs to another company."))
+            if rule.department_id and rec.department_id and rule.department_id != rec.department_id:
+                raise UserError(_("Rule belongs to another department."))
+
+            # Amount threshold on rule (optional)
+            if rule.min_amount and rec.amount and rec.amount < rule.min_amount:
+                raise UserError(_("Amount is below this rule's minimum."))
+
             vals = []
-            for rule in rules:
-                # NOTE: simple same-currency comparison; if you mix currencies
-                # add conversion: rule.currency_id._convert(rule.min_amount, rec.currency_id, rec.company_id, fields.Date.today())
-                if rule.min_amount and rec.amount < rule.min_amount:
-                    continue
-                if not rule.user_id:
+            for step in rule.step_ids.sorted(key=lambda s: (s.sequence, s.id)):
+                if not step.approver_id:
                     continue
                 vals.append({
                     "request_id": rec.id,
-                    "name": rule.name,
-                    "approver_id": rule.user_id.id,
+                    "name": step.name or step.approver_id.name,
+                    "approver_id": step.approver_id.id,
                     "required": True,
                     "state": "pending",
+                    "company_id": rec.company_id.id,
                 })
 
             if not vals:
-                raise UserError(_("No matching approval rules or missing approvers."))
+                raise UserError(_("This rule has no approvers defined."))
 
             self.env["kh.approval.line"].create(vals)
 
 
+# ============================================================================
+# Approval Rule (+ Step sequence)
+# ============================================================================
 class KhApprovalRule(models.Model):
     _name = "kh.approval.rule"
     _description = "Approval Rule"
+    _check_company_auto = True
 
     name = fields.Char(required=True)
-    sequence = fields.Integer(default=10)
-    role = fields.Selection(
-        [("manager", "Management"), ("finance", "Finance")],
-        default="manager",
-        required=True,
-    )
-    user_id = fields.Many2one("res.users", string="Approver")
+    active = fields.Boolean(default=True)
+
+    company_id = fields.Many2one("res.company", string="Company")
+    department_id = fields.Many2one("kh.approvals.department", string="Department")
+
     min_amount = fields.Monetary(currency_field="currency_id")
     currency_id = fields.Many2one(
         "res.currency",
@@ -339,13 +400,34 @@ class KhApprovalRule(models.Model):
         required=True,
     )
 
+    # Ordered approver sequence
+    step_ids = fields.One2many("kh.approval.rule.step", "rule_id", string="Steps")
 
+
+class KhApprovalRuleStep(models.Model):
+    _name = "kh.approval.rule.step"
+    _description = "Approval Rule Step"
+    _order = "sequence, id"
+
+    rule_id = fields.Many2one("kh.approval.rule", required=True, ondelete="cascade")
+    sequence = fields.Integer(default=10, help="Lower runs first.")
+    name = fields.Char()
+    approver_id = fields.Many2one("res.users", string="Approver", required=True)
+
+
+# ============================================================================
+# Approval Line (generated)
+# ============================================================================
 class KhApprovalLine(models.Model):
     _name = "kh.approval.line"
     _description = "Approval Step"
     _order = "id"
+    _check_company_auto = True
 
     request_id = fields.Many2one("kh.approval.request", required=True, ondelete="cascade")
+    company_id = fields.Many2one(
+        "res.company", related="request_id.company_id", store=True, index=True
+    )
     name = fields.Char()
     approver_id = fields.Many2one("res.users", required=True)
     required = fields.Boolean(default=True)

@@ -1,92 +1,21 @@
+<!-- addons/kh_approvals/views/approval_request_views.xml -->
 <odoo>
   <data>
+    <!-- keep your search/list as you had -->
 
-    <!-- Search view with two filters -->
-    <record id="view_kh_approval_request_search" model="ir.ui.view">
-      <field name="name">kh.approval.request.search</field>
-      <field name="model">kh.approval.request</field>
-      <field name="arch" type="xml">
-        <search>
-          <filter name="my_requests" string="My Requests"
-                  domain="[('requester_id','=',uid)]"/>
-          <filter name="to_approve" string="To Approve"
-                  domain="[
-                    '&amp;',
-                    ('approval_line_ids.approver_id','=',uid),
-                    ('approval_line_ids.state','=','pending')
-                  ]"/>
-          <separator/>
-          <field name="state"/>
-          <field name="requester_id"/>
-        </search>
-      </field>
-    </record>
-
-    <!-- List -->
-    <record id="view_kh_approval_request_list" model="ir.ui.view">
-      <field name="name">kh.approval.request.list</field>
-      <field name="model">kh.approval.request</field>
-      <field name="arch" type="xml">
-        <list>
-          <field name="name"/>
-          <field name="requester_id"/>
-          <field name="amount"/>
-          <field name="currency_id"/>
-          <field name="state"/>
-        </list>
-      </field>
-    </record>
-   <record id="view_kh_approval_request_form" model="ir.ui.view">
-      <field name="name">kh.approval.request.form</field>
-      <field name="model">kh.approval.request</field>
-      <field name="inherit_id" ref="kh_approvals.view_kh_approval_request_form"/>
-      <field name="arch" type="xml">
-        <xpath expr="//sheet/group/group" position="inside">
-          <field name="company_id" groups="base.group_multi_company"/>
-          <field name="department_id"/>
-        </xpath>
-        <!-- Ensure the route only proposes rules for same company/department -->
-        <xpath expr="//field[@name='line_rule_ids']" position="attributes">
-          <attribute name="domain">[('company_id','in',[False, company_id]), '|', ('department_id','=',False), ('department_id','=',department_id)]</attribute>
-        </xpath>
-      </field>
-    </record>
-
-    <record id="view_kh_approval_rule_form" model="ir.ui.view">
-      <field name="name">kh.approval.rule.form</field>
-      <field name="model">kh.approval.rule</field>
-      <field name="inherit_id" ref="kh_approvals.view_kh_approval_rule_form"/>
-      <field name="arch" type="xml">
-        <xpath expr="//sheet/group/group[last()]" position="inside">
-          <field name="company_id" groups="base.group_multi_company"/>
-          <field name="department_id"/>
-        </xpath>
-      </field>
-    </record>
-    <!-- Form -->
     <record id="view_kh_approval_request_form" model="ir.ui.view">
       <field name="name">kh.approval.request.form</field>
       <field name="model">kh.approval.request</field>
       <field name="arch" type="xml">
         <form string="Approval Request">
           <header>
-            <button name="action_submit"
-                    type="object"
-                    string="Submit"
-                    class="oe_highlight"
+            <button name="action_submit" type="object" string="Submit" class="oe_highlight"
                     invisible="state != 'draft'"/>
-            <button name="action_approve_request"
-                    type="object"
-                    string="Approve"
-                    class="btn-primary"
+            <button name="action_approve_request" type="object" string="Approve" class="btn-primary"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
-            <button name="action_reject_request"
-                    type="object"
-                    string="Reject"
-                    class="btn-secondary"
+            <button name="action_reject_request" type="object" string="Reject" class="btn-secondary"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
-            <field name="state" widget="statusbar"
-                   statusbar_visible="draft,in_review,approved,rejected"/>
+            <field name="state" widget="statusbar" statusbar_visible="draft,in_review,approved,rejected"/>
           </header>
 
           <sheet>
@@ -96,14 +25,21 @@
                 <field name="requester_id" readonly="1"/>
                 <field name="amount"/>
                 <field name="currency_id"/>
-                <field name="line_rule_ids" widget="many2many_tags" string="Approval Route"/>
+              </group>
+              <group>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="department_id"/>
+                <!-- 👇 Single selector -->
+                <field name="rule_id"
+                       domain="[('company_id','in',[False, company_id]), '|', ('department_id','=',False), ('department_id','=',department_id)]"
+                       options="{'no_create_edit': True}"/>
               </group>
             </group>
 
             <notebook>
               <page string="Approval Steps">
-                <field name="approval_line_ids">
-                  <list editable="bottom">
+                <field name="approval_line_ids" readonly="1">
+                  <list>
                     <field name="name"/>
                     <field name="approver_id"/>
                     <field name="required"/>
@@ -123,6 +59,5 @@
         </form>
       </field>
     </record>
-
   </data>
 </odoo>
