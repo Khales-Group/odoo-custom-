@@ -3,38 +3,38 @@ from odoo import api, fields, models, _
 from odoo.exceptions import UserError
 
 
+# ============================================================================
+# Approval Request
+# ============================================================================
 class KhApprovalRequest(models.Model):
     _name = "kh.approval.request"
     _description = "Khales Approval Request"
     _inherit = ["mail.thread", "mail.activity.mixin"]
-
-    # important for multi-company consistency
     _check_company_auto = True
 
+    # -------------------------------------------------------------------------
+    # Fields
+    # -------------------------------------------------------------------------
     name = fields.Char(required=True, tracking=True)
+
+    company_id = fields.Many2one(
+        "res.company",
+        required=True,
+        default=lambda self: self.env.company,
+        index=True,
+        tracking=True,
+    )
+
+    department_id = fields.Many2one(
+        "kh.approvals.department",  # tiny custom model; or switch to hr.department if you prefer
+        string="Department",
+        tracking=True,
+    )
 
     requester_id = fields.Many2one(
         "res.users",
         string="Requester",
         default=lambda self: self.env.user.id,
-        tracking=True,
-    )
-
-    # >>> this is the missing field <<<
-    company_id = fields.Many2one(
-        "res.company",
-        string="Company",
-        default=lambda self: self.env.company,
-        required=True,
-        index=True,
-        tracking=True,
-    )
-
-    # keep if you use Department in views (domain keeps it same company)
-    department_id = fields.Many2one(
-        "kh.approvals.department",
-        string="Department",
-        domain="[('company_id', '=', company_id)]",
         tracking=True,
     )
 
@@ -47,16 +47,38 @@ class KhApprovalRequest(models.Model):
     )
 
     state = fields.Selection(
-        [("draft","Draft"),("in_review","In Review"),("approved","Approved"),("rejected","Rejected")],
-        default="draft", required=True, tracking=True
+        [
+            ("draft", "Draft"),
+            ("in_review", "In Review"),
+            ("approved", "Approved"),
+            ("rejected", "Rejected"),
+        ],
+        default="draft",
+        required=True,
+        tracking=True,
     )
 
-    line_rule_ids = fields.Many2many("kh.approval.rule", string="Approval Route")
-    approval_line_ids = fields.One2many("kh.approval.line","request_id", string="Approval Steps", copy=False)
+    # Single rule selector (rule defines company/department/approver sequence)
+    rule_id = fields.Many2one(
+        "kh.approval.rule",
+        string="Approval Rule",
+        required=True,
+        domain="[('company_id','in',[False, company_id]), '|', ('department_id','=',False), ('department_id','=',department_id)]",
+        tracking=True,
+    )
 
-    pending_line_id = fields.Many2one("kh.approval.line", compute="_compute_pending_line", store=False)
-    is_current_user_approver = fields.Boolean(compute="_compute_pending_line", store=False)
+    # Concrete steps generated from the rule's step_ids
+    approval_line_ids = fields.One2many(
+        "kh.approval.line", "request_id", string="Approval Steps", copy=False
+    )
 
+    # Helper fields for UI logic
+    pending_line_id = fields.Many2one(
+        "kh.approval.line", compute="_compute_pending_line", store=False
+    )
+    is_current_user_approver = fields.Boolean(
+        compute="_compute_pending_line", store=False
+    )
 
     # -------------------------------------------------------------------------
     # Computes
@@ -71,6 +93,29 @@ class KhApprovalRequest(models.Model):
             )
 
     # -------------------------------------------------------------------------
+    # ORM overrides
+    # -------------------------------------------------------------------------
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Assign company, department (from rule if empty), and company-scoped name/sequence."""
+        for vals in vals_list:
+            # company default
+            vals.setdefault("company_id", self.env.company.id)
+
+            # name from sequence, scoped by company
+            if not vals.get("name"):
+                seq = self.env["ir.sequence"].with_context(
+                    force_company=vals["company_id"]
+                ).next_by_code("kh.approval.request")
+                vals["name"] = seq or _("New")
+
+            # auto-pick department from chosen rule if left empty
+            if vals.get("rule_id") and not vals.get("department_id"):
+                rule = self.env["kh.approval.rule"].browse(vals["rule_id"])
+                vals["department_id"] = rule.department_id.id
+        return super().create(vals_list)
+
+    # -------------------------------------------------------------------------
     # Helpers - Links
     # -------------------------------------------------------------------------
     def _deeplink(self):
@@ -79,26 +124,7 @@ class KhApprovalRequest(models.Model):
         return f"/web#id={self.id}&model=kh.approval.request&view_type=form"
 
     # -------------------------------------------------------------------------
-    # Helpers - Chatter posting WITHOUT emails (safest)
-    # -------------------------------------------------------------------------
-    def _post_note(self, body, partner_ids=None):
-        """
-        Post a chatter entry as an internal note ONLY (no outgoing email).
-        This avoids the 'configure sender email address' error on Approve/Reject.
-        """
-        self.with_context(
-            mail_notify_force_send=False,   # don't attempt to send
-            mail_post_autofollow=False,
-            mail_create_nosubscribe=True,
-        ).message_post(
-            body=body,
-            message_type="comment",         # shows as comment in chatter UI
-            subtype_xmlid="mail.mt_note",   # internal note subtype => no email
-            partner_ids=partner_ids or [],
-        )
-
-    # -------------------------------------------------------------------------
-    # Followers
+    # Helpers - Followers & Notifications (incl. desktop popup + sound)
     # -------------------------------------------------------------------------
     def _ensure_followers(self):
         """Subscribe requester + all approvers so they see inbox notifications."""
@@ -121,7 +147,7 @@ class KhApprovalRequest(models.Model):
         """
         Try to send a direct chat message (native browser popup + sound when allowed).
         Supports Odoo 17/18 (discuss.channel) and Odoo 16- (mail.channel).
-        Never raises; falls back to a chatter note if chat models are unavailable.
+        Never raises; falls back to a chatter message if chat models are unavailable.
         """
         self.ensure_one()
         me_partner = self.env.user.partner_id
@@ -163,7 +189,7 @@ class KhApprovalRequest(models.Model):
                     channel = Channel.create({
                         "name": f"{me_partner.name} ↔ {partner.name}",
                         "channel_type": "chat",
-                        "channel_partner_ids": [(4, me_partner.id), (4, partner.id)],
+                        "channel_partner_ids": [(6, 0, [partner.id, me_partner.id])],
                     })
                 channel.message_post(
                     body=body_html,
@@ -176,12 +202,16 @@ class KhApprovalRequest(models.Model):
             # Do not break the main flow if DM fails for any reason
             pass
 
-        # Fallback: regular chatter internal note so the user still gets notified in Inbox
-        self._post_note(body_html, partner_ids=[partner.id])
+        # Fallback: regular chatter ping so the user still gets notified in Inbox
+        self.message_post(
+            body=body_html,
+            partner_ids=[partner.id],
+            subtype_xmlid="mail.mt_comment",
+        )
 
     def _notify_first_pending(self):
         """
-        Create a To-Do for the first pending approver, post in chatter (internal note),
+        Create a To-Do for the first pending approver, post in chatter,
         and ping them in direct chat (desktop popup + sound).
         """
         for rec in self:
@@ -198,14 +228,15 @@ class KhApprovalRequest(models.Model):
                     note=_("Please review approval request: %s") % rec.name,
                 )
 
-            # 2) Chatter (internal note, no email)
+            # 2) Chatter (bell/inbox)
             with rec.env.cr.savepoint():
-                rec._post_note(
-                    _("🔔 Approval needed — <b>%s</b>") % rec.name,
+                rec.message_post(
+                    body=_("Approval needed from <b>%s</b>.") % line.approver_id.name,
                     partner_ids=[line.approver_id.partner_id.id],
+                    subtype_xmlid="mail.mt_comment",
                 )
 
-            # 3) Direct message ping (popup + sound)
+            # 3) Direct chat ping (native notification + sound)
             with rec.env.cr.savepoint():
                 html = _(
                     "🔔 <b>Approval needed</b> for: "
@@ -216,6 +247,52 @@ class KhApprovalRequest(models.Model):
     # -------------------------------------------------------------------------
     # Actions (buttons)
     # -------------------------------------------------------------------------
+
+    # -------------------------------------------------------------------------
+    # Steps generation
+    # -------------------------------------------------------------------------
+    def _build_approval_lines(self):
+        """
+        (Re)generate approval steps based on the chosen rule (single rule).
+        Uses sudo() to remove previous steps even if the end-user lacks unlink rights.
+        """
+        for rec in self:
+            # Clear any existing generated steps
+            rec.approval_line_ids.sudo().unlink()
+
+            if not rec.rule_id:
+                raise UserError(_("Please choose an Approval Rule first."))
+
+            rule = rec.rule_id
+
+            # Company/department guardrails
+            if rule.company_id and rule.company_id != rec.company_id:
+                raise UserError(_("Rule belongs to another company."))
+            if rule.department_id and rec.department_id and rule.department_id != rec.department_id:
+                raise UserError(_("Rule belongs to another department."))
+
+            # Amount threshold on rule (optional)
+            if rule.min_amount and rec.amount and rec.amount < rule.min_amount:
+                raise UserError(_("Amount is below this rule's minimum."))
+
+            vals = []
+            for step in rule.step_ids.sorted(key=lambda s: (s.sequence, s.id)):
+                if not step.approver_id:
+                    continue
+                vals.append({
+                    "request_id": rec.id,
+                    "name": step.name or step.approver_id.name,
+                    "approver_id": step.approver_id.id,
+                    "required": True,
+                    "state": "pending",
+                    "company_id": rec.company_id.id,
+                })
+
+            if not vals:
+                raise UserError(_("This rule has no approvers defined."))
+
+            self.env["kh.approval.line"].create(vals)
+
     def action_submit(self):
         """Requester submits: build steps, move to in_review, ping first approver."""
         for rec in self:
@@ -227,7 +304,7 @@ class KhApprovalRequest(models.Model):
             # 🔇 Avoid email from tracking on state change
             rec.with_context(tracking_disable=True).write({"state": "in_review"})
             with rec.env.cr.savepoint():
-                rec._post_note(_("Request submitted for approval."))
+                rec.message_post(body=_("Request submitted for approval."))
             with rec.env.cr.savepoint():
                 rec._notify_first_pending()
         return True
@@ -247,8 +324,8 @@ class KhApprovalRequest(models.Model):
             # Approve my step
             line.write({"state": "approved"})
             with rec.env.cr.savepoint():
-                rec._post_note(
-                    _("Approved by <b>%s</b>.") % self.env.user.name,
+                rec.message_post(
+                    body=_("Approved by <b>%s</b>.") % self.env.user.name,
                     partner_ids=[rec.requester_id.partner_id.id],
                 )
 
@@ -261,11 +338,10 @@ class KhApprovalRequest(models.Model):
                 # 🔇 Avoid email from tracking on state change
                 rec.with_context(tracking_disable=True).write({"state": "approved"})
                 with rec.env.cr.savepoint():
-                    rec._post_note(
-                        _("✅ Request approved."),
+                    rec.message_post(
+                        body=_("✅ Request approved."),
                         partner_ids=[rec.requester_id.partner_id.id],
                     )
-                # DM the requester with a popup + sound
                 with rec.env.cr.savepoint():
                     rec._dm_ping(
                         rec.requester_id.partner_id,
@@ -285,15 +361,15 @@ class KhApprovalRequest(models.Model):
 
             rec._close_my_open_todos()
             line.write({"state": "rejected"})
+
             # 🔇 Avoid email from tracking on state change
             rec.with_context(tracking_disable=True).write({"state": "rejected"})
+
             with rec.env.cr.savepoint():
-                rec._post_note(
-                    _("❌ Rejected by <b>%s</b>.") % self.env.user.name,
+                rec.message_post(
+                    body=_("❌ Rejected by <b>%s</b>.") % self.env.user.name,
                     partner_ids=[rec.requester_id.partner_id.id],
                 )
-
-            # DM the requester with a popup + sound
             with rec.env.cr.savepoint():
                 rec._dm_ping(
                     rec.requester_id.partner_id,
@@ -301,53 +377,34 @@ class KhApprovalRequest(models.Model):
                 )
         return True
 
-    # -------------------------------------------------------------------------
-    # Steps generation
-    # -------------------------------------------------------------------------
-    def _build_approval_lines(self):
+    def _post_note(self, body, partner_ids=None):
         """
-        (Re)generate approval steps based on selected rules and request amount.
-        Uses sudo() to remove previous steps even if the end-user lacks unlink rights.
+        Helper to post a chatter message as a note (no notifications by default).
+        This is a convenience wrapper around message_post.
         """
-        for rec in self:
-            rec.approval_line_ids.sudo().unlink()
-
-            rules = rec.line_rule_ids.sorted(key=lambda r: (r.sequence, r.id))
-            vals = []
-            for rule in rules:
-                # optional min_amount gate; ignore if blank
-                if rule.min_amount and rec.amount and rec.amount < rule.min_amount:
-                    continue
-                if not rule.user_id:
-                    # allow rule without user silently (just skip)
-                    continue
-
-                vals.append({
-                    "request_id": rec.id,
-                    "name": rule.name,
-                    "approver_id": rule.user_id.id,
-                    "required": True,
-                    "state": "pending",
-                })
-
-            if not vals:
-                raise UserError(_("No matching approval rules or missing approvers."))
-
-            self.env["kh.approval.line"].create(vals)
+        self.ensure_one()
+        self.message_post(
+            body=body,
+            partner_ids=partner_ids or [],
+            message_type="notification",
+            subtype_xmlid="mail.mt_note",
+        )
 
 
+# ============================================================================
+# Approval Rule (+ Step sequence)
+# ============================================================================
 class KhApprovalRule(models.Model):
     _name = "kh.approval.rule"
     _description = "Approval Rule"
+    _check_company_auto = True
 
     name = fields.Char(required=True)
-    sequence = fields.Integer(default=10)
-    role = fields.Selection(
-        [("manager", "Management"), ("finance", "Finance")],
-        default="manager",
-        required=True,
-    )
-    user_id = fields.Many2one("res.users", string="Approver")
+    active = fields.Boolean(default=True)
+
+    company_id = fields.Many2one("res.company", string="Company")
+    department_id = fields.Many2one("kh.approvals.department", string="Department")
+
     min_amount = fields.Monetary(currency_field="currency_id")
     currency_id = fields.Many2one(
         "res.currency",
@@ -355,13 +412,24 @@ class KhApprovalRule(models.Model):
         required=True,
     )
 
+    # Ordered approver sequence
+    step_ids = fields.One2many(
+        "kh.approval.rule.step", "rule_id", string="Steps", copy=True
+    )
 
+# ============================================================================
+# Approval Line (generated)
+# ============================================================================
 class KhApprovalLine(models.Model):
     _name = "kh.approval.line"
     _description = "Approval Step"
     _order = "id"
+    _check_company_auto = True
 
     request_id = fields.Many2one("kh.approval.request", required=True, ondelete="cascade")
+    company_id = fields.Many2one(
+        "res.company", related="request_id.company_id", store=True, index=True
+    )
     name = fields.Char()
     approver_id = fields.Many2one("res.users", required=True)
     required = fields.Boolean(default=True)
