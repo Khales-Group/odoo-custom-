@@ -72,7 +72,7 @@ class KhApprovalRequest(models.Model):
         "kh.approval.line", "request_id", string="Approval Steps", copy=False
     )
 
-    # NEW: always-visible, read-only HTML snapshot of all steps (built with sudo)
+    # Always-visible, read-only HTML snapshot of all steps (built with sudo)
     steps_overview_html = fields.Html(
         string="Approval Steps (All Approvers)",
         compute="_compute_steps_overview_html",
@@ -99,7 +99,7 @@ class KhApprovalRequest(models.Model):
                 line and line.approver_id.id == rec.env.user.id
             )
 
-    # NEW: html snapshot builder that bypasses record rules safely
+    # HTML snapshot builder (uses sudo so approvers always see the full sequence)
     def _compute_steps_overview_html(self):
         status_badge = {
             "pending":  "#d97706",   # amber
@@ -108,7 +108,6 @@ class KhApprovalRequest(models.Model):
         }
         for rec in self:
             rows = []
-            # sudo() guarantees we see all lines regardless of record rules
             for line in rec.sudo().approval_line_ids.sorted(key=lambda l: (l.id,)):
                 color = status_badge.get(line.state or "pending", "#6b7280")
                 rows.append(
@@ -156,7 +155,6 @@ class KhApprovalRequest(models.Model):
     def create(self, vals_list):
         """Assign company, department (from rule if empty), and company-scoped name/sequence."""
         for vals in vals_list:
-            # company default
             vals.setdefault("company_id", self.env.company.id)
 
             # name from sequence, scoped by company
@@ -181,15 +179,15 @@ class KhApprovalRequest(models.Model):
         return f"/web#id={self.id}&model=kh.approval.request&view_type=form"
 
     # -------------------------------------------------------------------------
-    # Helpers - Silent chatter & notifications (NO EMAIL)
+    # Helpers - Chatter & notifications (NO EMAIL)
     # -------------------------------------------------------------------------
     def _post_note(self, body_html, partner_ids=None):
         """
         Post an INTERNAL NOTE only (no email, no auto-subscribe).
         Appears in chatter & Discuss/Inbox; safe on servers without SMTP.
         """
-        # If specific partners are targeted, use message_notify to ensure they get a ping.
         if partner_ids:
+            # Notify specific partners FROM the document
             self.message_notify(
                 partner_ids=partner_ids,
                 body=body_html,
@@ -197,7 +195,6 @@ class KhApprovalRequest(models.Model):
                 subtype_xmlid="mail.mt_note",
                 email_layout_xmlid="mail.mail_notification_light",
             )
-        # Otherwise, post a general note to the chatter for all followers.
         else:
             self.with_context(
                 mail_notify_force_send=False,
@@ -209,6 +206,17 @@ class KhApprovalRequest(models.Model):
                 subtype_xmlid="mail.mt_note",
             )
 
+    def _notify_partner(self, partner, body_html, subject=None):
+        """Send an Inbox notification FROM this document (not a user DM)."""
+        self.ensure_one()
+        self.message_notify(
+            partner_ids=[partner.id],
+            body=body_html,
+            subject=subject or self.name,
+            subtype_xmlid="mail.mt_comment",
+            email_layout_xmlid="mail.mail_notification_light",  # no SMTP
+        )
+
     def _ensure_followers(self):
         """Subscribe requester + all approvers so they see inbox notifications."""
         for rec in self:
@@ -216,9 +224,9 @@ class KhApprovalRequest(models.Model):
             partners |= rec.approval_line_ids.mapped("approver_id.partner_id")
             if partners:
                 with rec.env.cr.savepoint():
-                    # Use mail_post_autofollow to prevent "You are now following" emails
                     rec.with_context(mail_post_autofollow=True).message_subscribe(
-                        partner_ids=partners.ids)
+                        partner_ids=partners.ids
+                    )
 
     def _activity_done_silent(self, activity):
         """
@@ -226,12 +234,10 @@ class KhApprovalRequest(models.Model):
         This bypasses the standard action_feedback which can trigger emails.
         """
         self.ensure_one()
-        # Post the feedback message silently first
         self.with_context(mail_activity_quick_update=True)._post_note(
             body_html=f"<div>{activity.activity_type_id.name}: Done</div>",
             partner_ids=self.message_follower_ids.mapped("partner_id").ids,
         )
-        # Unlink the activity
         activity.with_context(kh_from_mark_done=True).unlink()
 
     def _close_my_open_todos(self):
@@ -241,73 +247,10 @@ class KhApprovalRequest(models.Model):
             if acts:
                 rec._activity_done_silent(acts)
 
-    def _dm_ping(self, partner, body_html):
-        """
-        Direct chat ping (popup + sound) — NO SMTP.
-        Tries discuss.channel (Odoo 17/18) or mail.channel (Odoo 16-).
-        Falls back to an internal note if channels aren’t available.
-        """
-        self.ensure_one()
-        me_partner = self.env.user.partner_id
-
-        try:
-            # Odoo 17/18 – discuss.channel
-            if "discuss.channel" in self.env:
-                Channel = self.env["discuss.channel"].sudo().with_context(mail_create_nolog=True)
-                channel = Channel.search([
-                    ("channel_type", "=", "chat"),
-                    ("channel_member_ids.partner_id", "in", [partner.id]),
-                    ("channel_member_ids.partner_id", "in", [me_partner.id]),
-                ], limit=1)
-                if not channel:
-                    channel = Channel.create({
-                        "name": f"{me_partner.name} ↔ {partner.name}",
-                        "channel_type": "chat",
-                        "channel_member_ids": [
-                            (0, 0, {"partner_id": me_partner.id}),
-                            (0, 0, {"partner_id": partner.id}),
-                        ],
-                    })
-                channel.message_post(
-                    body=body_html,
-                    message_type="comment",
-                    subtype_xmlid="mail.mt_comment",
-                    email_layout_xmlid="mail.mail_notification_light",  # force no email
-                )
-                return
-
-            # Odoo 16 and earlier – mail.channel
-            if "mail.channel" in self.env:
-                Channel = self.env["mail.channel"].sudo().with_context(mail_create_nolog=True)
-                channel = Channel.search([
-                    ("channel_type", "=", "chat"),
-                    ("channel_partner_ids", "in", [partner.id]),
-                    ("channel_partner_ids", "in", [me_partner.id]),
-                ], limit=1)
-                if not channel:
-                    channel = Channel.create({
-                        "name": f"{me_partner.name} ↔ {partner.name}",
-                        "channel_type": "chat",
-                        "channel_partner_ids": [(6, 0, [partner.id, me_partner.id])],
-                    })
-                channel.message_post(
-                    body=body_html,
-                    message_type="comment",
-                    subtype_xmlid="mail.mt_comment",
-                    email_layout_xmlid="mail.mail_notification_light",  # force no email
-                )
-                return
-
-        except Exception:
-            pass  # never block approval flow on chat issues
-
-        # Fallback: internal note ping (still NO email)
-        self._post_note(body_html, partner_ids=[partner.id])
-
     def _notify_first_pending(self):
         """
         Create a To-Do for the first pending approver, post an internal note,
-        and ping them via chat. None of these requires SMTP.
+        and notify them FROM the document. No DMs between users.
         """
         for rec in self:
             line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
@@ -330,13 +273,13 @@ class KhApprovalRequest(models.Model):
                     partner_ids=[line.approver_id.partner_id.id],
                 )
 
-            # 3) Direct chat ping (popup + sound; NO email)
+            # 3) Inbox notification FROM the document (not from the previous approver)
             with rec.env.cr.savepoint():
                 html = _(
                     "🔔 <b>Approval needed</b> for: "
                     "<a href='%(link)s'>%(name)s</a><br/>Requester: %(req)s"
                 ) % {"link": rec._deeplink(), "name": rec.name, "req": rec.requester_id.name}
-                rec._dm_ping(line.approver_id.partner_id, html)
+                rec._notify_partner(line.approver_id.partner_id, html, subject=rec.name)
 
     # -------------------------------------------------------------------------
     # Steps generation
@@ -344,7 +287,7 @@ class KhApprovalRequest(models.Model):
     def _build_approval_lines(self):
         """
         (Re)generate approval steps based on the chosen rule (single rule).
-        Uses sudo() to remove previous steps even if the end-user lacks unlink rights.
+        Uses sudo() so normal users (read-only on lines) can submit.
         """
         for rec in self:
             # Clear any existing generated steps
@@ -383,7 +326,6 @@ class KhApprovalRequest(models.Model):
 
             self.env["kh.approval.line"].sudo().create(vals)
 
-
     # -------------------------------------------------------------------------
     # Actions (buttons) — NO EMAIL paths
     # -------------------------------------------------------------------------
@@ -399,7 +341,7 @@ class KhApprovalRequest(models.Model):
             rec.with_context(tracking_disable=True).write({"state": "in_review"})
             rec._post_note(
                 _("Request submitted for approval."),
-                partner_ids=[rec.requester_id.partner_id.id], # Ping requester
+                partner_ids=[rec.requester_id.partner_id.id],  # Ping requester
             )
             rec._notify_first_pending()
         return True
@@ -416,7 +358,7 @@ class KhApprovalRequest(models.Model):
 
             rec._close_my_open_todos()
 
-            # Approve my step
+            # Approve my step (sudo -> users are read-only on lines)
             line.sudo().write({"state": "approved"})
 
             rec._post_note(
@@ -435,9 +377,10 @@ class KhApprovalRequest(models.Model):
                     _("✅ Request approved."),
                     partner_ids=[rec.requester_id.partner_id.id],
                 )
-                rec._dm_ping(
+                rec._notify_partner(
                     rec.requester_id.partner_id,
                     _("✅ <b>Approved</b>: <a href='%s'>%s</a>") % (rec._deeplink(), rec.name),
+                    subject=rec.name,
                 )
         return True
 
@@ -461,9 +404,10 @@ class KhApprovalRequest(models.Model):
                 _("❌ Rejected by <b>%s</b>.") % self.env.user.name,
                 partner_ids=[rec.requester_id.partner_id.id],
             )
-            rec._dm_ping(
+            rec._notify_partner(
                 rec.requester_id.partner_id,
                 _("❌ <b>Rejected</b>: <a href='%s'>%s</a>") % (rec._deeplink(), rec.name),
+                subject=rec.name,
             )
         return True
 
