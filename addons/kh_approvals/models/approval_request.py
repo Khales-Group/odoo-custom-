@@ -487,25 +487,8 @@ class KhApprovalRequest(models.Model):
         return True
 
     def action_withdraw_request(self):
-        """
-        Requester withdraws entire request back to Draft (from in_review).
-        Closes all activities and pings followers.
-        """
-        for rec in self:
-            if rec.requester_id.id != self.env.uid:
-                raise AccessError(_("Only the requester can withdraw this request."))
-            if rec.state != "in_review":
-                raise UserError(_("Only requests In Review can be withdrawn."))
-            # Reset lines to pending
-            rec.approval_line_ids.sudo().write({"state": "pending", "note": False})
-            rec._close_all_todos()
-            rec.with_context(tracking_disable=True).write({"state": "draft"})
-            rec._post_note(
-                _("⏪ Request withdrawn by <b>%s</b>. Back to Draft.") % self.env.user.name,
-                partner_ids=rec.message_follower_ids.mapped("partner_id").ids,
-            )
-        return True
-
+        raise UserError(_("This option has been disabled by your administrator."))
+      
     def action_approve_request(self):
         """Current approver approves their step; finish or notify next approver."""
         for rec in self:
@@ -573,34 +556,8 @@ class KhApprovalRequest(models.Model):
 
     # ---- Approver extra controls ------------------------------------------------
     def action_opt_out_as_approver(self):
-        """
-        Current pending approver withdraws themselves (line -> 'withdrawn').
-        Flow jumps to next approver (if any) and notifies them.
-        """
-        for rec in self:
-            if rec.state != "in_review":
-                raise UserError(_("Request must be In Review."))
+        raise UserError(_("This option has been disabled by your administrator."))
 
-            line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
-            if not line or line.approver_id.id != self.env.uid:
-                raise UserError(_("Only the current pending approver can withdraw."))
-
-            rec._close_my_open_todos()
-            line.sudo().write({"state": "withdrawn", "note": _("Approver withdrew")})
-
-            rec._post_note(
-                _("🚫 <b>%s</b> withdrew from approving.") % self.env.user.name,
-                partner_ids=rec.message_follower_ids.mapped("partner_id").ids,
-            )
-
-            # Move to next approver (if any)
-            next_line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
-            if next_line:
-                rec._notify_first_pending()
-            else:
-                # If everyone withdrew, consider auto-approve? We keep it In Review so requester can adjust.
-                pass
-        return True
 
     def action_unapprove_my_step(self):
         """

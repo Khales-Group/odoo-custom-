@@ -63,21 +63,6 @@
           class="oe_highlight"
           invisible="state != 'draft'"/>
 
-  <!-- In review & requester only -->
-  <button name="action_withdraw_request" type="object" string="Withdraw"
-          class="btn-secondary"
-          invisible="state != 'in_review' or requester_id != uid"/>
-
-  <!-- In review & current approver only -->
-  <button name="action_opt_out_as_approver" type="object" string="Withdraw as Approver"
-          class="btn-secondary"
-          invisible="state != 'in_review' or not is_current_user_approver"/>
-
-  <!-- Visible when in_review or approved -->
-  <button name="action_unapprove_my_step" type="object" string="Revert My Approval"
-          class="btn-secondary"
-          invisible="not (state == 'in_review' or state == 'approved')"/>
-
   <!-- Approve/Reject only when in_review -->
   <button name="action_approve_request" type="object" string="Approve"
           class="btn-primary"
@@ -86,13 +71,14 @@
           class="btn-secondary"
           invisible="state != 'in_review'"/>
 
-  <!-- Revise button -->
-  <button name="action_revise_request" type="object" string="Revise"
+  <!-- Edit Request (renamed from Revise) — requester only, not Draft -->
+  <button name="action_revise_request" type="object" string="Edit Request"
           class="btn-secondary"
           invisible="state == 'draft' or requester_id != uid"/>
 
   <field name="state" widget="statusbar" statusbar_visible="draft,in_review,approved,rejected"/>
 </header>
+
 
 
 
