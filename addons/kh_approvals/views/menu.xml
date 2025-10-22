@@ -3,7 +3,8 @@
   <data>
 
     <!-- Window actions -->
- <record id="action_kh_approval_requests_my" model="ir.actions.act_window">
+<!-- Brand-new actions with unique IDs -->
+<record id="action_kh_approval_requests_my_v2" model="ir.actions.act_window">
   <field name="name">📝 My Requests</field>
   <field name="res_model">kh.approval.request</field>
   <field name="view_mode">list,form</field>
@@ -13,13 +14,12 @@
     [(ref('view_kh_approval_request_list'), 'list'),
      (ref('view_kh_approval_request_form_base'), 'form')]
   </field>
-  <!-- optional: show a nice empty-list message instead of jumping to create -->
   <field name="help" type="html">
     <p>No requests yet. Click “New” to create your first one.</p>
   </field>
 </record>
 
-<record id="action_kh_approval_requests_to_approve" model="ir.actions.act_window">
+<record id="action_kh_approval_requests_to_approve_v2" model="ir.actions.act_window">
   <field name="name">✅ To Approve</field>
   <field name="res_model">kh.approval.request</field>
   <field name="view_mode">list,form</field>
@@ -34,7 +34,7 @@
   </field>
 </record>
 
-<record id="action_kh_approval_requests_all" model="ir.actions.act_window">
+<record id="action_kh_approval_requests_all_v2" model="ir.actions.act_window">
   <field name="name">📚 All Requests</field>
   <field name="res_model">kh.approval.request</field>
   <field name="view_mode">list,form</field>
@@ -52,26 +52,26 @@
     <!-- Menus -->
     <menuitem id="menu_kh_approvals_root" name="Approvals" sequence="20"/>
 
-    <menuitem id="menu_kh_approvals_my"
-              name="My Requests"
-              parent="menu_kh_approvals_root"
-              action="action_kh_approval_requests_my"
-              sequence="1"/>
+<!-- Point menus to the NEW actions -->
+<menuitem id="menu_kh_approvals_my"
+          parent="menu_kh_approvals_root"
+          name="My Requests"
+          action="action_kh_approval_requests_my_v2"
+          sequence="1"/>
 
-    <menuitem id="menu_kh_approvals_to_approve"
-              name="To Approve"
-              parent="menu_kh_approvals_root"
-              action="action_kh_approval_requests_to_approve"
-              sequence="2"/>
+<menuitem id="menu_kh_approvals_to_approve"
+          parent="menu_kh_approvals_root"
+          name="To Approve"
+          action="action_kh_approval_requests_to_approve_v2"
+          sequence="2"/>
 
-    <menuitem id="menu_kh_approvals_all"
-              name="All Requests"
-              parent="menu_kh_approvals_root"
-              action="action_kh_approval_requests_all"
-              sequence="3"/>
+<menuitem id="menu_kh_approvals_all"
+          parent="menu_kh_approvals_root"
+          name="All Requests"
+          action="action_kh_approval_requests_all_v2"
+          sequence="3"/>
 
-    <!-- (These two assume you already have the actions defined elsewhere;
-         if not, keep whatever you had before) -->
+
     <menuitem id="menu_kh_approvals_rules"
               name="Rules"
               parent="menu_kh_approvals_root"
