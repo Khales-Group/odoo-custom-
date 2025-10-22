@@ -55,7 +55,7 @@ class KhApprovalRequest(models.Model):
         ],
         default="draft",
         required=True,
-        tracking=True,
+        tracking=True,  # tracking kept, but we mute it on write
     )
 
     # Single rule selector (rule defines company/department/approver sequence)
@@ -184,7 +184,7 @@ class KhApprovalRequest(models.Model):
     def _post_note(self, body_html, partner_ids=None):
         """
         Post an INTERNAL NOTE only (no email, no auto-subscribe).
-        Appears in chatter & Discuss/Inbox.
+        Appears in chatter & Discuss/Inbox; safe on servers without SMTP.
         """
         if partner_ids:
             self.message_notify(
@@ -248,22 +248,24 @@ class KhApprovalRequest(models.Model):
 
     def _notify_first_pending(self):
         """
-        Notify the *current* pending approver exactly once:
-        - Create/ensure a To-Do activity (no extra chatter spam).
-        - Send ONE inbox/Chrome notification from the document (message_notify).
+        Create/ensure ONE To-Do for the current pending approver,
+        and send exactly ONE inbox/Chrome notification from the document.
         """
-        todo_type = self.env.ref("mail.mail_activity_data_todo")
+        todo_type = self.env.ref("mail.mail_activity_data_todo", raise_if_not_found=False)
         for rec in self:
             line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
-            # Safe check for 'notified' even if column hasn't been added yet
-            if not line or not line.approver_id or bool(getattr(line, "notified", False)):
+            if not line or not line.approver_id:
                 continue
 
             # 1) Ensure a single open To-Do for this approver on this request
-            existing = rec.activity_ids.filtered(
-                lambda a: a.user_id.id == line.approver_id.id and a.activity_type_id.id == todo_type.id
-            )[:1]
-            if not existing:
+            existing = rec.activity_ids
+            if todo_type:
+                existing = existing.filtered(
+                    lambda a: a.user_id.id == line.approver_id.id and a.activity_type_id.id == todo_type.id
+                )
+            else:
+                existing = existing.filtered(lambda a: a.user_id.id == line.approver_id.id)
+            if not existing[:1]:
                 with rec.env.cr.savepoint():
                     rec.activity_schedule(
                         "mail.mail_activity_data_todo",
@@ -272,7 +274,7 @@ class KhApprovalRequest(models.Model):
                         note=_("Please review approval request: %s") % rec.name,
                     )
 
-            # 2) ONE desktop/inbox notification from the document
+            # 2) ONE desktop/inbox notification from the document (no extra chatter pings)
             html = _(
                 "🔔 <b>Approval needed</b> for: <a href='%(link)s'>%(name)s</a><br/>Requester: %(req)s"
             ) % {"link": rec._deeplink(), "name": rec.name, "req": rec.requester_id.name}
@@ -285,13 +287,6 @@ class KhApprovalRequest(models.Model):
                     subtype_xmlid="mail.mt_comment",
                     email_layout_xmlid="mail.mail_notification_light",
                 )
-
-            # 3) Mark this step as already notified (guarded for safety pre-upgrade)
-            try:
-                line.sudo().write({"notified": True})
-            except Exception:
-                # If the column doesn't exist yet, skip silently — avoids RPC_ERROR.
-                pass
 
     # -------------------------------------------------------------------------
     # Steps generation
@@ -331,7 +326,6 @@ class KhApprovalRequest(models.Model):
                     "required": True,
                     "state": "pending",
                     "company_id": rec.company_id.id,
-                    # notified defaults to False on create
                 })
 
             if not vals:
@@ -474,6 +468,3 @@ class KhApprovalLine(models.Model):
         required=True,
     )
     note = fields.Char()
-
-    # NEW: each approver is notified only once
-    notified = fields.Boolean(default=False, copy=False)
