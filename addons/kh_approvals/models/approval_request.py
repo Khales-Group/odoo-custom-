@@ -72,6 +72,14 @@ class KhApprovalRequest(models.Model):
         "kh.approval.line", "request_id", string="Approval Steps", copy=False
     )
 
+    # -------------------------------------------------------------------------
+    # Helpers - Links
+    # -------------------------------------------------------------------------
+    def _deeplink(self):
+        """Return a stable /web# deeplink to this record (form view)."""
+        self.ensure_one()
+        return f"/web#id={self.id}&model=kh.approval.request&view_type=form"
+
     # Always-visible, read-only HTML snapshot of all steps (built with sudo)
     steps_overview_html = fields.Html(
         string="Approval Steps (All Approvers)",
@@ -149,36 +157,6 @@ class KhApprovalRequest(models.Model):
                 rec.steps_overview_html = "<i>No approval steps.</i>"
 
     # -------------------------------------------------------------------------
-    # ORM overrides
-    # -------------------------------------------------------------------------
-    @api.model_create_multi
-    def create(self, vals_list):
-        """Assign company, department (from rule if empty), and company-scoped name/sequence."""
-        for vals in vals_list:
-            vals.setdefault("company_id", self.env.company.id)
-
-            # name from sequence, scoped by company
-            if not vals.get("name"):
-                seq = self.env["ir.sequence"].with_context(
-                    force_company=vals["company_id"]
-                ).next_by_code("kh.approval.request")
-                vals["name"] = seq or _("New")
-
-            # auto-pick department from chosen rule if left empty
-            if vals.get("rule_id") and not vals.get("department_id"):
-                rule = self.env["kh.approval.rule"].browse(vals["rule_id"])
-                vals["department_id"] = rule.department_id.id
-        return super().create(vals_list)
-
-    # -------------------------------------------------------------------------
-    # Helpers - Links
-    # -------------------------------------------------------------------------
-    def _deeplink(self):
-        """Return a stable /web# deeplink to this record (form view)."""
-        self.ensure_one()
-        return f"/web#id={self.id}&model=kh.approval.request&view_type=form"
-
-    # -------------------------------------------------------------------------
     # Helpers - Chatter & notifications (NO EMAIL)
     # -------------------------------------------------------------------------
     def _post_note(self, body_html, partner_ids=None):
@@ -192,7 +170,7 @@ class KhApprovalRequest(models.Model):
                 partner_ids=partner_ids,
                 body=body_html,
                 subject=self.name,
-                subtype_xmlid="mail.mt_note",
+                subtype_xmlid="mail.mt_note", # Use mt_note for internal notes
                 email_layout_xmlid="mail.mail_notification_light",
             )
         else:
@@ -213,7 +191,7 @@ class KhApprovalRequest(models.Model):
             partner_ids=[partner.id],
             body=body_html,
             subject=subject or self.name,
-            subtype_xmlid="mail.mt_comment",
+            subtype_xmlid="mail.mt_comment", # Use mt_comment for more prominent pings
             email_layout_xmlid="mail.mail_notification_light",  # no SMTP
         )
 
@@ -249,37 +227,46 @@ class KhApprovalRequest(models.Model):
 
     def _notify_first_pending(self):
         """
-        Create a To-Do for the first pending approver, post an internal note,
-        and notify them FROM the document. No DMs between users.
+        Notify the *current* pending approver exactly once:
+        - Create/ensure a To-Do activity (no extra chatter spam).
+        - Send ONE inbox/Chrome notification from the document (message_notify).
         """
         for rec in self:
             line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
-            if not line or not line.approver_id:
+            if not line or not line.approver_id or line.notified:
                 continue
 
-            # 1) Activity (clock icon)
-            with rec.env.cr.savepoint():
-                rec.activity_schedule(
-                    "mail.mail_activity_data_todo",
-                    user_id=line.approver_id.id,
-                    summary=_("Approval needed"),
-                    note=_("Please review approval request: %s") % rec.name,
-                )
+            # 1) Ensure a single open To-Do for this approver on this request
+            #    (no chatter ping here)
+            existing = rec.activity_ids.filtered(
+                lambda a: a.user_id.id == line.approver_id.id and a.activity_type_id.xml_id == "mail.mail_activity_data_todo"
+            )[:1]
+            if not existing:
+                # schedule without causing extra notifications (use savepoint + minimal fields)
+                with rec.env.cr.savepoint():
+                    rec.activity_schedule(
+                        "mail.mail_activity_data_todo",
+                        user_id=line.approver_id.id,
+                        summary=_("Approval needed"),
+                        note=_("Please review approval request: %s") % rec.name,
+                    )
 
-            # 2) Chatter (internal note; NO email)
+            # 2) ONE desktop/inbox notification from the document
+            html = _(
+                "🔔 <b>Approval needed</b> for: <a href='%(link)s'>%(name)s</a><br/>Requester: %(req)s"
+            ) % {"link": rec._deeplink(), "name": rec.name, "req": rec.requester_id.name}
+
             with rec.env.cr.savepoint():
-                rec._post_note(
-                    _("🔔 Approval needed from <b>%s</b>.") % line.approver_id.name,
+                rec.message_notify(
                     partner_ids=[line.approver_id.partner_id.id],
+                    body=html,
+                    subject=rec.name,
+                    subtype_xmlid="mail.mt_comment", # Use mt_comment for more prominent pings
+                    email_layout_xmlid="mail.mail_notification_light",  # no SMTP
                 )
 
-            # 3) Inbox notification FROM the document (not from the previous approver)
-            with rec.env.cr.savepoint():
-                html = _(
-                    "🔔 <b>Approval needed</b> for: "
-                    "<a href='%(link)s'>%(name)s</a><br/>Requester: %(req)s"
-                ) % {"link": rec._deeplink(), "name": rec.name, "req": rec.requester_id.name}
-                rec._notify_partner(line.approver_id.partner_id, html, subject=rec.name)
+            # 3) Mark this step as already notified (prevents duplicates)
+            line.sudo().write({"notified": True})
 
     # -------------------------------------------------------------------------
     # Steps generation
@@ -317,7 +304,7 @@ class KhApprovalRequest(models.Model):
                     "name": step.name or step.approver_id.name,
                     "approver_id": step.approver_id.id,
                     "required": True,
-                    "state": "pending",
+                    "state": "pending", # New lines are pending by default
                     "company_id": rec.company_id.id,
                 })
 
@@ -339,8 +326,7 @@ class KhApprovalRequest(models.Model):
                 rec._ensure_followers()
             # 🔇 Avoid email from tracking on state change
             rec.with_context(tracking_disable=True).write({"state": "in_review"})
-            rec._post_note(
-                _("Request submitted for approval."),
+            rec._post_note(_("Request submitted for approval."),
                 partner_ids=[rec.requester_id.partner_id.id],  # Ping requester
             )
             rec._notify_first_pending()
@@ -361,8 +347,7 @@ class KhApprovalRequest(models.Model):
             # Approve my step (sudo -> users are read-only on lines)
             line.sudo().write({"state": "approved"})
 
-            rec._post_note(
-                _("Approved by <b>%s</b>.") % self.env.user.name,
+            rec._post_note(_("Approved by <b>%s</b>.") % self.env.user.name,
                 partner_ids=[rec.requester_id.partner_id.id],
             )
 
@@ -371,8 +356,7 @@ class KhApprovalRequest(models.Model):
             if next_line:
                 rec._notify_first_pending()
             else:
-                # 🔇 Avoid email from tracking on state change
-                rec.with_context(tracking_disable=True).write({"state": "approved"})
+                rec.with_context(tracking_disable=True).write({"state": "approved"}) # 🔇 Avoid email from tracking on state change
                 rec._post_note(
                     _("✅ Request approved."),
                     partner_ids=[rec.requester_id.partner_id.id],
