@@ -1,14 +1,23 @@
 <odoo>
-  <!-- REQUESTS: requester OR any approver on the request -->
+  <!-- ========== Turn OFF the company-wide rules that caused leakage ========== -->
+  <record id="mc_rule_request_company" model="ir.rule">
+    <field name="active">0</field>
+  </record>
+  <record id="mc_rule_rule_company" model="ir.rule">
+    <field name="active">0</field>
+  </record>
+  <record id="mc_rule_line_company" model="ir.rule">
+    <field name="active">0</field>
+  </record>
+
+  <!-- ========== REQUESTS: requester OR any approver on that request ========== -->
   <record id="rule_kh_request_own_or_approver" model="ir.rule">
     <field name="name">Requests: Own or Approver</field>
     <field name="model_id" ref="model_kh_approval_request"/>
     <field name="domain_force">
       ['|',
         ('requester_id', '=', user.id),
-        '|',
-          ('approval_line_ids.approver_id', '=', user.id),                  <!-- approver_id is res.users -->
-          ('approval_line_ids.approver_id', '=', user.partner_id.id)        <!-- approver_id is res.partner -->
+        ('approval_line_ids.approver_id', '=', user.id)
       ]
     </field>
     <field name="groups" eval="[(4, ref('base.group_user'))]"/>
@@ -30,16 +39,14 @@
     <field name="perm_unlink" eval="1"/>
   </record>
 
-  <!-- LINES: show ALL steps of any request I own OR I am one of its approvers (user or partner) -->
+  <!-- ========== LINES: all steps of any request I own OR I am approver on ========== -->
   <record id="rule_kh_line_own_or_approver" model="ir.rule">
-    <field name="name">Lines: All steps for readable requests</field>
+    <field name="name">Lines: All steps for my readable requests</field>
     <field name="model_id" ref="model_kh_approval_line"/>
     <field name="domain_force">
       ['|',
         ('request_id.requester_id', '=', user.id),
-        '|',
-          ('request_id.approval_line_ids.approver_id', '=', user.id),           <!-- approver_id is res.users -->
-          ('request_id.approval_line_ids.approver_id', '=', user.partner_id.id) <!-- approver_id is res.partner -->
+        ('request_id.approval_line_ids.approver_id', '=', user.id)
       ]
     </field>
     <field name="groups" eval="[(4, ref('base.group_user'))]"/>
