@@ -1,14 +1,4 @@
 # -*- coding: utf-8 -*-
-# Khales Approval Request — single Chrome ping per step + throttle + delete/withdraw features
-#
-# New in this version:
-# - unlink(): only requester can delete when state in ('draft','rejected')
-# - action_withdraw_request(): requester can withdraw from in_review -> draft (cleans activities)
-# - Approver tools:
-#     * action_opt_out_as_approver(): current pending approver can skip (line -> 'withdrawn') and notify next
-#     * action_unapprove_my_step(): approver can revert their own 'approved' line to 'pending'
-#       IF no subsequent line is approved/rejected (i.e., flow hasn’t moved past them)
-#
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, AccessError
 
@@ -67,10 +57,11 @@ class KhApprovalRequest(models.Model):
         required=True,
         tracking=True,  # tracking kept, but we mute it on write
     )
+
+    # Revision / audit helpers
     revision = fields.Integer(default=0, tracking=True)
     last_revised_by = fields.Many2one('res.users', readonly=True)
     last_revised_on = fields.Datetime(readonly=True)
-    
 
     # Single rule selector (rule defines company/department/approver sequence)
     rule_id = fields.Many2one(
@@ -167,7 +158,6 @@ class KhApprovalRequest(models.Model):
         """Fields that, if changed, should trigger a new approval cycle."""
         return {'name', 'amount', 'currency_id', 'company_id', 'department_id', 'rule_id'}
 
-
     # -------------------------------------------------------------------------
     # ORM overrides
     # -------------------------------------------------------------------------
@@ -207,16 +197,13 @@ class KhApprovalRequest(models.Model):
         Block edits to critical fields once submitted, unless in Draft or we’re doing a controlled transition.
         """
         critical = self._critical_fields()
-        # if any critical field is being changed
         if critical.intersection(vals.keys()):
             for rec in self:
                 if rec.state != 'draft':
-                    # only allow if explicitly done by our own server-side flows with a context flag
                     if not self.env.context.get('kh_allow_write_outside_draft'):
                         raise UserError(_("You cannot edit request details after submission. "
-                                          "Use 'Revise' to return to Draft, edit, and re-submit."))
+                                          "Use 'Edit Request' to return to Draft, edit, and re-submit."))
         return super().write(vals)
-
 
     # -------------------------------------------------------------------------
     # Helpers - Links
@@ -276,9 +263,7 @@ class KhApprovalRequest(models.Model):
                     )
 
     def _activity_done_silent(self, activity):
-        """
-        Mark an activity as done and post feedback silently (NO EMAIL).
-        """
+        """Mark a single activity as done with a quiet note."""
         self.ensure_one()
         self.with_context(mail_activity_quick_update=True)._post_note(
             body_html=f"<div>{activity.activity_type_id.name}: Done</div>",
@@ -440,9 +425,9 @@ class KhApprovalRequest(models.Model):
         Requester turns a non-draft request back to Draft to edit safely.
         - Allowed for owner only
         - Closes activities
-        - Clears approval lines (or reset to pending)
+        - Clears approval lines
         - Increments revision
-        - Notifies followers and previous approvers
+        - Notifies followers & previous approvers
         """
         for rec in self:
             if rec.requester_id.id != self.env.uid:
@@ -450,16 +435,11 @@ class KhApprovalRequest(models.Model):
             if rec.state not in ('in_review', 'approved', 'rejected'):
                 raise UserError(_("Only non-Draft requests can be revised."))
 
-            # Collect previous approvers to notify that approvals are cleared
             prev_approver_partners = rec.approval_line_ids.mapped('approver_id.partner_id')
 
-            # Close all open todos
             rec._close_all_todos()
-
-            # Clear approval lines so the next Submit generates fresh ones
             rec.approval_line_ids.sudo().unlink()
 
-            # Go back to draft and bump revision
             rec.with_context(tracking_disable=True).write({
                 'state': 'draft',
                 'revision': rec.revision + 1,
@@ -467,19 +447,12 @@ class KhApprovalRequest(models.Model):
                 'last_revised_on': fields.Datetime.now(),
             })
 
-            # Notify: followers + previous approvers
             rec._post_note(
                 _("✏️ Request revised by <b>%s</b>. All approvals have been reset.<br/>"
                   "Revision: <b>%s</b>") % (self.env.user.name, rec.revision),
                 partner_ids=rec.message_follower_ids.mapped("partner_id").ids,
             )
             if prev_approver_partners:
-                rec._notify_partner(
-                    partner=prev_approver_partners[0],  # message_notify can take list; we’ll use _post_note to all
-                    body_html=_("✏️ <b>Revised</b>: <a href='%s'>%s</a> — approvals were reset.") % (rec._deeplink(), rec.name),
-                    subject=rec.name,
-                )
-                # send to the rest via one silent note to avoid spamming
                 rec._post_note(
                     _("Revised and approvals reset."),
                     partner_ids=prev_approver_partners.ids,
@@ -487,8 +460,9 @@ class KhApprovalRequest(models.Model):
         return True
 
     def action_withdraw_request(self):
+        # Feature disabled at your request
         raise UserError(_("This option has been disabled by your administrator."))
-      
+
     def action_approve_request(self):
         """Current approver approves their step; finish or notify next approver."""
         for rec in self:
@@ -500,8 +474,6 @@ class KhApprovalRequest(models.Model):
                 raise UserError(_("You are not the current approver."))
 
             rec._close_my_open_todos()
-
-            # Approve my step (sudo -> users are read-only on lines)
             line.sudo().write({"state": "approved"})
 
             rec._post_note(
@@ -509,12 +481,10 @@ class KhApprovalRequest(models.Model):
                 partner_ids=[rec.requester_id.partner_id.id],
             )
 
-            # Next approver or finished
             next_line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
             if next_line:
                 rec._notify_first_pending()
             else:
-                # 🔇 Avoid email from tracking on state change
                 rec.with_context(tracking_disable=True).write({"state": "approved"})
                 rec._post_note(
                     _("✅ Request approved."),
@@ -540,7 +510,6 @@ class KhApprovalRequest(models.Model):
             rec._close_my_open_todos()
             line.sudo().write({"state": "rejected"})
 
-            # 🔇 Avoid email from tracking on state change
             rec.with_context(tracking_disable=True).write({"state": "rejected"})
 
             rec._post_note(
@@ -554,43 +523,9 @@ class KhApprovalRequest(models.Model):
             )
         return True
 
-    # ---- Approver extra controls ------------------------------------------------
     def action_opt_out_as_approver(self):
+        # Feature disabled at your request
         raise UserError(_("This option has been disabled by your administrator."))
-
-
-    def action_unapprove_my_step(self):
-        """
-        An approver can revert their own APPROVED step back to PENDING,
-        ONLY if no subsequent steps are approved/rejected yet.
-        """
-        for rec in self:
-            if rec.state not in ("in_review", "approved"):
-                raise UserError(_("Request must be In Review/Approved to revert."))
-
-            # Find the last approved/rejected/withdrawn order
-            lines = rec.approval_line_ids.sorted(key=lambda l: l.id)
-            my_line = lines.filtered(lambda l: l.approver_id.id == self.env.uid and l.state == "approved")[:1]
-            if not my_line:
-                raise UserError(_("You don't have an approved step to revert."))
-
-            # ensure all AFTER my_line are still pending
-            after = lines.filtered(lambda l: l.id > my_line.id)
-            if any(l.state in ("approved", "rejected") for l in after):
-                raise UserError(_("You cannot revert because later steps have already acted."))
-
-            # If request was marked 'approved' but our revert is allowed, bring it back to in_review
-            if rec.state == "approved":
-                rec.with_context(tracking_disable=True).write({"state": "in_review"})
-
-            # revert
-            my_line.sudo().write({"state": "pending", "note": _("Approval reverted by approver")})
-            rec._post_note(
-                _("↩️ Approval by <b>%s</b> was reverted back to Pending.") % self.env.user.name,
-                partner_ids=rec.message_follower_ids.mapped("partner_id").ids,
-            )
-            rec._notify_first_pending()
-        return True
 
 
 # ============================================================================
@@ -619,22 +554,6 @@ class KhApprovalRule(models.Model):
         "kh.approval.rule.step", "rule_id", string="Steps", copy=True
     )
 
-# Helper booleans used by the view
-can_revert_my_approval = fields.Boolean(store=False, compute="_compute_can_revert")
-
-@api.depends("approval_line_ids.state", "approval_line_ids.approver_id")
-def _compute_can_revert(self):
-    uid = self.env.uid
-    for rec in self:
-        rec.can_revert_my_approval = False
-        # Find my approved line (if any)
-        lines = rec.approval_line_ids.sorted(key=lambda l: l.id)
-        my_line = lines.filtered(lambda l: l.approver_id.id == uid and l.state == "approved")[:1]
-        if not my_line:
-            continue
-        # Disallow if a later line has already acted (approved/rejected)
-        after = lines.filtered(lambda l: l.id > my_line.id)
-        rec.can_revert_my_approval = not any(l.state in ("approved", "rejected") for l in after)
 
 # ============================================================================
 # Approval Line (generated)
@@ -657,7 +576,7 @@ class KhApprovalLine(models.Model):
             ("pending", "Pending"),
             ("approved", "Approved"),
             ("rejected", "Rejected"),
-            ("withdrawn", "Withdrawn"),  # approver opted out
+            ("withdrawn", "Withdrawn"),  # (not used now, but kept for history)
         ],
         default="pending",
         required=True,

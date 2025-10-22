@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <odoo>
   <data>
 
@@ -51,61 +52,50 @@
       </field>
     </record>
 
-    <!-- Form (Odoo 17+: no attrs/states) -->
+    <!-- Form (Odoo 17+: use 'invisible' not 'attrs') -->
     <record id="view_kh_approval_request_form_base" model="ir.ui.view">
       <field name="name">kh.approval.request.form</field>
       <field name="model">kh.approval.request</field>
       <field name="arch" type="xml">
         <form string="Approval Request">
-<header>
-  <!-- Draft only -->
-  <button name="action_submit" type="object" string="Submit"
-          class="oe_highlight"
-          invisible="state != 'draft'"/>
+          <header>
+            <!-- Draft only -->
+            <button name="action_submit" type="object" string="Submit"
+                    class="oe_highlight"
+                    invisible="state != 'draft'"/>
 
-  <!-- Approve/Reject only when in_review -->
-  <button name="action_approve_request" type="object" string="Approve"
-          class="btn-primary"
-          invisible="state != 'in_review'"/>
-  <button name="action_reject_request" type="object" string="Reject"
-          class="btn-secondary"
-          invisible="state != 'in_review'"/>
+            <!-- Approve/Reject ONLY for the current pending approver -->
+            <button name="action_approve_request" type="object" string="Approve"
+                    class="btn-primary"
+                    invisible="state != 'in_review' or not is_current_user_approver"/>
+            <button name="action_reject_request" type="object" string="Reject"
+                    class="btn-secondary"
+                    invisible="state != 'in_review' or not is_current_user_approver"/>
 
-  <!-- Revert (undo) my approval: visible when in_review or approved.
-       The server method already checks that the current user has an
-       approved step AND no later steps acted. -->
-  <!-- <button name="action_unapprove_my_step" type="object" string="Revert My Approval"
-          class="btn-secondary"
-          invisible="not (state == 'in_review' or state == 'approved')"/> -->
+            <!-- Edit Request (owner-only) -->
+            <button name="action_revise_request" type="object" string="Edit Request"
+                    class="btn-secondary"
+                    invisible="state == 'draft' or requester_id != uid"/>
 
-  <!-- Edit Request (formerly Revise) — requester only, not Draft -->
-  <button name="action_revise_request" type="object" string="Edit Request"
-          class="btn-secondary"
-          invisible="state == 'draft' or requester_id != uid"/>
-
-  <field name="state" widget="statusbar" statusbar_visible="draft,in_review,approved,rejected"/>
-</header>
-
-
-
-
-
+            <field name="state" widget="statusbar" statusbar_visible="draft,in_review,approved,rejected"/>
+          </header>
 
           <sheet>
             <group>
               <group>
-                <field name="name" required="1"/>
+                <field name="name" required="1" readonly="state != 'draft'"/>
                 <field name="requester_id" readonly="1"/>
-                <field name="amount"/>
-                <field name="currency_id"/>
+                <field name="amount" readonly="state != 'draft'"/>
+                <field name="currency_id" readonly="state != 'draft'"/>
                 <field name="revision" readonly="1"/>
                 <field name="last_revised_by" readonly="1"/>
                 <field name="last_revised_on" readonly="1"/>
               </group>
               <group>
-                <field name="company_id" groups="base.group_multi_company"/>
-                <field name="department_id"/>
+                <field name="company_id" groups="base.group_multi_company" readonly="state != 'draft'"/>
+                <field name="department_id" readonly="state != 'draft'"/>
                 <field name="rule_id"
+                       readonly="state != 'draft'"
                        domain="[('company_id','in',[False, company_id]), '|', ('department_id','=',False), ('department_id','=',department_id)]"
                        options="{'no_create_edit': True}"/>
               </group>
@@ -113,7 +103,6 @@
 
             <notebook>
               <page string="Approval Steps" name="approval_steps">
-                <!-- Reference the subview; no nested <list> tag -->
                 <field name="approval_line_ids"
                        context="{'default_request_id': id}"
                        views="{'list': 'kh_approvals.view_kh_approval_line_list'}"/>
