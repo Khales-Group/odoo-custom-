@@ -381,7 +381,8 @@ class KhApprovalRequest(models.Model):
             if not vals:
                 raise UserError(_("This rule has no approvers defined."))
 
-            self.env["kh.approval.line"].create(vals)
+            self.env["kh.approval.line"].sudo().create(vals)
+
 
     # -------------------------------------------------------------------------
     # Actions (buttons) — NO EMAIL paths
@@ -416,7 +417,8 @@ class KhApprovalRequest(models.Model):
             rec._close_my_open_todos()
 
             # Approve my step
-            line.write({"state": "approved"})
+            line.sudo().write({"state": "approved"})
+
             rec._post_note(
                 _("Approved by <b>%s</b>.") % self.env.user.name,
                 partner_ids=[rec.requester_id.partner_id.id],
@@ -450,7 +452,7 @@ class KhApprovalRequest(models.Model):
                 raise UserError(_("You are not the current approver."))
 
             rec._close_my_open_todos()
-            line.write({"state": "rejected"})
+            line.sudo().write({"state": "rejected"})
 
             # 🔇 Avoid email from tracking on state change
             rec.with_context(tracking_disable=True).write({"state": "rejected"})
