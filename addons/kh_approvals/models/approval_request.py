@@ -139,6 +139,7 @@ class KhApprovalRequest(models.Model):
             body=body_html,
             message_type="comment",
             subtype_xmlid="mail.mt_note",   # note subtype => no email
+            email_layout_xmlid="mail.mail_notification_light",  # force no email
             partner_ids=partner_ids or [],
         )
 
@@ -189,6 +190,7 @@ class KhApprovalRequest(models.Model):
                     body=body_html,
                     message_type="comment",
                     subtype_xmlid="mail.mt_comment",
+                    email_layout_xmlid="mail.mail_notification_light",  # force no email
                 )
                 return
 
@@ -210,6 +212,7 @@ class KhApprovalRequest(models.Model):
                     body=body_html,
                     message_type="comment",
                     subtype_xmlid="mail.mt_comment",
+                    email_layout_xmlid="mail.mail_notification_light",  # force no email
                 )
                 return
 
