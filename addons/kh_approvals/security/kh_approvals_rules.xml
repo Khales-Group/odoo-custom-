@@ -30,9 +30,9 @@
   <record id="rule_kh_line_own_or_approver" model="ir.rule">
     <field name="name">Lines: Own request or approver</field>
     <field name="model_id" ref="model_kh_approval_line"/>
-    <field name="domain_force">[ '|',
+    <field name="domain_force">[ '|',  <!-- Corrected: Use '|' for OR -->
       ('request_id.requester_id', '=', user.id),
-      ('approver_id', '=', user.id)
+      ('request_id.approval_line_ids.approver_id', 'in', [user.id])
     ]</field>
     <field name="groups" eval="[(4, ref('base.group_user'))]"/>
     <field name="perm_read" eval="1"/>
