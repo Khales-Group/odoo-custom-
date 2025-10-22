@@ -66,10 +66,10 @@
 
 
 
-  <!-- Visible when in_review or approved -->
+  <!-- Visible when in_review or approved
   <button name="action_unapprove_my_step" type="object" string="Revert My Approval"
           class="btn-secondary"
-          invisible="not (state == 'in_review' or state == 'approved')"/>
+          invisible="not (state == 'in_review' or state == 'approved')"/> -->
 
   <!-- Approve/Reject only when in_review -->
   <button name="action_approve_request" type="object" string="Approve"

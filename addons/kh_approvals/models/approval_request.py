@@ -619,6 +619,22 @@ class KhApprovalRule(models.Model):
         "kh.approval.rule.step", "rule_id", string="Steps", copy=True
     )
 
+# Helper booleans used by the view
+can_revert_my_approval = fields.Boolean(store=False, compute="_compute_can_revert")
+
+@api.depends("approval_line_ids.state", "approval_line_ids.approver_id")
+def _compute_can_revert(self):
+    uid = self.env.uid
+    for rec in self:
+        rec.can_revert_my_approval = False
+        # Find my approved line (if any)
+        lines = rec.approval_line_ids.sorted(key=lambda l: l.id)
+        my_line = lines.filtered(lambda l: l.approver_id.id == uid and l.state == "approved")[:1]
+        if not my_line:
+            continue
+        # Disallow if a later line has already acted (approved/rejected)
+        after = lines.filtered(lambda l: l.id > my_line.id)
+        rec.can_revert_my_approval = not any(l.state in ("approved", "rejected") for l in after)
 
 # ============================================================================
 # Approval Line (generated)
