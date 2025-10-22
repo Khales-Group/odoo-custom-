@@ -166,7 +166,7 @@ class KhApprovalRequest(models.Model):
             partner_ids=self.message_follower_ids.mapped("partner_id").ids,
         )
         # Unlink the activity
-        activity.unlink()
+        activity.with_context(kh_from_mark_done=True).unlink()
 
     def _close_my_open_todos(self):
         """Mark my open To-Do activities on this request as done for the current user."""
