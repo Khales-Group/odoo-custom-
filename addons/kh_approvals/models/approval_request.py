@@ -72,6 +72,13 @@ class KhApprovalRequest(models.Model):
         "kh.approval.line", "request_id", string="Approval Steps", copy=False
     )
 
+    # NEW: always-visible, read-only HTML snapshot of all steps (built with sudo)
+    steps_overview_html = fields.Html(
+        string="Approval Steps (All Approvers)",
+        compute="_compute_steps_overview_html",
+        store=False,
+    )
+
     # Helper fields for UI logic
     pending_line_id = fields.Many2one(
         "kh.approval.line", compute="_compute_pending_line", store=False
@@ -91,6 +98,56 @@ class KhApprovalRequest(models.Model):
             rec.is_current_user_approver = bool(
                 line and line.approver_id.id == rec.env.user.id
             )
+
+    # NEW: html snapshot builder that bypasses record rules safely
+    def _compute_steps_overview_html(self):
+        status_badge = {
+            "pending":  "#d97706",   # amber
+            "approved": "#059669",   # green
+            "rejected": "#dc2626",   # red
+        }
+        for rec in self:
+            rows = []
+            # sudo() guarantees we see all lines regardless of record rules
+            for line in rec.sudo().approval_line_ids.sorted(key=lambda l: (l.id,)):
+                color = status_badge.get(line.state or "pending", "#6b7280")
+                rows.append(
+                    f"""
+                    <tr>
+                      <td style="padding:6px 8px;border-bottom:1px solid #eee;">{(line.name or '')}</td>
+                      <td style="padding:6px 8px;border-bottom:1px solid #eee;">{(line.approver_id.name or '')}</td>
+                      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">
+                        {'✓' if line.required else ''}
+                      </td>
+                      <td style="padding:6px 8px;border-bottom:1px solid #eee;">
+                        <span style="display:inline-block;padding:2px 8px;border-radius:12px;background:{color}20;color:{color};font-weight:600;text-transform:capitalize;">
+                          {line.state or 'pending'}
+                        </span>
+                      </td>
+                      <td style="padding:6px 8px;border-bottom:1px solid #eee;">{(line.note or '')}</td>
+                    </tr>
+                    """
+                )
+
+            if rows:
+                rec.steps_overview_html = f"""
+                <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
+                  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <thead style="background:#f9fafb;">
+                      <tr>
+                        <th style="text-align:left;padding:8px 10px;">Name</th>
+                        <th style="text-align:left;padding:8px 10px;">Approver</th>
+                        <th style="text-align:center;padding:8px 10px;">Required</th>
+                        <th style="text-align:left;padding:8px 10px;">State</th>
+                        <th style="text-align:left;padding:8px 10px;">Note</th>
+                      </tr>
+                    </thead>
+                    <tbody>{''.join(rows)}</tbody>
+                  </table>
+                </div>
+                """
+            else:
+                rec.steps_overview_html = "<i>No approval steps.</i>"
 
     # -------------------------------------------------------------------------
     # ORM overrides

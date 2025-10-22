@@ -85,15 +85,21 @@
 
             <notebook>
               <page string="Approval Steps" name="approval_steps">
-                <field name="approval_line_ids" context="{'default_request_id': id}">
-  <tree editable="bottom">
-    <field name="name"/>
-    <field name="approver_id"/>
-    <field name="required"/>
-    <field name="state"/>
-    <field name="note"/>
-  </tree>
-</field>
+                <!-- For regular users, show a read-only HTML overview that bypasses record rules -->
+                <field name="steps_overview_html"
+                       groups="!kh_approvals.group_kh_approvals_manager"/>
+
+                <!-- For managers, show the editable list for administration -->
+                <field name="approval_line_ids"
+                       context="{'default_request_id': id}"
+                       groups="kh_approvals.group_kh_approvals_manager">
+                  <tree editable="bottom">
+                    <field name="name"/>
+                    <field name="approver_id"/>
+                    <field name="required"/>
+                    <field name="state"/>
+                  </tree>
+                </field>
 
               </page>
             </notebook>
