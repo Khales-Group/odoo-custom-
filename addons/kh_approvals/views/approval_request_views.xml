@@ -66,7 +66,7 @@
   <!-- In review & requester only -->
   <button name="action_withdraw_request" type="object" string="Withdraw"
           class="btn-secondary"
-          invisible="state != 'in_review' or requester_id != user.id"/>
+          invisible="state != 'in_review' or requester_id != uid"/>
 
   <!-- In review & current approver only -->
   <button name="action_opt_out_as_approver" type="object" string="Withdraw as Approver"
@@ -88,6 +88,7 @@
 
   <field name="state" widget="statusbar" statusbar_visible="draft,in_review,approved,rejected"/>
 </header>
+
 
 
 
