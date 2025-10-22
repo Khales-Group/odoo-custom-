@@ -330,30 +330,31 @@ class KhApprovalRequest(models.Model):
             if not line or line.approver_id.id != self.env.uid:
                 raise UserError(_("You are not the current approver."))
 
-            rec._close_my_open_todos()
+            # rec._close_my_open_todos()  # DEBUG: Temporarily disabled
 
             # Approve my step
             line.write({"state": "approved"})
-            rec._post_note(
-                _("Approved by <b>%s</b>.") % self.env.user.name,
-                partner_ids=[rec.requester_id.partner_id.id],
-            )
+            # rec._post_note(  # DEBUG: Temporarily disabled
+            #     _("Approved by <b>%s</b>.") % self.env.user.name,
+            #     partner_ids=[rec.requester_id.partner_id.id],
+            # )
 
             # Next approver or finished
             next_line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
             if next_line:
-                rec._notify_first_pending()
+                pass
+                # rec._notify_first_pending()  # DEBUG: Temporarily disabled
             else:
                 # 🔇 Avoid email from tracking on state change
                 rec.with_context(tracking_disable=True).write({"state": "approved"})
-                rec._post_note(
-                    _("✅ Request approved."),
-                    partner_ids=[rec.requester_id.partner_id.id],
-                )
-                rec._dm_ping(
-                    rec.requester_id.partner_id,
-                    _("✅ <b>Approved</b>: <a href='%s'>%s</a>") % (rec._deeplink(), rec.name),
-                )
+                # rec._post_note(  # DEBUG: Temporarily disabled
+                #     _("✅ Request approved."),
+                #     partner_ids=[rec.requester_id.partner_id.id],
+                # )
+                # rec._dm_ping(  # DEBUG: Temporarily disabled
+                #     rec.requester_id.partner_id,
+                #     _("✅ <b>Approved</b>: <a href='%s'>%s</a>") % (rec._deeplink(), rec.name),
+                # )
         return True
 
     def action_reject_request(self):
@@ -366,20 +367,20 @@ class KhApprovalRequest(models.Model):
             if not line or line.approver_id.id != self.env.uid:
                 raise UserError(_("You are not the current approver."))
 
-            rec._close_my_open_todos()
+            # rec._close_my_open_todos()  # DEBUG: Temporarily disabled
             line.write({"state": "rejected"})
 
             # 🔇 Avoid email from tracking on state change
             rec.with_context(tracking_disable=True).write({"state": "rejected"})
 
-            rec._post_note(
-                _("❌ Rejected by <b>%s</b>.") % self.env.user.name,
-                partner_ids=[rec.requester_id.partner_id.id],
-            )
-            rec._dm_ping(
-                rec.requester_id.partner_id,
-                _("❌ <b>Rejected</b>: <a href='%s'>%s</a>") % (rec._deeplink(), rec.name),
-            )
+            # rec._post_note(  # DEBUG: Temporarily disabled
+            #     _("❌ Rejected by <b>%s</b>.") % self.env.user.name,
+            #     partner_ids=[rec.requester_id.partner_id.id],
+            # )
+            # rec._dm_ping(  # DEBUG: Temporarily disabled
+            #     rec.requester_id.partner_id,
+            #     _("❌ <b>Rejected</b>: <a href='%s'>%s</a>") % (rec._deeplink(), rec.name),
+            # )
         return True
 
 
