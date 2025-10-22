@@ -1,16 +1,10 @@
 <odoo>
-  <!-- ========== Turn OFF the company-wide rules that caused leakage ========== -->
-  <record id="mc_rule_request_company" model="ir.rule">
-    <field name="active">0</field>
-  </record>
-  <record id="mc_rule_rule_company" model="ir.rule">
-    <field name="active">0</field>
-  </record>
-  <record id="mc_rule_line_company" model="ir.rule">
-    <field name="active">0</field>
-  </record>
+  <!-- Remove the broad company rules if they exist (safe if they don't) -->
+  <delete id="mc_rule_request_company" model="ir.rule"/>
+  <delete id="mc_rule_rule_company" model="ir.rule"/>
+  <delete id="mc_rule_line_company" model="ir.rule"/>
 
-  <!-- ========== REQUESTS: requester OR any approver on that request ========== -->
+  <!-- REQUESTS: requester OR any approver on the request -->
   <record id="rule_kh_request_own_or_approver" model="ir.rule">
     <field name="name">Requests: Own or Approver</field>
     <field name="model_id" ref="model_kh_approval_request"/>
@@ -32,14 +26,14 @@
     <field name="name">Requests: Manager All</field>
     <field name="model_id" ref="model_kh_approval_request"/>
     <field name="domain_force">[(1,'=',1)]</field>
-    <field name="groups" eval="[(4, ref('kh_approvals.group_kh_approvals_manager'))]"/>
+    <field name="groups" eval="[(4, ref='kh_approvals.group_kh_approvals_manager'))]"/>
     <field name="perm_read" eval="1"/>
     <field name="perm_write" eval="1"/>
     <field name="perm_create" eval="1"/>
     <field name="perm_unlink" eval="1"/>
   </record>
 
-  <!-- ========== LINES: all steps of any request I own OR I am approver on ========== -->
+  <!-- LINES: show ALL steps of any request I own OR I am one of its approvers -->
   <record id="rule_kh_line_own_or_approver" model="ir.rule">
     <field name="name">Lines: All steps for my readable requests</field>
     <field name="model_id" ref="model_kh_approval_line"/>

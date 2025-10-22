@@ -7,3 +7,4 @@ kh_approval_rule_step_user,kh.approval.rule.step,model_kh_approval_rule_step,bas
 
 access_kh_request_manager,access_kh_request_manager,model_kh_approval_request,kh_approvals.group_kh_approvals_manager,1,1,1,1
 access_kh_line_manager,access_kh_line_manager,model_kh_approval_line,kh_approvals.group_kh_approvals_manager,1,1,1,1
+access_kh_rule_manager,access_kh_rule_manager,model_kh_approval_rule,
