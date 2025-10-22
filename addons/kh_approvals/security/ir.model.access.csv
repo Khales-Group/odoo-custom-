@@ -4,3 +4,6 @@ kh_approval_rule_user,kh.approval.rule,model_kh_approval_rule,base.group_user,1,
 kh_approval_line_user,kh.approval.line,model_kh_approval_line,base.group_user,1,1,1,0
 kh_approvals_department_user,kh.approvals.department,model_kh_approvals_department,base.group_user,1,1,1,0
 kh_approval_rule_step_user,kh.approval.rule.step,model_kh_approval_rule_step,base.group_user,1,1,1,1
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_kh_request_manager,access_kh_request_manager,model_kh_approval_request,kh_approvals.group_kh_approvals_manager,1,1,1,1
+access_kh_line_manager,access_kh_line_manager,model_kh_approval_line,kh_approvals.group_kh_approvals_manager,1,1,1,1

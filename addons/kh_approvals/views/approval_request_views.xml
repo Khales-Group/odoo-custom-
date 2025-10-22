@@ -85,15 +85,16 @@
 
             <notebook>
               <page string="Approval Steps" name="approval_steps">
-                <field name="approval_line_ids">
-                  <list>
-                    <field name="name"/>
-                    <field name="approver_id"/>
-                    <field name="required"/>
-                    <field name="state"/>
-                    <field name="note"/>
-                  </list>
-                </field>
+                <field name="approval_line_ids" context="{'default_request_id': id}">
+  <tree editable="bottom">
+    <field name="name"/>
+    <field name="approver_id"/>
+    <field name="required"/>
+    <field name="state"/>
+    <field name="note"/>
+  </tree>
+</field>
+
               </page>
             </notebook>
           </sheet>

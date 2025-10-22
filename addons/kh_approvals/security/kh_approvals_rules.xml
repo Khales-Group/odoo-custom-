@@ -1,9 +1,9 @@
 <odoo>
-  <!-- Requests: user can see/edit own or where user is a step approver -->
+  <!-- REQUESTS: requester OR any approver on the request -->
   <record id="rule_kh_request_own_or_approver" model="ir.rule">
     <field name="name">Requests: Own or Approver</field>
     <field name="model_id" ref="model_kh_approval_request"/>
-    <field name="domain_force">[ '|',
+    <field name="domain_force">['|',
       ('requester_id', '=', user.id),
       ('approval_line_ids.approver_id', '=', user.id)
     ]</field>
@@ -14,7 +14,7 @@
     <field name="perm_unlink" eval="0"/>
   </record>
 
-  <!-- Requests: managers see all -->
+  <!-- REQUESTS: managers see all -->
   <record id="rule_kh_request_manager_all" model="ir.rule">
     <field name="name">Requests: Manager All</field>
     <field name="model_id" ref="model_kh_approval_request"/>
@@ -26,26 +26,22 @@
     <field name="perm_unlink" eval="1"/>
   </record>
 
-  <!-- Lines: user must see ALL lines of any request they own OR can approve -->
+  <!-- LINES: all steps of any readable request (requester or any approver) -->
   <record id="rule_kh_line_own_or_approver" model="ir.rule">
     <field name="name">Lines: All lines of readable requests</field>
     <field name="model_id" ref="model_kh_approval_line"/>
-    <!-- Key idea:
-         - If I'm the requester -> show all lines on my requests.
-         - If I'm one of the approvers on a request -> show ALL lines on that request,
-           not just my own step. -->
-    <field name="domain_force">[ '|',
+    <field name="domain_force">['|',
       ('request_id.requester_id', '=', user.id),
       ('request_id.approval_line_ids.approver_id', '=', user.id)
     ]</field>
     <field name="groups" eval="[(4, ref('base.group_user'))]"/>
     <field name="perm_read" eval="1"/>
-    <field name="perm_write" eval="1"/>
+    <field name="perm_write" eval="0"/>
     <field name="perm_create" eval="0"/>
     <field name="perm_unlink" eval="0"/>
   </record>
 
-  <!-- Lines: managers see all -->
+  <!-- LINES: managers see all -->
   <record id="rule_kh_line_manager_all" model="ir.rule">
     <field name="name">Lines: Manager All</field>
     <field name="model_id" ref="model_kh_approval_line"/>
