@@ -131,17 +131,26 @@ class KhApprovalRequest(models.Model):
         Post an INTERNAL NOTE only (no email, no auto-subscribe).
         Appears in chatter & Discuss/Inbox; safe on servers without SMTP.
         """
-        self.with_context(
-            mail_notify_force_send=False,   # never attempt to send right now
-            mail_post_autofollow=False,
-            mail_create_nosubscribe=True,
-        ).message_post(
-            body=body_html,
-            message_type="comment",
-            subtype_xmlid="mail.mt_note",   # note subtype => no email
-            email_layout_xmlid="mail.mail_notification_light",  # force no email
-            partner_ids=partner_ids or [],
-        )
+        # If specific partners are targeted, use message_notify to ensure they get a ping.
+        if partner_ids:
+            self.message_notify(
+                partner_ids=partner_ids,
+                body=body_html,
+                subject=self.name,
+                subtype_xmlid="mail.mt_note",
+                email_layout_xmlid="mail.mail_notification_light",
+            )
+        # Otherwise, post a general note to the chatter for all followers.
+        else:
+            self.with_context(
+                mail_notify_force_send=False,
+                mail_post_autofollow=False,
+                mail_create_nosubscribe=True,
+            ).message_post(
+                body=body_html,
+                message_type="comment",
+                subtype_xmlid="mail.mt_note",
+            )
 
     def _ensure_followers(self):
         """Subscribe requester + all approvers so they see inbox notifications."""
