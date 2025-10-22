@@ -61,33 +61,34 @@
   <!-- Draft only -->
   <button name="action_submit" type="object" string="Submit"
           class="oe_highlight"
-          invisible="state !== 'draft'"/>
+          invisible="state != 'draft'"/>
 
   <!-- In review & requester only -->
   <button name="action_withdraw_request" type="object" string="Withdraw"
           class="btn-secondary"
-          invisible="state !== 'in_review' || requester_id !== user.id"/>
+          invisible="state != 'in_review' or requester_id != user.id"/>
 
   <!-- In review & current approver only -->
   <button name="action_opt_out_as_approver" type="object" string="Withdraw as Approver"
           class="btn-secondary"
-          invisible="state !== 'in_review' || !is_current_user_approver"/>
+          invisible="state != 'in_review' or not is_current_user_approver"/>
 
   <!-- Visible when in_review or approved -->
   <button name="action_unapprove_my_step" type="object" string="Revert My Approval"
           class="btn-secondary"
-          invisible="!(state === 'in_review' || state === 'approved')"/>
+          invisible="not (state == 'in_review' or state == 'approved')"/>
 
   <!-- Approve/Reject only when in_review -->
   <button name="action_approve_request" type="object" string="Approve"
           class="btn-primary"
-          invisible="state !== 'in_review'"/>
+          invisible="state != 'in_review'"/>
   <button name="action_reject_request" type="object" string="Reject"
           class="btn-secondary"
-          invisible="state !== 'in_review'"/>
+          invisible="state != 'in_review'"/>
 
   <field name="state" widget="statusbar" statusbar_visible="draft,in_review,approved,rejected"/>
 </header>
+
 
 
 
