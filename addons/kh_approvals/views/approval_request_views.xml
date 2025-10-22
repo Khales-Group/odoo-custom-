@@ -1,7 +1,7 @@
 <odoo>
   <data>
 
-    <!-- Line subview (list view; NOT tree) -->
+    <!-- Line subview (list view) -->
     <record id="view_kh_approval_line_list" model="ir.ui.view">
       <field name="name">kh.approval.line.list</field>
       <field name="model">kh.approval.line</field>
@@ -51,21 +51,23 @@
       </field>
     </record>
 
-    <!-- Form -->
+    <!-- Form (Odoo 17+: no attrs/states) -->
     <record id="view_kh_approval_request_form_base" model="ir.ui.view">
       <field name="name">kh.approval.request.form</field>
       <field name="model">kh.approval.request</field>
       <field name="arch" type="xml">
         <form string="Approval Request">
           <header>
+            <!-- Visible only in draft -->
             <button name="action_submit" type="object" string="Submit"
-                    class="oe_highlight" attrs="{'invisible': [('state','!=','draft')]}"/>
+                    class="oe_highlight" invisible="state != 'draft'"/>
+
+            <!-- Visible only while in_review (button guards permission anyway) -->
             <button name="action_approve_request" type="object" string="Approve"
-                    class="btn-primary"
-                    attrs="{'invisible': ['|', ('state','!=','in_review'), ('is_current_user_approver','=',False)]}"/>
+                    class="btn-primary" invisible="state != 'in_review'"/>
             <button name="action_reject_request" type="object" string="Reject"
-                    class="btn-secondary"
-                    attrs="{'invisible': ['|', ('state','!=','in_review'), ('is_current_user_approver','=',False)]}"/>
+                    class="btn-secondary" invisible="state != 'in_review'"/>
+
             <field name="state" widget="statusbar" statusbar_visible="draft,in_review,approved,rejected"/>
           </header>
 
@@ -88,7 +90,7 @@
 
             <notebook>
               <page string="Approval Steps" name="approval_steps">
-                <!-- Reference the subview via 'views' with list key -->
+                <!-- Reference the subview; no nested <list> tag -->
                 <field name="approval_line_ids"
                        context="{'default_request_id': id}"
                        views="{'list': 'kh_approvals.view_kh_approval_line_list'}"/>
