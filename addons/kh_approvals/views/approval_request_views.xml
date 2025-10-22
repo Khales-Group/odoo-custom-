@@ -1,22 +1,22 @@
 <odoo>
   <data>
 
-    <!-- ===== Line subview (separate; no nesting in the form) ===== -->
-    <record id="view_kh_approval_line_tree" model="ir.ui.view">
-      <field name="name">kh.approval.line.tree</field>
+    <!-- Line subview (list view; NOT tree) -->
+    <record id="view_kh_approval_line_list" model="ir.ui.view">
+      <field name="name">kh.approval.line.list</field>
       <field name="model">kh.approval.line</field>
       <field name="arch" type="xml">
-        <tree editable="bottom">
+        <list editable="bottom">
           <field name="name"/>
           <field name="approver_id"/>
           <field name="required"/>
           <field name="state"/>
           <field name="note"/>
-        </tree>
+        </list>
       </field>
     </record>
 
-    <!-- ===== Search ===== -->
+    <!-- Search -->
     <record id="view_kh_approval_request_search" model="ir.ui.view">
       <field name="name">kh.approval.request.search</field>
       <field name="model">kh.approval.request</field>
@@ -34,7 +34,7 @@
       </field>
     </record>
 
-    <!-- ===== List ===== -->
+    <!-- List -->
     <record id="view_kh_approval_request_list" model="ir.ui.view">
       <field name="name">kh.approval.request.list</field>
       <field name="model">kh.approval.request</field>
@@ -51,7 +51,7 @@
       </field>
     </record>
 
-    <!-- ===== Form (references the line subview via 'views' attribute) ===== -->
+    <!-- Form -->
     <record id="view_kh_approval_request_form_base" model="ir.ui.view">
       <field name="name">kh.approval.request.form</field>
       <field name="model">kh.approval.request</field>
@@ -88,10 +88,10 @@
 
             <notebook>
               <page string="Approval Steps" name="approval_steps">
-                <!-- Do NOT embed a <tree>; just point to the subview -->
+                <!-- Reference the subview via 'views' with list key -->
                 <field name="approval_line_ids"
                        context="{'default_request_id': id}"
-                       views="{'tree': 'kh_approvals.view_kh_approval_line_tree'}"/>
+                       views="{'list': 'kh_approvals.view_kh_approval_line_list'}"/>
               </page>
             </notebook>
           </sheet>
