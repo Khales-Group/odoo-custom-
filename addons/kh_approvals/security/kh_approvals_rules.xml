@@ -26,11 +26,18 @@
     <field name="perm_unlink" eval="1"/>
   </record>
 
-  <!-- Lines: user sees lines of their own requests OR where they're the approver -->
+  <!-- Lines: user must see ALL lines of any request they own OR can approve -->
   <record id="rule_kh_line_own_or_approver" model="ir.rule">
-    <field name="name">Lines: Own request or approver</field>
+    <field name="name">Lines: All lines of readable requests</field>
     <field name="model_id" ref="model_kh_approval_line"/>
-    <field name="domain_force">[('request_id.id', 'in', user.env['kh.approval.request'].search([]).ids)]</field>
+    <!-- Key idea:
+         - If I'm the requester -> show all lines on my requests.
+         - If I'm one of the approvers on a request -> show ALL lines on that request,
+           not just my own step. -->
+    <field name="domain_force">[ '|',
+      ('request_id.requester_id', '=', user.id),
+      ('request_id.approval_line_ids.approver_id', '=', user.id)
+    ]</field>
     <field name="groups" eval="[(4, ref('base.group_user'))]"/>
     <field name="perm_read" eval="1"/>
     <field name="perm_write" eval="1"/>
