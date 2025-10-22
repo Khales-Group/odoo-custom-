@@ -1,10 +1,10 @@
 <odoo>
-  <!-- Safely remove the broad company rules if they exist -->
+  <!-- Remove old broad company rules if they exist -->
   <delete id="mc_rule_request_company" model="ir.rule"/>
   <delete id="mc_rule_rule_company" model="ir.rule"/>
   <delete id="mc_rule_line_company" model="ir.rule"/>
 
-  <!-- REQUESTS: requester OR any approver on the request -->
+  <!-- REQUESTS: requester OR any approver -->
   <record id="rule_kh_request_own_or_approver" model="ir.rule">
     <field name="name">Requests: Own or Approver</field>
     <field name="model_id" ref="model_kh_approval_request"/>
@@ -33,7 +33,7 @@
     <field name="perm_unlink" eval="1"/>
   </record>
 
-  <!-- LINES: show ALL steps of any request I own OR I am one of its approvers -->
+  <!-- LINES: all steps of any request I own OR I am approver on -->
   <record id="rule_kh_line_own_or_approver" model="ir.rule">
     <field name="name">Lines: All steps for my readable requests</field>
     <field name="model_id" ref="model_kh_approval_line"/>

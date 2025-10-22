@@ -1,6 +1,22 @@
 <odoo>
   <data>
-    <!-- SEARCH -->
+
+    <!-- ===== Line subview (separate; no nesting in the form) ===== -->
+    <record id="view_kh_approval_line_tree" model="ir.ui.view">
+      <field name="name">kh.approval.line.tree</field>
+      <field name="model">kh.approval.line</field>
+      <field name="arch" type="xml">
+        <tree editable="bottom">
+          <field name="name"/>
+          <field name="approver_id"/>
+          <field name="required"/>
+          <field name="state"/>
+          <field name="note"/>
+        </tree>
+      </field>
+    </record>
+
+    <!-- ===== Search ===== -->
     <record id="view_kh_approval_request_search" model="ir.ui.view">
       <field name="name">kh.approval.request.search</field>
       <field name="model">kh.approval.request</field>
@@ -8,11 +24,7 @@
         <search>
           <filter name="my_requests" string="My Requests" domain="[('requester_id','=',uid)]"/>
           <filter name="to_approve" string="To Approve"
-                  domain="[
-                    '&amp;',
-                    ('approval_line_ids.approver_id','=',uid),
-                    ('approval_line_ids.state','=','pending')
-                  ]"/>
+                  domain="[('approval_line_ids.approver_id','=',uid), ('approval_line_ids.state','=','pending')]"/>
           <separator/>
           <field name="state"/>
           <field name="requester_id"/>
@@ -22,7 +34,7 @@
       </field>
     </record>
 
-    <!-- LIST -->
+    <!-- ===== List ===== -->
     <record id="view_kh_approval_request_list" model="ir.ui.view">
       <field name="name">kh.approval.request.list</field>
       <field name="model">kh.approval.request</field>
@@ -39,31 +51,22 @@
       </field>
     </record>
 
-    <!-- FORM (base, NO inherit_id) -->
+    <!-- ===== Form (references the line subview via 'views' attribute) ===== -->
     <record id="view_kh_approval_request_form_base" model="ir.ui.view">
       <field name="name">kh.approval.request.form</field>
       <field name="model">kh.approval.request</field>
-      <field name="priority" eval="20"/>
       <field name="arch" type="xml">
         <form string="Approval Request">
           <header>
-            <button name="action_submit"
-                    type="object"
-                    string="Submit"
-                    class="oe_highlight"
-                    invisible="state != 'draft'"/>
-            <button name="action_approve_request"
-                    type="object"
-                    string="Approve"
+            <button name="action_submit" type="object" string="Submit"
+                    class="oe_highlight" attrs="{'invisible': [('state','!=','draft')]}"/>
+            <button name="action_approve_request" type="object" string="Approve"
                     class="btn-primary"
-                    invisible="state != 'in_review' or not is_current_user_approver"/>
-            <button name="action_reject_request"
-                    type="object"
-                    string="Reject"
+                    attrs="{'invisible': ['|', ('state','!=','in_review'), ('is_current_user_approver','=',False)]}"/>
+            <button name="action_reject_request" type="object" string="Reject"
                     class="btn-secondary"
-                    invisible="state != 'in_review' or not is_current_user_approver"/>
-            <field name="state" widget="statusbar"
-                   statusbar_visible="draft,in_review,approved,rejected"/>
+                    attrs="{'invisible': ['|', ('state','!=','in_review'), ('is_current_user_approver','=',False)]}"/>
+            <field name="state" widget="statusbar" statusbar_visible="draft,in_review,approved,rejected"/>
           </header>
 
           <sheet>
@@ -82,28 +85,16 @@
                        options="{'no_create_edit': True}"/>
               </group>
             </group>
+
+            <notebook>
+              <page string="Approval Steps" name="approval_steps">
+                <!-- Do NOT embed a <tree>; just point to the subview -->
+                <field name="approval_line_ids"
+                       context="{'default_request_id': id}"
+                       views="{'tree': 'kh_approvals.view_kh_approval_line_tree'}"/>
+              </page>
+            </notebook>
           </sheet>
-
-          <notebook>
-            <page string="Approval Steps" name="approval_steps">
-              <!-- For regular users, show a read-only HTML overview that bypasses record rules -->
-              <field name="steps_overview_html"
-                     groups="!kh_approvals.group_kh_approvals_manager"/>
-
-              <!-- For managers, show the editable list for administration -->
-              <field name="approval_line_ids"
-                     context="{'default_request_id': id}"
-                     groups="kh_approvals.group_kh_approvals_manager">
-                <tree editable="bottom">
-                  <field name="name"/>
-                  <field name="approver_id"/>
-                  <field name="required"/>
-                  <field name="state"/>
-                </tree>
-              </field>
-
-            </page>
-          </notebook>
 
           <chatter>
             <field name="message_follower_ids"/>
@@ -113,5 +104,6 @@
         </form>
       </field>
     </record>
+
   </data>
 </odoo>
