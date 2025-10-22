@@ -67,6 +67,10 @@ class KhApprovalRequest(models.Model):
         required=True,
         tracking=True,  # tracking kept, but we mute it on write
     )
+    revision = fields.Integer(default=0, tracking=True)
+    last_revised_by = fields.Many2one('res.users', readonly=True)
+    last_revised_on = fields.Datetime(readonly=True)
+    
 
     # Single rule selector (rule defines company/department/approver sequence)
     rule_id = fields.Many2one(
@@ -159,6 +163,11 @@ class KhApprovalRequest(models.Model):
             else:
                 rec.steps_overview_html = "<i>No approval steps.</i>"
 
+    def _critical_fields(self):
+        """Fields that, if changed, should trigger a new approval cycle."""
+        return {'name', 'amount', 'currency_id', 'company_id', 'department_id', 'rule_id'}
+
+
     # -------------------------------------------------------------------------
     # ORM overrides
     # -------------------------------------------------------------------------
@@ -192,6 +201,22 @@ class KhApprovalRequest(models.Model):
             if rec.state not in ("draft", "rejected"):
                 raise UserError(_("You can delete only Draft or Rejected requests."))
         return super().unlink()
+
+    def write(self, vals):
+        """
+        Block edits to critical fields once submitted, unless in Draft or we’re doing a controlled transition.
+        """
+        critical = self._critical_fields()
+        # if any critical field is being changed
+        if critical.intersection(vals.keys()):
+            for rec in self:
+                if rec.state != 'draft':
+                    # only allow if explicitly done by our own server-side flows with a context flag
+                    if not self.env.context.get('kh_allow_write_outside_draft'):
+                        raise UserError(_("You cannot edit request details after submission. "
+                                          "Use 'Revise' to return to Draft, edit, and re-submit."))
+        return super().write(vals)
+
 
     # -------------------------------------------------------------------------
     # Helpers - Links
@@ -408,6 +433,57 @@ class KhApprovalRequest(models.Model):
                 partner_ids=[rec.requester_id.partner_id.id],  # Ping requester only
             )
             rec._notify_first_pending()
+        return True
+
+    def action_revise_request(self):
+        """
+        Requester turns a non-draft request back to Draft to edit safely.
+        - Allowed for owner only
+        - Closes activities
+        - Clears approval lines (or reset to pending)
+        - Increments revision
+        - Notifies followers and previous approvers
+        """
+        for rec in self:
+            if rec.requester_id.id != self.env.uid:
+                raise AccessError(_("Only the requester can revise this request."))
+            if rec.state not in ('in_review', 'approved', 'rejected'):
+                raise UserError(_("Only non-Draft requests can be revised."))
+
+            # Collect previous approvers to notify that approvals are cleared
+            prev_approver_partners = rec.approval_line_ids.mapped('approver_id.partner_id')
+
+            # Close all open todos
+            rec._close_all_todos()
+
+            # Clear approval lines so the next Submit generates fresh ones
+            rec.approval_line_ids.sudo().unlink()
+
+            # Go back to draft and bump revision
+            rec.with_context(tracking_disable=True).write({
+                'state': 'draft',
+                'revision': rec.revision + 1,
+                'last_revised_by': self.env.user.id,
+                'last_revised_on': fields.Datetime.now(),
+            })
+
+            # Notify: followers + previous approvers
+            rec._post_note(
+                _("✏️ Request revised by <b>%s</b>. All approvals have been reset.<br/>"
+                  "Revision: <b>%s</b>") % (self.env.user.name, rec.revision),
+                partner_ids=rec.message_follower_ids.mapped("partner_id").ids,
+            )
+            if prev_approver_partners:
+                rec._notify_partner(
+                    partner=prev_approver_partners[0],  # message_notify can take list; we’ll use _post_note to all
+                    body_html=_("✏️ <b>Revised</b>: <a href='%s'>%s</a> — approvals were reset.") % (rec._deeplink(), rec.name),
+                    subject=rec.name,
+                )
+                # send to the rest via one silent note to avoid spamming
+                rec._post_note(
+                    _("Revised and approvals reset."),
+                    partner_ids=prev_approver_partners.ids,
+                )
         return True
 
     def action_withdraw_request(self):
