@@ -339,7 +339,10 @@ class KhApprovalRequest(models.Model):
                 rec._ensure_followers()
             # 🔇 Avoid email from tracking on state change
             rec.with_context(tracking_disable=True).write({"state": "in_review"})
-            rec._post_note(_("Request submitted for approval."))
+            rec._post_note(
+                _("Request submitted for approval."),
+                partner_ids=[rec.requester_id.partner_id.id], # Ping requester
+            )
             rec._notify_first_pending()
         return True
 
