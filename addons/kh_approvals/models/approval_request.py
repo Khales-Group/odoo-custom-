@@ -154,12 +154,26 @@ class KhApprovalRequest(models.Model):
                     rec.with_context(mail_post_autofollow=True).message_subscribe(
                         partner_ids=partners.ids)
 
+    def _activity_done_silent(self, activity):
+        """
+        Mark an activity as done and post feedback silently (NO EMAIL).
+        This bypasses the standard action_feedback which can trigger emails.
+        """
+        self.ensure_one()
+        # Post the feedback message silently first
+        self.with_context(mail_activity_quick_update=True)._post_note(
+            body_html=f"<div>{activity.activity_type_id.name}: Done</div>",
+            partner_ids=self.message_follower_ids.mapped("partner_id").ids,
+        )
+        # Unlink the activity
+        activity.unlink()
+
     def _close_my_open_todos(self):
         """Mark my open To-Do activities on this request as done for the current user."""
         for rec in self:
             acts = rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid)
-            for a in acts:
-                a.action_feedback(feedback=_("Done"))
+            if acts:
+                rec._activity_done_silent(acts)
 
     def _dm_ping(self, partner, body_html):
         """
