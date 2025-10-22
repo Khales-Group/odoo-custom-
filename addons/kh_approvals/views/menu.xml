@@ -38,9 +38,9 @@
   <field name="context">{'search_default_to_approve': 1}</field>
 
   <!-- 👇 add -->
-  <field name="views">
-    [(ref('view_kh_approval_request_list'), 'list'),
-     (ref('view_kh_approval_request_form_base'), 'form')]
-  </field>
-  <field name="view_id" ref="view_kh_approval_request_form_base"/>
+ <field name="views">
+  [(ref('view_kh_approval_request_list'), 'list'),
+   (ref('view_kh_approval_request_form_base'), 'form')]
+</field>
+<field name="view_id" ref="view_kh_approval_request_form_base"/>
 </record>
