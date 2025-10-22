@@ -55,7 +55,7 @@ class KhApprovalRequest(models.Model):
         ],
         default="draft",
         required=True,
-        tracking=True,  # tracking is fine; we'll disable it at write-time to avoid emails
+        tracking=True,
     )
 
     # Single rule selector (rule defines company/department/approver sequence)
@@ -71,14 +71,6 @@ class KhApprovalRequest(models.Model):
     approval_line_ids = fields.One2many(
         "kh.approval.line", "request_id", string="Approval Steps", copy=False
     )
-
-    # -------------------------------------------------------------------------
-    # Helpers - Links
-    # -------------------------------------------------------------------------
-    def _deeplink(self):
-        """Return a stable /web# deeplink to this record (form view)."""
-        self.ensure_one()
-        return f"/web#id={self.id}&model=kh.approval.request&view_type=form"
 
     # Always-visible, read-only HTML snapshot of all steps (built with sudo)
     steps_overview_html = fields.Html(
@@ -157,20 +149,49 @@ class KhApprovalRequest(models.Model):
                 rec.steps_overview_html = "<i>No approval steps.</i>"
 
     # -------------------------------------------------------------------------
+    # ORM overrides
+    # -------------------------------------------------------------------------
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Assign company, department (from rule if empty), and company-scoped name/sequence."""
+        for vals in vals_list:
+            vals.setdefault("company_id", self.env.company.id)
+
+            # name from sequence, scoped by company
+            if not vals.get("name"):
+                seq = self.env["ir.sequence"].with_context(
+                    force_company=vals["company_id"]
+                ).next_by_code("kh.approval.request")
+                vals["name"] = seq or _("New")
+
+            # auto-pick department from chosen rule if left empty
+            if vals.get("rule_id") and not vals.get("department_id"):
+                rule = self.env["kh.approval.rule"].browse(vals["rule_id"])
+                vals["department_id"] = rule.department_id.id
+        return super().create(vals_list)
+
+    # -------------------------------------------------------------------------
+    # Helpers - Links
+    # -------------------------------------------------------------------------
+    def _deeplink(self):
+        """Return a stable /web# deeplink to this record (form view)."""
+        self.ensure_one()
+        return f"/web#id={self.id}&model=kh.approval.request&view_type=form"
+
+    # -------------------------------------------------------------------------
     # Helpers - Chatter & notifications (NO EMAIL)
     # -------------------------------------------------------------------------
     def _post_note(self, body_html, partner_ids=None):
         """
         Post an INTERNAL NOTE only (no email, no auto-subscribe).
-        Appears in chatter & Discuss/Inbox; safe on servers without SMTP.
+        Appears in chatter & Discuss/Inbox.
         """
         if partner_ids:
-            # Notify specific partners FROM the document
             self.message_notify(
                 partner_ids=partner_ids,
                 body=body_html,
                 subject=self.name,
-                subtype_xmlid="mail.mt_note", # Use mt_note for internal notes
+                subtype_xmlid="mail.mt_note",
                 email_layout_xmlid="mail.mail_notification_light",
             )
         else:
@@ -191,7 +212,7 @@ class KhApprovalRequest(models.Model):
             partner_ids=[partner.id],
             body=body_html,
             subject=subject or self.name,
-            subtype_xmlid="mail.mt_comment", # Use mt_comment for more prominent pings
+            subtype_xmlid="mail.mt_comment",
             email_layout_xmlid="mail.mail_notification_light",  # no SMTP
         )
 
@@ -231,18 +252,18 @@ class KhApprovalRequest(models.Model):
         - Create/ensure a To-Do activity (no extra chatter spam).
         - Send ONE inbox/Chrome notification from the document (message_notify).
         """
+        todo_type = self.env.ref("mail.mail_activity_data_todo")
         for rec in self:
             line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
-            if not line or not line.approver_id or line.notified:
+            # Safe check for 'notified' even if column hasn't been added yet
+            if not line or not line.approver_id or bool(getattr(line, "notified", False)):
                 continue
 
             # 1) Ensure a single open To-Do for this approver on this request
-            #    (no chatter ping here)
             existing = rec.activity_ids.filtered(
-                lambda a: a.user_id.id == line.approver_id.id and a.activity_type_id.xml_id == "mail.mail_activity_data_todo"
+                lambda a: a.user_id.id == line.approver_id.id and a.activity_type_id.id == todo_type.id
             )[:1]
             if not existing:
-                # schedule without causing extra notifications (use savepoint + minimal fields)
                 with rec.env.cr.savepoint():
                     rec.activity_schedule(
                         "mail.mail_activity_data_todo",
@@ -261,12 +282,16 @@ class KhApprovalRequest(models.Model):
                     partner_ids=[line.approver_id.partner_id.id],
                     body=html,
                     subject=rec.name,
-                    subtype_xmlid="mail.mt_comment", # Use mt_comment for more prominent pings
-                    email_layout_xmlid="mail.mail_notification_light",  # no SMTP
+                    subtype_xmlid="mail.mt_comment",
+                    email_layout_xmlid="mail.mail_notification_light",
                 )
 
-            # 3) Mark this step as already notified (prevents duplicates)
-            line.sudo().write({"notified": True})
+            # 3) Mark this step as already notified (guarded for safety pre-upgrade)
+            try:
+                line.sudo().write({"notified": True})
+            except Exception:
+                # If the column doesn't exist yet, skip silently — avoids RPC_ERROR.
+                pass
 
     # -------------------------------------------------------------------------
     # Steps generation
@@ -304,8 +329,9 @@ class KhApprovalRequest(models.Model):
                     "name": step.name or step.approver_id.name,
                     "approver_id": step.approver_id.id,
                     "required": True,
-                    "state": "pending", # New lines are pending by default
+                    "state": "pending",
                     "company_id": rec.company_id.id,
+                    # notified defaults to False on create
                 })
 
             if not vals:
@@ -326,8 +352,9 @@ class KhApprovalRequest(models.Model):
                 rec._ensure_followers()
             # 🔇 Avoid email from tracking on state change
             rec.with_context(tracking_disable=True).write({"state": "in_review"})
-            rec._post_note(_("Request submitted for approval."),
-                partner_ids=[rec.requester_id.partner_id.id],  # Ping requester
+            rec._post_note(
+                _("Request submitted for approval."),
+                partner_ids=[rec.requester_id.partner_id.id],  # Ping requester only
             )
             rec._notify_first_pending()
         return True
@@ -347,7 +374,8 @@ class KhApprovalRequest(models.Model):
             # Approve my step (sudo -> users are read-only on lines)
             line.sudo().write({"state": "approved"})
 
-            rec._post_note(_("Approved by <b>%s</b>.") % self.env.user.name,
+            rec._post_note(
+                _("Approved by <b>%s</b>.") % self.env.user.name,
                 partner_ids=[rec.requester_id.partner_id.id],
             )
 
@@ -356,7 +384,8 @@ class KhApprovalRequest(models.Model):
             if next_line:
                 rec._notify_first_pending()
             else:
-                rec.with_context(tracking_disable=True).write({"state": "approved"}) # 🔇 Avoid email from tracking on state change
+                # 🔇 Avoid email from tracking on state change
+                rec.with_context(tracking_disable=True).write({"state": "approved"})
                 rec._post_note(
                     _("✅ Request approved."),
                     partner_ids=[rec.requester_id.partner_id.id],
@@ -445,3 +474,6 @@ class KhApprovalLine(models.Model):
         required=True,
     )
     note = fields.Char()
+
+    # NEW: each approver is notified only once
+    notified = fields.Boolean(default=False, copy=False)
