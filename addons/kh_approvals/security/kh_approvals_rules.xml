@@ -1,5 +1,5 @@
 <odoo>
-  <!-- Remove the broad company rules if they exist (safe if they don't) -->
+  <!-- Safely remove the broad company rules if they exist -->
   <delete id="mc_rule_request_company" model="ir.rule"/>
   <delete id="mc_rule_rule_company" model="ir.rule"/>
   <delete id="mc_rule_line_company" model="ir.rule"/>
@@ -26,7 +26,7 @@
     <field name="name">Requests: Manager All</field>
     <field name="model_id" ref="model_kh_approval_request"/>
     <field name="domain_force">[(1,'=',1)]</field>
-    <field name="groups" eval="[(4, ref='kh_approvals.group_kh_approvals_manager'))]"/>
+    <field name="groups" eval="[(4, ref('kh_approvals.group_kh_approvals_manager'))]"/>
     <field name="perm_read" eval="1"/>
     <field name="perm_write" eval="1"/>
     <field name="perm_create" eval="1"/>
