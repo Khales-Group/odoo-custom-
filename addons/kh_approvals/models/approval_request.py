@@ -1,4 +1,14 @@
 # -*- coding: utf-8 -*-
+# Khales Approval Request — single Chrome ping per step + throttle
+#
+# Key changes:
+# - _ensure_followers(): silent subscription (no noisy subtypes)
+# - _recently_notified(): throttle helper (default 10 minutes)
+# - _notify_first_pending(): relies on ONE source of notification:
+#       * default = Activity only (Desktop/Inbox ping via activity)
+#       * optional chatter ping if System Parameter kh.approval.notify_mode = 'message'
+#   Also throttled to avoid duplicate pings if called twice.
+#
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
 
@@ -217,14 +227,15 @@ class KhApprovalRequest(models.Model):
         )
 
     def _ensure_followers(self):
-        """Subscribe requester + all approvers so they see inbox notifications."""
+        """Subscribe requester + all approvers so they see inbox notifications, silently."""
         for rec in self:
-            partners = rec.requester_id.partner_id
-            partners |= rec.approval_line_ids.mapped("approver_id.partner_id")
+            partners = rec.requester_id.partner_id | rec.approval_line_ids.mapped("approver_id.partner_id")
             if partners:
                 with rec.env.cr.savepoint():
-                    rec.with_context(mail_post_autofollow=True).message_subscribe(
-                        partner_ids=partners.ids
+                    # Silent subscription: avoid auto-follow subtypes to prevent extra chatter
+                    rec.with_context(mail_post_autofollow=False).message_subscribe(
+                        partner_ids=partners.ids,
+                        subtype_ids=[],  # no default subtypes => quieter
                     )
 
     def _activity_done_silent(self, activity):
@@ -246,18 +257,46 @@ class KhApprovalRequest(models.Model):
             if acts:
                 rec._activity_done_silent(acts)
 
+    # -------------------------------------------------------------------------
+    # Throttle helper
+    # -------------------------------------------------------------------------
+    def _recently_notified(self, partner, minutes=10):
+        """Return True if we already sent this partner a 'needs approval' ping recently."""
+        self.ensure_one()
+        Message = self.env['mail.message'].sudo()
+        now = fields.Datetime.now()
+        cutoff = fields.Datetime.subtract(now, minutes=minutes)
+        domain = [
+            ('model', '=', self._name),
+            ('res_id', '=', self.id),
+            ('message_type', '=', 'comment'),
+            ('partner_ids', 'in', [partner.id]),
+            ('body', 'ilike', 'Approval needed'),
+            ('date', '>=', cutoff),
+        ]
+        return bool(Message.search_count(domain))
+
     def _notify_first_pending(self):
         """
-        Create/ensure ONE To-Do for the current pending approver,
-        and send exactly ONE inbox/Chrome notification from the document.
+        Ensure ONE To-Do for the current pending approver.
+        Default behavior: rely on the Activity as the single Chrome/In-Box notification.
+        Optional chatter ping if System Parameter kh.approval.notify_mode = 'message'.
+        Throttled to avoid duplicates if method runs twice.
         """
         todo_type = self.env.ref("mail.mail_activity_data_todo", raise_if_not_found=False)
+        icp = self.env['ir.config_parameter'].sudo()
+        notify_mode = icp.get_param('kh.approval.notify_mode', 'activity')  # 'activity' | 'message'
+
         for rec in self:
             line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
             if not line or not line.approver_id:
                 continue
 
-            # 1) Ensure a single open To-Do for this approver on this request
+            # 0) Throttle: if we pinged this approver for this request very recently, skip
+            if rec._recently_notified(line.approver_id.partner_id, minutes=10):
+                continue
+
+            # 1) Ensure exactly one open To-Do assigned to the approver on this request
             existing = rec.activity_ids
             if todo_type:
                 existing = existing.filtered(
@@ -265,6 +304,7 @@ class KhApprovalRequest(models.Model):
                 )
             else:
                 existing = existing.filtered(lambda a: a.user_id.id == line.approver_id.id)
+
             if not existing[:1]:
                 with rec.env.cr.savepoint():
                     rec.activity_schedule(
@@ -274,19 +314,19 @@ class KhApprovalRequest(models.Model):
                         note=_("Please review approval request: %s") % rec.name,
                     )
 
-            # 2) ONE desktop/inbox notification from the document (no extra chatter pings)
-            html = _(
-                "🔔 <b>Approval needed</b> for: <a href='%(link)s'>%(name)s</a><br/>Requester: %(req)s"
-            ) % {"link": rec._deeplink(), "name": rec.name, "req": rec.requester_id.name}
-
-            with rec.env.cr.savepoint():
-                rec.message_notify(
-                    partner_ids=[line.approver_id.partner_id.id],
-                    body=html,
-                    subject=rec.name,
-                    subtype_xmlid="mail.mt_comment",
-                    email_layout_xmlid="mail.mail_notification_light",
-                )
+            # 2) Optional chatter ping (OFF by default). If enabled, still one ping & throttled.
+            if notify_mode == 'message':
+                html = _(
+                    "🔔 <b>Approval needed</b> for: <a href='%(link)s'>%(name)s</a><br/>Requester: %(req)s"
+                ) % {"link": rec._deeplink(), "name": rec.name, "req": rec.requester_id.name}
+                with rec.env.cr.savepoint():
+                    rec.message_notify(
+                        partner_ids=[line.approver_id.partner_id.id],
+                        body=html,
+                        subject=rec.name,
+                        subtype_xmlid="mail.mt_comment",
+                        email_layout_xmlid="mail.mail_notification_light",
+                    )
 
     # -------------------------------------------------------------------------
     # Steps generation
