@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
-# Khales Approval Request — single Chrome ping per step + throttle
+# Khales Approval Request — single Chrome ping per step + throttle + delete/withdraw features
 #
-# Key changes:
-# - _ensure_followers(): silent subscription (no noisy subtypes)
-# - _recently_notified(): throttle helper (default 10 minutes)
-# - _notify_first_pending(): relies on ONE source of notification:
-#       * default = Activity only (Desktop/Inbox ping via activity)
-#       * optional chatter ping if System Parameter kh.approval.notify_mode = 'message'
-#   Also throttled to avoid duplicate pings if called twice.
+# New in this version:
+# - unlink(): only requester can delete when state in ('draft','rejected')
+# - action_withdraw_request(): requester can withdraw from in_review -> draft (cleans activities)
+# - Approver tools:
+#     * action_opt_out_as_approver(): current pending approver can skip (line -> 'withdrawn') and notify next
+#     * action_unapprove_my_step(): approver can revert their own 'approved' line to 'pending'
+#       IF no subsequent line is approved/rejected (i.e., flow hasn’t moved past them)
 #
 from odoo import api, fields, models, _
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, AccessError
 
 
 # ============================================================================
@@ -115,6 +115,7 @@ class KhApprovalRequest(models.Model):
             "pending":  "#d97706",   # amber
             "approved": "#059669",   # green
             "rejected": "#dc2626",   # red
+            "withdrawn": "#6b7280",  # gray
         }
         for rec in self:
             rows = []
@@ -180,6 +181,18 @@ class KhApprovalRequest(models.Model):
                 vals["department_id"] = rule.department_id.id
         return super().create(vals_list)
 
+    def unlink(self):
+        """
+        Only requester can delete; allowed when state in ('draft','rejected').
+        This keeps audit intact for processed requests.
+        """
+        for rec in self:
+            if rec.requester_id.id != self.env.uid:
+                raise AccessError(_("Only the requester can delete this request."))
+            if rec.state not in ("draft", "rejected"):
+                raise UserError(_("You can delete only Draft or Rejected requests."))
+        return super().unlink()
+
     # -------------------------------------------------------------------------
     # Helpers - Links
     # -------------------------------------------------------------------------
@@ -232,16 +245,14 @@ class KhApprovalRequest(models.Model):
             partners = rec.requester_id.partner_id | rec.approval_line_ids.mapped("approver_id.partner_id")
             if partners:
                 with rec.env.cr.savepoint():
-                    # Silent subscription: avoid auto-follow subtypes to prevent extra chatter
                     rec.with_context(mail_post_autofollow=False).message_subscribe(
                         partner_ids=partners.ids,
-                        subtype_ids=[],  # no default subtypes => quieter
+                        subtype_ids=[],  # silent
                     )
 
     def _activity_done_silent(self, activity):
         """
         Mark an activity as done and post feedback silently (NO EMAIL).
-        This bypasses the standard action_feedback which can trigger emails.
         """
         self.ensure_one()
         self.with_context(mail_activity_quick_update=True)._post_note(
@@ -256,6 +267,12 @@ class KhApprovalRequest(models.Model):
             acts = rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid)
             if acts:
                 rec._activity_done_silent(acts)
+
+    def _close_all_todos(self):
+        """Close all To-Do activities on this request (any user)."""
+        for rec in self:
+            for act in rec.activity_ids:
+                rec._activity_done_silent(act)
 
     # -------------------------------------------------------------------------
     # Throttle helper
@@ -292,11 +309,11 @@ class KhApprovalRequest(models.Model):
             if not line or not line.approver_id:
                 continue
 
-            # 0) Throttle: if we pinged this approver for this request very recently, skip
+            # 0) Throttle
             if rec._recently_notified(line.approver_id.partner_id, minutes=10):
                 continue
 
-            # 1) Ensure exactly one open To-Do assigned to the approver on this request
+            # 1) Ensure exactly one open To-Do
             existing = rec.activity_ids
             if todo_type:
                 existing = existing.filtered(
@@ -314,7 +331,7 @@ class KhApprovalRequest(models.Model):
                         note=_("Please review approval request: %s") % rec.name,
                     )
 
-            # 2) Optional chatter ping (OFF by default). If enabled, still one ping & throttled.
+            # 2) Optional chatter ping (OFF by default)
             if notify_mode == 'message':
                 html = _(
                     "🔔 <b>Approval needed</b> for: <a href='%(link)s'>%(name)s</a><br/>Requester: %(req)s"
@@ -374,7 +391,7 @@ class KhApprovalRequest(models.Model):
             self.env["kh.approval.line"].sudo().create(vals)
 
     # -------------------------------------------------------------------------
-    # Actions (buttons) — NO EMAIL paths
+    # Actions (buttons)
     # -------------------------------------------------------------------------
     def action_submit(self):
         """Requester submits: build steps, move to in_review, notify first approver."""
@@ -391,6 +408,26 @@ class KhApprovalRequest(models.Model):
                 partner_ids=[rec.requester_id.partner_id.id],  # Ping requester only
             )
             rec._notify_first_pending()
+        return True
+
+    def action_withdraw_request(self):
+        """
+        Requester withdraws entire request back to Draft (from in_review).
+        Closes all activities and pings followers.
+        """
+        for rec in self:
+            if rec.requester_id.id != self.env.uid:
+                raise AccessError(_("Only the requester can withdraw this request."))
+            if rec.state != "in_review":
+                raise UserError(_("Only requests In Review can be withdrawn."))
+            # Reset lines to pending
+            rec.approval_line_ids.sudo().write({"state": "pending", "note": False})
+            rec._close_all_todos()
+            rec.with_context(tracking_disable=True).write({"state": "draft"})
+            rec._post_note(
+                _("⏪ Request withdrawn by <b>%s</b>. Back to Draft.") % self.env.user.name,
+                partner_ids=rec.message_follower_ids.mapped("partner_id").ids,
+            )
         return True
 
     def action_approve_request(self):
@@ -458,6 +495,70 @@ class KhApprovalRequest(models.Model):
             )
         return True
 
+    # ---- Approver extra controls ------------------------------------------------
+    def action_opt_out_as_approver(self):
+        """
+        Current pending approver withdraws themselves (line -> 'withdrawn').
+        Flow jumps to next approver (if any) and notifies them.
+        """
+        for rec in self:
+            if rec.state != "in_review":
+                raise UserError(_("Request must be In Review."))
+
+            line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
+            if not line or line.approver_id.id != self.env.uid:
+                raise UserError(_("Only the current pending approver can withdraw."))
+
+            rec._close_my_open_todos()
+            line.sudo().write({"state": "withdrawn", "note": _("Approver withdrew")})
+
+            rec._post_note(
+                _("🚫 <b>%s</b> withdrew from approving.") % self.env.user.name,
+                partner_ids=rec.message_follower_ids.mapped("partner_id").ids,
+            )
+
+            # Move to next approver (if any)
+            next_line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
+            if next_line:
+                rec._notify_first_pending()
+            else:
+                # If everyone withdrew, consider auto-approve? We keep it In Review so requester can adjust.
+                pass
+        return True
+
+    def action_unapprove_my_step(self):
+        """
+        An approver can revert their own APPROVED step back to PENDING,
+        ONLY if no subsequent steps are approved/rejected yet.
+        """
+        for rec in self:
+            if rec.state not in ("in_review", "approved"):
+                raise UserError(_("Request must be In Review/Approved to revert."))
+
+            # Find the last approved/rejected/withdrawn order
+            lines = rec.approval_line_ids.sorted(key=lambda l: l.id)
+            my_line = lines.filtered(lambda l: l.approver_id.id == self.env.uid and l.state == "approved")[:1]
+            if not my_line:
+                raise UserError(_("You don't have an approved step to revert."))
+
+            # ensure all AFTER my_line are still pending
+            after = lines.filtered(lambda l: l.id > my_line.id)
+            if any(l.state in ("approved", "rejected") for l in after):
+                raise UserError(_("You cannot revert because later steps have already acted."))
+
+            # If request was marked 'approved' but our revert is allowed, bring it back to in_review
+            if rec.state == "approved":
+                rec.with_context(tracking_disable=True).write({"state": "in_review"})
+
+            # revert
+            my_line.sudo().write({"state": "pending", "note": _("Approval reverted by approver")})
+            rec._post_note(
+                _("↩️ Approval by <b>%s</b> was reverted back to Pending.") % self.env.user.name,
+                partner_ids=rec.message_follower_ids.mapped("partner_id").ids,
+            )
+            rec._notify_first_pending()
+        return True
+
 
 # ============================================================================
 # Approval Rule (+ Step sequence)
@@ -503,7 +604,12 @@ class KhApprovalLine(models.Model):
     approver_id = fields.Many2one("res.users", required=True)
     required = fields.Boolean(default=True)
     state = fields.Selection(
-        [("pending", "Pending"), ("approved", "Approved"), ("rejected", "Rejected")],
+        [
+            ("pending", "Pending"),
+            ("approved", "Approved"),
+            ("rejected", "Rejected"),
+            ("withdrawn", "Withdrawn"),  # approver opted out
+        ],
         default="pending",
         required=True,
     )

@@ -59,6 +59,18 @@
         <form string="Approval Request">
           <header>
             <!-- Visible only in draft -->
+            <button name="action_withdraw_request" type="object" string="Withdraw"
+        class="btn-secondary"
+        attrs="{'invisible': ['|', ('state','!=','in_review'), ('requester_id','!=',uid)]}"/>
+
+<button name="action_opt_out_as_approver" type="object" string="Withdraw as Approver"
+        class="btn-secondary"
+        attrs="{'invisible': ['|', ('state','!=','in_review'), ('is_current_user_approver','=',False)]}"/>
+
+<button name="action_unapprove_my_step" type="object" string="Revert My Approval"
+        class="btn-secondary"
+        attrs="{'invisible': [('state','not in',('in_review','approved'))]}"/>
+
             <button name="action_submit" type="object" string="Submit"
                     class="oe_highlight" invisible="state != 'draft'"/>
 
