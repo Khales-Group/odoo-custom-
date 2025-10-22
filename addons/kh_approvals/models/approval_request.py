@@ -150,7 +150,9 @@ class KhApprovalRequest(models.Model):
             partners |= rec.approval_line_ids.mapped("approver_id.partner_id")
             if partners:
                 with rec.env.cr.savepoint():
-                    rec.message_subscribe(partner_ids=partners.ids)
+                    # Use mail_post_autofollow to prevent "You are now following" emails
+                    rec.with_context(mail_post_autofollow=True).message_subscribe(
+                        partner_ids=partners.ids)
 
     def _close_my_open_todos(self):
         """Mark my open To-Do activities on this request as done for the current user."""
