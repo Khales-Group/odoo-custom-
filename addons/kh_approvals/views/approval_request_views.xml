@@ -17,7 +17,7 @@
       </field>
     </record>
 
-    <!-- Search view (MOVE IT HERE, not in menu.xml) -->
+    <!-- SEARCH view (only here, not in menu.xml) -->
     <record id="view_kh_approval_request_search" model="ir.ui.view">
       <field name="name">kh.approval.request.search</field>
       <field name="model">kh.approval.request</field>
@@ -26,23 +26,22 @@
           <filter name="my_requests" string="My Requests"
                   domain="[('requester_id','=',uid)]"/>
           <filter name="to_approve" string="To Approve"
-                  domain="[('approval_line_ids.approver_id','=',uid),
-                          ('approval_line_ids.state','=','pending')]"/>
+                  domain="[('approval_line_ids.approver_id','=',uid), ('approval_line_ids.state','=','pending')]"/>
           <separator/>
           <field name="state"/>
           <field name="requester_id"/>
           <field name="company_id" groups="base.group_multi_company"/>
           <field name="department_id"/>
-          <!-- Date column available for filters -->
-          <field name="create_date"/>
-          <!-- Quick group-bys -->
-          <filter name="grp_state" string="Group by Status" context="{'group_by':'state'}"/>
-          <filter name="grp_dept" string="Group by Department" context="{'group_by':'department_id'}"/>
+          <!-- let users filter by created date -->
+          <field name="create_date" filter_domain="[]"/>
+          <!-- quick group-bys -->
+          <filter string="Group by Status" context="{'group_by':'state'}"/>
+          <filter string="Group by Department" context="{'group_by':'department_id'}"/>
         </search>
       </field>
     </record>
 
-    <!-- List view (add date + default sort) -->
+    <!-- LIST view (with default order & date column) -->
     <record id="view_kh_approval_request_list" model="ir.ui.view">
       <field name="name">kh.approval.request.list</field>
       <field name="model">kh.approval.request</field>
@@ -60,7 +59,7 @@
       </field>
     </record>
 
-    <!-- Form view -->
+    <!-- FORM view -->
     <record id="view_kh_approval_request_form_base" model="ir.ui.view">
       <field name="name">kh.approval.request.form</field>
       <field name="model">kh.approval.request</field>
@@ -72,7 +71,7 @@
                     class="oe_highlight"
                     invisible="state != 'draft'"/>
 
-            <!-- Approve/Reject only when in_review AND I'm the current approver -->
+            <!-- Approve/Reject ONLY for the current pending approver -->
             <button name="action_approve_request" type="object" string="Approve"
                     class="btn-primary"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
@@ -80,7 +79,7 @@
                     class="btn-secondary"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
 
-            <!-- Edit Request (owner only, not Draft) -->
+            <!-- Edit Request (owner-only) -->
             <button name="action_revise_request" type="object" string="Edit Request"
                     class="btn-secondary"
                     invisible="state == 'draft' or requester_id != uid"/>
@@ -92,20 +91,20 @@
           <sheet>
             <group>
               <group>
-                <field name="name" required="1"/>
+                <field name="name" required="1" readonly="state != 'draft'"/>
                 <field name="requester_id" readonly="1"/>
-                <field name="amount"/>
-                <field name="currency_id"/>
+                <field name="amount" readonly="state != 'draft'"/>
+                <field name="currency_id" readonly="state != 'draft'"/>
                 <field name="revision" readonly="1"/>
                 <field name="last_revised_by" readonly="1"/>
                 <field name="last_revised_on" readonly="1"/>
               </group>
               <group>
-                <field name="company_id" groups="base.group_multi_company"/>
-                <field name="department_id"/>
+                <field name="company_id" groups="base.group_multi_company" readonly="state != 'draft'"/>
+                <field name="department_id" readonly="state != 'draft'"/>
                 <field name="rule_id"
-                       domain="[('company_id','in',[False, company_id]), '|',
-                                ('department_id','=',False), ('department_id','=',department_id)]"
+                       readonly="state != 'draft'"
+                       domain="[('company_id','in',[False, company_id]), '|', ('department_id','=',False), ('department_id','=',department_id)]"
                        options="{'no_create_edit': True}"/>
               </group>
             </group>

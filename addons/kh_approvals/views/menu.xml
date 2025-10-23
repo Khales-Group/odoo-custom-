@@ -2,13 +2,12 @@
 <odoo>
   <data>
 
-    <!-- Window actions (now reference the search view that is in approval_request_views.xml) -->
-    <record id="action_kh_approval_requests_my" model="ir.actions.act_window">
+    <!-- Window actions (hard domains so 'My Requests' cannot show others) -->
+    <record id="action_kh_approval_requests_my_v2" model="ir.actions.act_window">
       <field name="name">📝 My Requests</field>
       <field name="res_model">kh.approval.request</field>
       <field name="view_mode">list,form</field>
       <field name="search_view_id" ref="kh_approvals.view_kh_approval_request_search"/>
-      <!-- HARD LOCK so this action never shows others' records -->
       <field name="domain">[('requester_id', '=', uid)]</field>
       <field name="context">{'search_default_my_requests': 1}</field>
       <field name="views">
@@ -20,14 +19,12 @@
       </field>
     </record>
 
-    <record id="action_kh_approval_requests_to_approve" model="ir.actions.act_window">
+    <record id="action_kh_approval_requests_to_approve_v2" model="ir.actions.act_window">
       <field name="name">✅ To Approve</field>
       <field name="res_model">kh.approval.request</field>
       <field name="view_mode">list,form</field>
       <field name="search_view_id" ref="kh_approvals.view_kh_approval_request_search"/>
-      <!-- Show only items where I'm the pending approver -->
-      <field name="domain">[('approval_line_ids.approver_id','=',uid),
-                             ('approval_line_ids.state','=','pending')]</field>
+      <field name="domain">[('approval_line_ids.approver_id','=',uid), ('approval_line_ids.state','=','pending')]</field>
       <field name="context">{'search_default_to_approve': 1}</field>
       <field name="views">
         [(ref('kh_approvals.view_kh_approval_request_list'), 'list'),
@@ -38,7 +35,7 @@
       </field>
     </record>
 
-    <record id="action_kh_approval_requests_all" model="ir.actions.act_window">
+    <record id="action_kh_approval_requests_all_v2" model="ir.actions.act_window">
       <field name="name">📚 All Requests</field>
       <field name="res_model">kh.approval.request</field>
       <field name="view_mode">list,form</field>
@@ -47,23 +44,41 @@
         [(ref('kh_approvals.view_kh_approval_request_list'), 'list'),
          (ref('kh_approvals.view_kh_approval_request_form_base'), 'form')]
       </field>
-      <field name="help" type="html">
-        <p>No records to show.</p>
-      </field>
     </record>
 
     <!-- Menus -->
     <menuitem id="menu_kh_approvals_root" name="Approvals" sequence="20"/>
-    <menuitem id="menu_kh_approvals_my" name="My Requests"
-              parent="menu_kh_approvals_root"
-              action="kh_approvals.action_kh_approval_requests_my" sequence="1"/>
-    <menuitem id="menu_kh_approvals_to_approve" name="To Approve"
-              parent="menu_kh_approvals_root"
-              action="kh_approvals.action_kh_approval_requests_to_approve" sequence="2"/>
-    <menuitem id="menu_kh_approvals_all" name="All Requests"
-              parent="menu_kh_approvals_root"
-              action="kh_approvals.action_kh_approval_requests_all" sequence="3"/>
 
-    <!-- keep your other menus (rules/departments) here -->
+    <menuitem id="menu_kh_approvals_my"
+              parent="menu_kh_approvals_root"
+              name="My Requests"
+              action="kh_approvals.action_kh_approval_requests_my_v2"
+              sequence="1"/>
+
+    <menuitem id="menu_kh_approvals_to_approve"
+              parent="menu_kh_approvals_root"
+              name="To Approve"
+              action="kh_approvals.action_kh_approval_requests_to_approve_v2"
+              sequence="2"/>
+
+    <menuitem id="menu_kh_approvals_all"
+              parent="menu_kh_approvals_root"
+              name="All Requests"
+              action="kh_approvals.action_kh_approval_requests_all_v2"
+              sequence="3"/>
+
+    <!-- Rules & Departments (menus only). Keep if you already have the actions. -->
+    <menuitem id="menu_kh_approvals_rules"
+              name="Rules"
+              parent="menu_kh_approvals_root"
+              action="kh_approvals.action_kh_approval_rules"
+              sequence="40"/>
+
+    <menuitem id="menu_kh_departments"
+              name="Departments"
+              parent="menu_kh_approvals_root"
+              action="kh_approvals.action_kh_departments"
+              sequence="50"/>
+
   </data>
 </odoo>
