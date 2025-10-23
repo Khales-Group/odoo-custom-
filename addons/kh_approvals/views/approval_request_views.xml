@@ -2,94 +2,121 @@
 <odoo>
   <data>
 
-    <!-- Rule Step subview -->
-    <record id="view_kh_approval_rule_step_list" model="ir.ui.view">
-      <field name="name">kh.approval.rule.step.list</field>
-      <field name="model">kh.approval.rule.step</field>
+    <!-- Line subview (list view) -->
+    <record id="view_kh_approval_line_list" model="ir.ui.view">
+      <field name="name">kh.approval.line.list</field>
+      <field name="model">kh.approval.line</field>
       <field name="arch" type="xml">
         <list editable="bottom">
-          <field name="sequence"/>
           <field name="name"/>
           <field name="approver_id"/>
+          <field name="required"/>
+          <field name="state"/>
+          <field name="note"/>
         </list>
       </field>
     </record>
 
-    <!-- Rule: search -->
-    <record id="view_kh_approval_rule_search" model="ir.ui.view">
-      <field name="name">kh.approval.rule.search</field>
-      <field name="model">kh.approval.rule</field>
+    <!-- Search -->
+    <record id="view_kh_approval_request_search" model="ir.ui.view">
+      <field name="name">kh.approval.request.search</field>
+      <field name="model">kh.approval.request</field>
       <field name="arch" type="xml">
         <search>
-          <field name="name"/>
-          <field name="active"/>
+          <filter name="my_requests" string="My Requests" domain="[('requester_id','=',uid)]"/>
+          <filter name="to_approve" string="To Approve"
+                  domain="[('approval_line_ids.approver_id','=',uid), ('approval_line_ids.state','=','pending')]"/>
+          <separator/>
+          <field name="state"/>
+          <field name="requester_id"/>
           <field name="company_id" groups="base.group_multi_company"/>
           <field name="department_id"/>
-          <separator/>
-          <filter string="Active" domain="[('active','=',True)]"/>
-          <filter string="Archived" domain="[('active','=',False)]"/>
-          <filter string="Group by Company" context="{'group_by':'company_id'}"/>
-          <filter string="Group by Department" context="{'group_by':'department_id'}"/>
         </search>
       </field>
     </record>
 
-    <!-- Rule: list -->
-    <record id="view_kh_approval_rule_list" model="ir.ui.view">
-      <field name="name">kh.approval.rule.list</field>
-      <field name="model">kh.approval.rule</field>
+    <!-- List -->
+    <record id="view_kh_approval_request_list" model="ir.ui.view">
+      <field name="name">kh.approval.request.list</field>
+      <field name="model">kh.approval.request</field>
       <field name="arch" type="xml">
         <list>
           <field name="name"/>
-          <field name="active"/>
+          <field name="requester_id"/>
+          <field name="amount"/>
+          <field name="currency_id"/>
           <field name="company_id" groups="base.group_multi_company"/>
           <field name="department_id"/>
-          <field name="min_amount"/>
-          <field name="currency_id"/>
+          <field name="state"/>
         </list>
       </field>
     </record>
 
-    <!-- Rule: form -->
-    <record id="view_kh_approval_rule_form" model="ir.ui.view">
-      <field name="name">kh.approval.rule.form</field>
-      <field name="model">kh.approval.rule</field>
+    <!-- Form (Odoo 17+: use 'invisible' not 'attrs') -->
+    <record id="view_kh_approval_request_form_base" model="ir.ui.view">
+      <field name="name">kh.approval.request.form</field>
+      <field name="model">kh.approval.request</field>
       <field name="arch" type="xml">
-        <form string="Approval Rule">
+        <form string="Approval Request">
+          <header>
+            <!-- Draft only -->
+            <button name="action_submit" type="object" string="Submit"
+                    class="oe_highlight"
+                    invisible="state != 'draft'"/>
+
+            <!-- Approve/Reject ONLY for the current pending approver -->
+            <button name="action_approve_request" type="object" string="Approve"
+                    class="btn-primary"
+                    invisible="state != 'in_review' or not is_current_user_approver"/>
+            <button name="action_reject_request" type="object" string="Reject"
+                    class="btn-secondary"
+                    invisible="state != 'in_review' or not is_current_user_approver"/>
+
+            <!-- Edit Request (owner-only) -->
+            <button name="action_revise_request" type="object" string="Edit Request"
+                    class="btn-secondary"
+                    invisible="state == 'draft' or requester_id != uid"/>
+
+            <field name="state" widget="statusbar" statusbar_visible="draft,in_review,approved,rejected"/>
+          </header>
+
           <sheet>
             <group>
               <group>
-                <field name="name"/>
-                <field name="active"/>
-                <field name="company_id" groups="base.group_multi_company"/>
-                <field name="department_id"/>
+                <field name="name" required="1" readonly="state != 'draft'"/>
+                <field name="requester_id" readonly="1"/>
+                <field name="amount" readonly="state != 'draft'"/>
+                <field name="currency_id" readonly="state != 'draft'"/>
+                <field name="revision" readonly="1"/>
+                <field name="last_revised_by" readonly="1"/>
+                <field name="last_revised_on" readonly="1"/>
               </group>
               <group>
-                <field name="min_amount"/>
-                <field name="currency_id"/>
+                <field name="company_id" groups="base.group_multi_company" readonly="state != 'draft'"/>
+                <field name="department_id" readonly="state != 'draft'"/>
+                <field name="rule_id"
+                       readonly="state != 'draft'"
+                       domain="[('company_id','in',[False, company_id]), '|', ('department_id','=',False), ('department_id','=',department_id)]"
+                       options="{'no_create_edit': True}"/>
               </group>
             </group>
 
             <notebook>
-              <page string="Steps">
-                <field name="step_ids" context="{'default_rule_id': active_id}"
-                       views="{'list': 'kh_approvals.view_kh_approval_rule_step_list'}"/>
+              <page string="Approval Steps" name="approval_steps">
+                <field name="approval_line_ids"
+                       context="{'default_request_id': id}"
+                       views="{'list': 'kh_approvals.view_kh_approval_line_list'}"/>
               </page>
             </notebook>
           </sheet>
+
+          <chatter>
+            <field name="message_follower_ids"/>
+            <field name="activity_ids"/>
+            <field name="message_ids"/>
+          </chatter>
         </form>
       </field>
-    </record>
-
-    <!-- Action (uses LIST, not tree) -->
-    <record id="action_kh_approval_rules" model="ir.actions.act_window">
-      <field name="name">Approval Rules</field>
-      <field name="res_model">kh.approval.rule</field>
-      <field name="view_mode">list,form</field>
-      <field name="search_view_id" ref="kh_approvals.view_kh_approval_rule_search"/>
-      <field name="views" eval="[(ref('kh_approvals.view_kh_approval_rule_list'),'list'),
-                                 (ref('kh_approvals.view_kh_approval_rule_form'),'form')]"/>
-      <field name="context">{}</field>
     </record>
 
   </data>
