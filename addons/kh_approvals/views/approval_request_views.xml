@@ -2,68 +2,95 @@
 <odoo>
   <data>
 
-    <record id="action_kh_approval_requests_my_v2" model="ir.actions.act_window">
-      <field name="name">📝 My Requests</field>
-      <field name="res_model">kh.approval.request</field>
-      <field name="view_mode">list,form</field>
-      <field name="search_view_id" ref="kh_approvals.view_kh_approval_request_search"/>
-      <field name="domain">[('requester_id', '=', uid)]</field>
-      <field name="context">{'search_default_my_requests': 1}</field>
-      <field name="views" eval="[(ref('kh_approvals.view_kh_approval_request_list'), 'list'),
-                                 (ref('kh_approvals.view_kh_approval_request_form_base'), 'form')]"/>
+    <!-- Rule Step subview -->
+    <record id="view_kh_approval_rule_step_list" model="ir.ui.view">
+      <field name="name">kh.approval.rule.step.list</field>
+      <field name="model">kh.approval.rule.step</field>
+      <field name="arch" type="xml">
+        <list editable="bottom">
+          <field name="sequence"/>
+          <field name="name"/>
+          <field name="approver_id"/>
+        </list>
+      </field>
     </record>
 
-    <record id="action_kh_approval_requests_to_approve_v2" model="ir.actions.act_window">
-      <field name="name">✅ To Approve</field>
-      <field name="res_model">kh.approval.request</field>
-      <field name="view_mode">list,form</field>
-      <field name="search_view_id" ref="kh_approvals.view_kh_approval_request_search"/>
-      <!-- keep action domain empty; filter is in the search view -->
-      <field name="context">{'search_default_to_approve': 1}</field>
-      <field name="views" eval="[(ref('kh_approvals.view_kh_approval_request_list'), 'list'),
-                                 (ref('kh_approvals.view_kh_approval_request_form_base'), 'form')]"/>
+    <!-- Rule: search -->
+    <record id="view_kh_approval_rule_search" model="ir.ui.view">
+      <field name="name">kh.approval.rule.search</field>
+      <field name="model">kh.approval.rule</field>
+      <field name="arch" type="xml">
+        <search>
+          <field name="name"/>
+          <field name="active"/>
+          <field name="company_id" groups="base.group_multi_company"/>
+          <field name="department_id"/>
+          <separator/>
+          <filter string="Active" domain="[('active','=',True)]"/>
+          <filter string="Archived" domain="[('active','=',False)]"/>
+          <filter string="Group by Company" context="{'group_by':'company_id'}"/>
+          <filter string="Group by Department" context="{'group_by':'department_id'}"/>
+        </search>
+      </field>
     </record>
 
-    <record id="action_kh_approval_requests_all_v2" model="ir.actions.act_window">
-      <field name="name">📚 All Requests</field>
-      <field name="res_model">kh.approval.request</field>
-      <field name="view_mode">list,form</field>
-      <field name="search_view_id" ref="kh_approvals.view_kh_approval_request_search"/>
-      <field name="views" eval="[(ref('kh_approvals.view_kh_approval_request_list'), 'list'),
-                                 (ref('kh_approvals.view_kh_approval_request_form_base'), 'form')]"/>
+    <!-- Rule: list -->
+    <record id="view_kh_approval_rule_list" model="ir.ui.view">
+      <field name="name">kh.approval.rule.list</field>
+      <field name="model">kh.approval.rule</field>
+      <field name="arch" type="xml">
+        <list>
+          <field name="name"/>
+          <field name="active"/>
+          <field name="company_id" groups="base.group_multi_company"/>
+          <field name="department_id"/>
+          <field name="min_amount"/>
+          <field name="currency_id"/>
+        </list>
+      </field>
     </record>
 
-    <menuitem id="menu_kh_approvals_root" name="Approvals" sequence="20"/>
+    <!-- Rule: form -->
+    <record id="view_kh_approval_rule_form" model="ir.ui.view">
+      <field name="name">kh.approval.rule.form</field>
+      <field name="model">kh.approval.rule</field>
+      <field name="arch" type="xml">
+        <form string="Approval Rule">
+          <sheet>
+            <group>
+              <group>
+                <field name="name"/>
+                <field name="active"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="department_id"/>
+              </group>
+              <group>
+                <field name="min_amount"/>
+                <field name="currency_id"/>
+              </group>
+            </group>
 
-    <menuitem id="menu_kh_approvals_my"
-              parent="menu_kh_approvals_root"
-              name="My Requests"
-              action="kh_approvals.action_kh_approval_requests_my_v2"
-              sequence="1"/>
+            <notebook>
+              <page string="Steps">
+                <field name="step_ids" context="{'default_rule_id': active_id}"
+                       views="{'list': 'kh_approvals.view_kh_approval_rule_step_list'}"/>
+              </page>
+            </notebook>
+          </sheet>
+        </form>
+      </field>
+    </record>
 
-    <menuitem id="menu_kh_approvals_to_approve"
-              parent="menu_kh_approvals_root"
-              name="To Approve"
-              action="kh_approvals.action_kh_approval_requests_to_approve_v2"
-              sequence="2"/>
-
-    <menuitem id="menu_kh_approvals_all"
-              parent="menu_kh_approvals_root"
-              name="All Requests"
-              action="kh_approvals.action_kh_approval_requests_all_v2"
-              sequence="3"/>
-
-    <!-- Existing actions assumed to exist -->
-    <menuitem id="menu_kh_approvals_rules"
-              name="Rules"
-              parent="menu_kh_approvals_root"
-              action="kh_approvals.action_kh_approval_rules"
-              sequence="40"/>
-    <menuitem id="menu_kh_departments"
-              name="Departments"
-              parent="menu_kh_approvals_root"
-              action="kh_approvals.action_kh_departments"
-              sequence="50"/>
+    <!-- Action (uses LIST, not tree) -->
+    <record id="action_kh_approval_rules" model="ir.actions.act_window">
+      <field name="name">Approval Rules</field>
+      <field name="res_model">kh.approval.rule</field>
+      <field name="view_mode">list,form</field>
+      <field name="search_view_id" ref="kh_approvals.view_kh_approval_rule_search"/>
+      <field name="views" eval="[(ref('kh_approvals.view_kh_approval_rule_list'),'list'),
+                                 (ref('kh_approvals.view_kh_approval_rule_form'),'form')]"/>
+      <field name="context">{}</field>
+    </record>
 
   </data>
 </odoo>
