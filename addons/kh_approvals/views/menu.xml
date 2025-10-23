@@ -1,22 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
   <data>
-
-    <!-- Actions -->
     <record id="action_kh_approval_requests_my_v2" model="ir.actions.act_window">
       <field name="name">📝 My Requests</field>
       <field name="res_model">kh.approval.request</field>
       <field name="view_mode">list,form</field>
       <field name="search_view_id" ref="kh_approvals.view_kh_approval_request_search"/>
-      <!-- Hard lock to the requester even if filters are cleared -->
       <field name="domain">[('requester_id', '=', uid)]</field>
       <field name="context">{'search_default_my_requests': 1}</field>
       <field name="views">
         [(ref('kh_approvals.view_kh_approval_request_list'), 'list'),
          (ref('kh_approvals.view_kh_approval_request_form_base'), 'form')]
-      </field>
-      <field name="help" type="html">
-        <p>No requests yet. Click “New” to create your first one.</p>
       </field>
     </record>
 
@@ -31,9 +25,6 @@
         [(ref('kh_approvals.view_kh_approval_request_list'), 'list'),
          (ref('kh_approvals.view_kh_approval_request_form_base'), 'form')]
       </field>
-      <field name="help" type="html">
-        <p>No pending approvals. 🎉</p>
-      </field>
     </record>
 
     <record id="action_kh_approval_requests_all_v2" model="ir.actions.act_window">
@@ -47,7 +38,6 @@
       </field>
     </record>
 
-    <!-- Menus -->
     <menuitem id="menu_kh_approvals_root" name="Approvals" sequence="20"/>
 
     <menuitem id="menu_kh_approvals_my"
@@ -68,18 +58,16 @@
               action="kh_approvals.action_kh_approval_requests_all_v2"
               sequence="3"/>
 
-    <!-- Rules / Departments menus (use your existing actions) -->
+    <!-- Your existing actions must exist in Python/XML already -->
     <menuitem id="menu_kh_approvals_rules"
               name="Rules"
               parent="menu_kh_approvals_root"
               action="kh_approvals.action_kh_approval_rules"
               sequence="40"/>
-
     <menuitem id="menu_kh_departments"
               name="Departments"
               parent="menu_kh_approvals_root"
               action="kh_approvals.action_kh_departments"
               sequence="50"/>
-
   </data>
 </odoo>

@@ -17,14 +17,13 @@
       </field>
     </record>
 
-    <!-- SEARCH view -->
+    <!-- SEARCH view (no Python in domains) -->
     <record id="view_kh_approval_request_search" model="ir.ui.view">
       <field name="name">kh.approval.request.search</field>
       <field name="model">kh.approval.request</field>
       <field name="arch" type="xml">
         <search>
-          <filter name="my_requests" string="My Requests"
-                  domain="[('requester_id','=',uid)]"/>
+          <filter name="my_requests" string="My Requests" domain="[('requester_id','=',uid)]"/>
           <filter name="to_approve" string="To Approve"
                   domain="[('approval_line_ids.approver_id','=',uid), ('approval_line_ids.state','=','pending')]"/>
           <separator/>
@@ -32,15 +31,11 @@
           <field name="requester_id"/>
           <field name="company_id" groups="base.group_multi_company"/>
           <field name="department_id"/>
-          <!-- just expose the date field; no filter_domain here -->
+          <!-- expose date; users can pick ranges via the UI popover -->
           <field name="create_date" string="Created On"/>
-
-          <!-- Optional quick filters by date -->
+          <!-- simple “Today” is OK; no timedelta/strftime -->
           <filter string="Today" domain="[('create_date', '>=', context_today())]"/>
-          <filter string="Last 7 days"
-                  domain="[('create_date', '>=', (context_today() - datetime.timedelta(days=7)).strftime('%%Y-%%m-%%d'))]"/>
-
-          <!-- Group-bys -->
+          <!-- group-bys -->
           <filter string="Group by Status" context="{'group_by':'state'}"/>
           <filter string="Group by Department" context="{'group_by':'department_id'}"/>
         </search>
@@ -65,7 +60,7 @@
       </field>
     </record>
 
-    <!-- FORM view (Approve/Reject visible only for the current pending approver) -->
+    <!-- FORM view (Approve/Reject only for current pending approver) -->
     <record id="view_kh_approval_request_form_base" model="ir.ui.view">
       <field name="name">kh.approval.request.form</field>
       <field name="model">kh.approval.request</field>
