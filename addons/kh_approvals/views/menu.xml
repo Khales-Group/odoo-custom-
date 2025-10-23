@@ -1,29 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
   <data>
-<record id="view_kh_approval_request_search" model="ir.ui.view">
-  <field name="name">kh.approval.request.search</field>
-  <field name="model">kh.approval.request</field>
-  <field name="arch" type="xml">
-    <search>
-      <filter name="my_requests" string="My Requests" domain="[('requester_id','=',uid)]"/>
-      <filter name="to_approve" string="To Approve"
-              domain="[('approval_line_ids.approver_id','=',uid), ('approval_line_ids.state','=','pending')]"/>
-      <separator/>
-      <field name="state"/>
-      <field name="requester_id"/>
-      <field name="company_id" groups="base.group_multi_company"/>
-      <field name="department_id"/>
-
-      <!-- Date field to allow custom date filters -->
-      <field name="create_date" filter_domain="[]"/>
-
-      <!-- Quick group-by -->
-      <filter string="Group by Status" context="{'group_by':'state'}"/>
-      <filter string="Group by Department" context="{'group_by':'department_id'}"/>
-    </search>
-  </field>
-</record>
 
     <!-- Window actions -->
 <!-- Brand-new actions with unique IDs -->
@@ -32,9 +9,6 @@
   <field name="res_model">kh.approval.request</field>
   <field name="view_mode">list,form</field>
   <field name="search_view_id" ref="view_kh_approval_request_search"/>
-  <!-- Hard lock to the requester -->
-  <field name="domain">[('requester_id', '=', uid)]</field>
-  <!-- Optional: keep the default filter and default list->form views -->
   <field name="context">{'search_default_my_requests': 1}</field>
   <field name="views">
     [(ref('view_kh_approval_request_list'), 'list'),
@@ -50,8 +24,6 @@
   <field name="res_model">kh.approval.request</field>
   <field name="view_mode">list,form</field>
   <field name="search_view_id" ref="view_kh_approval_request_search"/>
-  <!-- Only items where I'm the pending approver -->
-  <field name="domain">[('approval_line_ids.approver_id','=',uid), ('approval_line_ids.state','=','pending')]</field>
   <field name="context">{'search_default_to_approve': 1}</field>
   <field name="views">
     [(ref('view_kh_approval_request_list'), 'list'),
