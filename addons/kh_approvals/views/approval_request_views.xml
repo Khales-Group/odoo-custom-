@@ -36,21 +36,25 @@
     </record>
 
     <!-- List -->
-    <record id="view_kh_approval_request_list" model="ir.ui.view">
-      <field name="name">kh.approval.request.list</field>
-      <field name="model">kh.approval.request</field>
-      <field name="arch" type="xml">
-        <list>
-          <field name="name"/>
-          <field name="requester_id"/>
-          <field name="amount"/>
-          <field name="currency_id"/>
-          <field name="company_id" groups="base.group_multi_company"/>
-          <field name="department_id"/>
-          <field name="state"/>
-        </list>
-      </field>
-    </record>
+  <record id="view_kh_approval_request_list" model="ir.ui.view">
+  <field name="name">kh.approval.request.list</field>
+  <field name="model">kh.approval.request</field>
+  <field name="arch" type="xml">
+    <!-- default_order makes the tree sort by newest -->
+    <list default_order="create_date desc">
+      <field name="name"/>
+      <field name="requester_id"/>
+      <field name="amount"/>
+      <field name="currency_id"/>
+      <field name="company_id" groups="base.group_multi_company"/>
+      <field name="department_id"/>
+      <!-- show created date -->
+      <field name="create_date" string="Created On"/>
+      <field name="state"/>
+    </list>
+  </field>
+</record>
+
 
     <!-- Form (Odoo 17+: use 'invisible' not 'attrs') -->
     <record id="view_kh_approval_request_form_base" model="ir.ui.view">
