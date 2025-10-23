@@ -88,8 +88,12 @@ class KhApprovalRequest(models.Model):
     pending_line_id = fields.Many2one(
         "kh.approval.line", compute="_compute_pending_line", store=False
     )
+
+    # Make this field searchable so we can use it in search view domains
     is_current_user_approver = fields.Boolean(
-        compute="_compute_pending_line", store=False
+        compute="_compute_pending_line",
+        search="_search_is_current_user_approver",
+        store=False,
     )
 
     # -------------------------------------------------------------------------
@@ -103,6 +107,27 @@ class KhApprovalRequest(models.Model):
             rec.is_current_user_approver = bool(
                 line and line.approver_id.id == rec.env.user.id
             )
+
+    def _search_is_current_user_approver(self, operator, value):
+        """
+        Domain helper so we can search by 'is_current_user_approver' in the UI.
+        We ignore operator/value and map it to the semantic condition:
+        current user is the pending approver on an in-review request.
+        """
+        uid = self.env.uid
+        # Only return anything if user is asking for True
+        if (operator in ("=", "==") and bool(value)) or (operator in ("!=", "<>") and not value):
+            return [
+                ('state', '=', 'in_review'),
+                ('approval_line_ids.approver_id', '=', uid),
+                ('approval_line_ids.state', '=', 'pending'),
+            ]
+        # else return the negation
+        return [
+            '|', ('state', '!=', 'in_review'),
+            '|', ('approval_line_ids.approver_id', '!=', uid),
+                 ('approval_line_ids.state', '!=', 'pending'),
+        ]
 
     # HTML snapshot builder (uses sudo so approvers always see the full sequence)
     def _compute_steps_overview_html(self):
@@ -576,7 +601,7 @@ class KhApprovalLine(models.Model):
             ("pending", "Pending"),
             ("approved", "Approved"),
             ("rejected", "Rejected"),
-            ("withdrawn", "Withdrawn"),  # (not used now, but kept for history)
+            ("withdrawn", "Withdrawn"),
         ],
         default="pending",
         required=True,
