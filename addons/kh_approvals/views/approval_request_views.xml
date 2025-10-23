@@ -2,7 +2,7 @@
 <odoo>
   <data>
 
-    <!-- Line subview (list view) -->
+    <!-- Line subview -->
     <record id="view_kh_approval_line_list" model="ir.ui.view">
       <field name="name">kh.approval.line.list</field>
       <field name="model">kh.approval.line</field>
@@ -32,16 +32,14 @@
           <field name="requester_id"/>
           <field name="company_id" groups="base.group_multi_company"/>
           <field name="department_id"/>
-          <!-- let users filter by created date -->
-          <field name="create_date" filter_domain="[]"/>
-          <!-- quick group-bys -->
+          <field name="create_date" string="Created On" filter_domain="[]"/>
           <filter string="Group by Status" context="{'group_by':'state'}"/>
           <filter string="Group by Department" context="{'group_by':'department_id'}"/>
         </search>
       </field>
     </record>
 
-    <!-- LIST view (with default order & date column) -->
+    <!-- LIST view (sorted by newest, shows Created On) -->
     <record id="view_kh_approval_request_list" model="ir.ui.view">
       <field name="name">kh.approval.request.list</field>
       <field name="model">kh.approval.request</field>
@@ -71,7 +69,7 @@
                     class="oe_highlight"
                     invisible="state != 'draft'"/>
 
-            <!-- Approve/Reject ONLY for the current pending approver -->
+            <!-- Approve/Reject ONLY for current pending approver -->
             <button name="action_approve_request" type="object" string="Approve"
                     class="btn-primary"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
