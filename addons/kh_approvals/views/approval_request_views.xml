@@ -17,7 +17,7 @@
       </field>
     </record>
 
-    <!-- SEARCH view (only here, not in menu.xml) -->
+    <!-- SEARCH view -->
     <record id="view_kh_approval_request_search" model="ir.ui.view">
       <field name="name">kh.approval.request.search</field>
       <field name="model">kh.approval.request</field>
@@ -32,7 +32,15 @@
           <field name="requester_id"/>
           <field name="company_id" groups="base.group_multi_company"/>
           <field name="department_id"/>
-          <field name="create_date" string="Created On" filter_domain="[]"/>
+          <!-- just expose the date field; no filter_domain here -->
+          <field name="create_date" string="Created On"/>
+
+          <!-- Optional quick filters by date -->
+          <filter string="Today" domain="[('create_date', '>=', context_today())]"/>
+          <filter string="Last 7 days"
+                  domain="[('create_date', '>=', (context_today() - datetime.timedelta(days=7)).strftime('%%Y-%%m-%%d'))]"/>
+
+          <!-- Group-bys -->
           <filter string="Group by Status" context="{'group_by':'state'}"/>
           <filter string="Group by Department" context="{'group_by':'department_id'}"/>
         </search>
@@ -57,19 +65,17 @@
       </field>
     </record>
 
-    <!-- FORM view -->
+    <!-- FORM view (Approve/Reject visible only for the current pending approver) -->
     <record id="view_kh_approval_request_form_base" model="ir.ui.view">
       <field name="name">kh.approval.request.form</field>
       <field name="model">kh.approval.request</field>
       <field name="arch" type="xml">
         <form string="Approval Request">
           <header>
-            <!-- Draft only -->
             <button name="action_submit" type="object" string="Submit"
                     class="oe_highlight"
                     invisible="state != 'draft'"/>
 
-            <!-- Approve/Reject ONLY for current pending approver -->
             <button name="action_approve_request" type="object" string="Approve"
                     class="btn-primary"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
@@ -77,7 +83,6 @@
                     class="btn-secondary"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
 
-            <!-- Edit Request (owner-only) -->
             <button name="action_revise_request" type="object" string="Edit Request"
                     class="btn-secondary"
                     invisible="state == 'draft' or requester_id != uid"/>
