@@ -17,46 +17,50 @@
       </field>
     </record>
 
-    <!-- Search -->
+    <!-- Search view (MOVE IT HERE, not in menu.xml) -->
     <record id="view_kh_approval_request_search" model="ir.ui.view">
       <field name="name">kh.approval.request.search</field>
       <field name="model">kh.approval.request</field>
       <field name="arch" type="xml">
         <search>
-          <filter name="my_requests" string="My Requests" domain="[('requester_id','=',uid)]"/>
+          <filter name="my_requests" string="My Requests"
+                  domain="[('requester_id','=',uid)]"/>
           <filter name="to_approve" string="To Approve"
-                  domain="[('approval_line_ids.approver_id','=',uid), ('approval_line_ids.state','=','pending')]"/>
+                  domain="[('approval_line_ids.approver_id','=',uid),
+                          ('approval_line_ids.state','=','pending')]"/>
           <separator/>
           <field name="state"/>
           <field name="requester_id"/>
           <field name="company_id" groups="base.group_multi_company"/>
           <field name="department_id"/>
+          <!-- Date column available for filters -->
+          <field name="create_date"/>
+          <!-- Quick group-bys -->
+          <filter name="grp_state" string="Group by Status" context="{'group_by':'state'}"/>
+          <filter name="grp_dept" string="Group by Department" context="{'group_by':'department_id'}"/>
         </search>
       </field>
     </record>
 
-    <!-- List -->
-  <record id="view_kh_approval_request_list" model="ir.ui.view">
-  <field name="name">kh.approval.request.list</field>
-  <field name="model">kh.approval.request</field>
-  <field name="arch" type="xml">
-    <!-- default_order makes the tree sort by newest -->
-    <list default_order="create_date desc">
-      <field name="name"/>
-      <field name="requester_id"/>
-      <field name="amount"/>
-      <field name="currency_id"/>
-      <field name="company_id" groups="base.group_multi_company"/>
-      <field name="department_id"/>
-      <!-- show created date -->
-      <field name="create_date" string="Created On"/>
-      <field name="state"/>
-    </list>
-  </field>
-</record>
+    <!-- List view (add date + default sort) -->
+    <record id="view_kh_approval_request_list" model="ir.ui.view">
+      <field name="name">kh.approval.request.list</field>
+      <field name="model">kh.approval.request</field>
+      <field name="arch" type="xml">
+        <list default_order="create_date desc">
+          <field name="name"/>
+          <field name="requester_id"/>
+          <field name="amount"/>
+          <field name="currency_id"/>
+          <field name="company_id" groups="base.group_multi_company"/>
+          <field name="department_id"/>
+          <field name="create_date" string="Created On"/>
+          <field name="state"/>
+        </list>
+      </field>
+    </record>
 
-
-    <!-- Form (Odoo 17+: use 'invisible' not 'attrs') -->
+    <!-- Form view -->
     <record id="view_kh_approval_request_form_base" model="ir.ui.view">
       <field name="name">kh.approval.request.form</field>
       <field name="model">kh.approval.request</field>
@@ -68,7 +72,7 @@
                     class="oe_highlight"
                     invisible="state != 'draft'"/>
 
-            <!-- Approve/Reject ONLY for the current pending approver -->
+            <!-- Approve/Reject only when in_review AND I'm the current approver -->
             <button name="action_approve_request" type="object" string="Approve"
                     class="btn-primary"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
@@ -76,31 +80,32 @@
                     class="btn-secondary"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
 
-            <!-- Edit Request (owner-only) -->
+            <!-- Edit Request (owner only, not Draft) -->
             <button name="action_revise_request" type="object" string="Edit Request"
                     class="btn-secondary"
                     invisible="state == 'draft' or requester_id != uid"/>
 
-            <field name="state" widget="statusbar" statusbar_visible="draft,in_review,approved,rejected"/>
+            <field name="state" widget="statusbar"
+                   statusbar_visible="draft,in_review,approved,rejected"/>
           </header>
 
           <sheet>
             <group>
               <group>
-                <field name="name" required="1" readonly="state != 'draft'"/>
+                <field name="name" required="1"/>
                 <field name="requester_id" readonly="1"/>
-                <field name="amount" readonly="state != 'draft'"/>
-                <field name="currency_id" readonly="state != 'draft'"/>
+                <field name="amount"/>
+                <field name="currency_id"/>
                 <field name="revision" readonly="1"/>
                 <field name="last_revised_by" readonly="1"/>
                 <field name="last_revised_on" readonly="1"/>
               </group>
               <group>
-                <field name="company_id" groups="base.group_multi_company" readonly="state != 'draft'"/>
-                <field name="department_id" readonly="state != 'draft'"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="department_id"/>
                 <field name="rule_id"
-                       readonly="state != 'draft'"
-                       domain="[('company_id','in',[False, company_id]), '|', ('department_id','=',False), ('department_id','=',department_id)]"
+                       domain="[('company_id','in',[False, company_id]), '|',
+                                ('department_id','=',False), ('department_id','=',department_id)]"
                        options="{'no_create_edit': True}"/>
               </group>
             </group>

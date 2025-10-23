@@ -1,116 +1,69 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
   <data>
-<record id="view_kh_approval_request_search" model="ir.ui.view">
-  <field name="name">kh.approval.request.search</field>
-  <field name="model">kh.approval.request</field>
-  <field name="arch" type="xml">
-    <search>
-      <filter name="my_requests" string="My Requests" domain="[('requester_id','=',uid)]"/>
-      <filter name="to_approve" string="To Approve"
-              domain="[('approval_line_ids.approver_id','=',uid), ('approval_line_ids.state','=','pending')]"/>
-      <separator/>
-      <field name="state"/>
-      <field name="requester_id"/>
-      <field name="company_id" groups="base.group_multi_company"/>
-      <field name="department_id"/>
 
-      <!-- Date field to allow custom date filters -->
-      <field name="create_date" filter_domain="[]"/>
+    <!-- Window actions (now reference the search view that is in approval_request_views.xml) -->
+    <record id="action_kh_approval_requests_my" model="ir.actions.act_window">
+      <field name="name">📝 My Requests</field>
+      <field name="res_model">kh.approval.request</field>
+      <field name="view_mode">list,form</field>
+      <field name="search_view_id" ref="kh_approvals.view_kh_approval_request_search"/>
+      <!-- HARD LOCK so this action never shows others' records -->
+      <field name="domain">[('requester_id', '=', uid)]</field>
+      <field name="context">{'search_default_my_requests': 1}</field>
+      <field name="views">
+        [(ref('kh_approvals.view_kh_approval_request_list'), 'list'),
+         (ref('kh_approvals.view_kh_approval_request_form_base'), 'form')]
+      </field>
+      <field name="help" type="html">
+        <p>No requests yet. Click “New” to create your first one.</p>
+      </field>
+    </record>
 
-      <!-- Quick group-by -->
-      <filter string="Group by Status" context="{'group_by':'state'}"/>
-      <filter string="Group by Department" context="{'group_by':'department_id'}"/>
-    </search>
-  </field>
-</record>
+    <record id="action_kh_approval_requests_to_approve" model="ir.actions.act_window">
+      <field name="name">✅ To Approve</field>
+      <field name="res_model">kh.approval.request</field>
+      <field name="view_mode">list,form</field>
+      <field name="search_view_id" ref="kh_approvals.view_kh_approval_request_search"/>
+      <!-- Show only items where I'm the pending approver -->
+      <field name="domain">[('approval_line_ids.approver_id','=',uid),
+                             ('approval_line_ids.state','=','pending')]</field>
+      <field name="context">{'search_default_to_approve': 1}</field>
+      <field name="views">
+        [(ref('kh_approvals.view_kh_approval_request_list'), 'list'),
+         (ref('kh_approvals.view_kh_approval_request_form_base'), 'form')]
+      </field>
+      <field name="help" type="html">
+        <p>No pending approvals. 🎉</p>
+      </field>
+    </record>
 
-    <!-- Window actions -->
-<!-- Brand-new actions with unique IDs -->
-<record id="action_kh_approval_requests_my_v2" model="ir.actions.act_window">
-  <field name="name">📝 My Requests</field>
-  <field name="res_model">kh.approval.request</field>
-  <field name="view_mode">list,form</field>
-  <field name="search_view_id" ref="view_kh_approval_request_search"/>
-  <!-- Hard lock to the requester -->
-  <field name="domain">[('requester_id', '=', uid)]</field>
-  <!-- Optional: keep the default filter and default list->form views -->
-  <field name="context">{'search_default_my_requests': 1}</field>
-  <field name="views">
-    [(ref('view_kh_approval_request_list'), 'list'),
-     (ref('view_kh_approval_request_form_base'), 'form')]
-  </field>
-  <field name="help" type="html">
-    <p>No requests yet. Click “New” to create your first one.</p>
-  </field>
-</record>
-
-<record id="action_kh_approval_requests_to_approve_v2" model="ir.actions.act_window">
-  <field name="name">✅ To Approve</field>
-  <field name="res_model">kh.approval.request</field>
-  <field name="view_mode">list,form</field>
-  <field name="search_view_id" ref="view_kh_approval_request_search"/>
-  <!-- Only items where I'm the pending approver -->
-  <field name="domain">[('approval_line_ids.approver_id','=',uid), ('approval_line_ids.state','=','pending')]</field>
-  <field name="context">{'search_default_to_approve': 1}</field>
-  <field name="views">
-    [(ref('view_kh_approval_request_list'), 'list'),
-     (ref('view_kh_approval_request_form_base'), 'form')]
-  </field>
-  <field name="help" type="html">
-    <p>No pending approvals. 🎉</p>
-  </field>
-</record>
-
-<record id="action_kh_approval_requests_all_v2" model="ir.actions.act_window">
-  <field name="name">📚 All Requests</field>
-  <field name="res_model">kh.approval.request</field>
-  <field name="view_mode">list,form</field>
-  <field name="search_view_id" ref="view_kh_approval_request_search"/>
-  <field name="views">
-    [(ref('view_kh_approval_request_list'), 'list'),
-     (ref('view_kh_approval_request_form_base'), 'form')]
-  </field>
-  <field name="help" type="html">
-    <p>No records to show.</p>
-  </field>
-</record>
-
+    <record id="action_kh_approval_requests_all" model="ir.actions.act_window">
+      <field name="name">📚 All Requests</field>
+      <field name="res_model">kh.approval.request</field>
+      <field name="view_mode">list,form</field>
+      <field name="search_view_id" ref="kh_approvals.view_kh_approval_request_search"/>
+      <field name="views">
+        [(ref('kh_approvals.view_kh_approval_request_list'), 'list'),
+         (ref('kh_approvals.view_kh_approval_request_form_base'), 'form')]
+      </field>
+      <field name="help" type="html">
+        <p>No records to show.</p>
+      </field>
+    </record>
 
     <!-- Menus -->
     <menuitem id="menu_kh_approvals_root" name="Approvals" sequence="20"/>
-
-<!-- Point menus to the NEW actions -->
-<menuitem id="menu_kh_approvals_my"
-          parent="menu_kh_approvals_root"
-          name="My Requests"
-          action="action_kh_approval_requests_my_v2"
-          sequence="1"/>
-
-<menuitem id="menu_kh_approvals_to_approve"
-          parent="menu_kh_approvals_root"
-          name="To Approve"
-          action="action_kh_approval_requests_to_approve_v2"
-          sequence="2"/>
-
-<menuitem id="menu_kh_approvals_all"
-          parent="menu_kh_approvals_root"
-          name="All Requests"
-          action="action_kh_approval_requests_all_v2"
-          sequence="3"/>
-
-
-    <menuitem id="menu_kh_approvals_rules"
-              name="Rules"
+    <menuitem id="menu_kh_approvals_my" name="My Requests"
               parent="menu_kh_approvals_root"
-              action="action_kh_approval_rules"
-              sequence="4"/>
-
-    <menuitem id="menu_kh_departments"
-              name="Departments"
+              action="kh_approvals.action_kh_approval_requests_my" sequence="1"/>
+    <menuitem id="menu_kh_approvals_to_approve" name="To Approve"
               parent="menu_kh_approvals_root"
-              action="action_kh_departments"
-              sequence="5"/>
+              action="kh_approvals.action_kh_approval_requests_to_approve" sequence="2"/>
+    <menuitem id="menu_kh_approvals_all" name="All Requests"
+              parent="menu_kh_approvals_root"
+              action="kh_approvals.action_kh_approval_requests_all" sequence="3"/>
 
+    <!-- keep your other menus (rules/departments) here -->
   </data>
 </odoo>
