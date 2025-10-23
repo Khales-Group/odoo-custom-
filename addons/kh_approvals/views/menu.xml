@@ -4,38 +4,32 @@
     <record id="action_kh_approval_requests_my_v2" model="ir.actions.act_window">
       <field name="name">📝 My Requests</field>
       <field name="res_model">kh.approval.request</field>
-      <field name="view_mode">list,form</field>
+      <field name="view_mode">tree,form</field>
       <field name="search_view_id" ref="kh_approvals.view_kh_approval_request_search"/>
       <field name="domain">[('requester_id', '=', uid)]</field>
       <field name="context">{'search_default_my_requests': 1}</field>
-      <field name="views">
-        [(ref('kh_approvals.view_kh_approval_request_list'), 'list'),
-         (ref('kh_approvals.view_kh_approval_request_form_base'), 'form')]
-      </field>
+      <field name="views" eval="[(ref('kh_approvals.view_kh_approval_request_list'), 'tree'),
+                                 (ref('kh_approvals.view_kh_approval_request_form_base'), 'form')]"/>
     </record>
 
     <record id="action_kh_approval_requests_to_approve_v2" model="ir.actions.act_window">
       <field name="name">✅ To Approve</field>
       <field name="res_model">kh.approval.request</field>
-      <field name="view_mode">list,form</field>
+      <field name="view_mode">tree,form</field>
       <field name="search_view_id" ref="kh_approvals.view_kh_approval_request_search"/>
-      <field name="domain">[('approval_line_ids.approver_id','=',uid), ('approval_line_ids.state','=','pending')]</field>
+      <!-- keep domain empty; use the search filter instead -->
       <field name="context">{'search_default_to_approve': 1}</field>
-      <field name="views">
-        [(ref('kh_approvals.view_kh_approval_request_list'), 'list'),
-         (ref('kh_approvals.view_kh_approval_request_form_base'), 'form')]
-      </field>
+      <field name="views" eval="[(ref('kh_approvals.view_kh_approval_request_list'), 'tree'),
+                                 (ref('kh_approvals.view_kh_approval_request_form_base'), 'form')]"/>
     </record>
 
     <record id="action_kh_approval_requests_all_v2" model="ir.actions.act_window">
       <field name="name">📚 All Requests</field>
       <field name="res_model">kh.approval.request</field>
-      <field name="view_mode">list,form</field>
+      <field name="view_mode">tree,form</field>
       <field name="search_view_id" ref="kh_approvals.view_kh_approval_request_search"/>
-      <field name="views">
-        [(ref('kh_approvals.view_kh_approval_request_list'), 'list'),
-         (ref('kh_approvals.view_kh_approval_request_form_base'), 'form')]
-      </field>
+      <field name="views" eval="[(ref('kh_approvals.view_kh_approval_request_list'), 'tree'),
+                                 (ref('kh_approvals.view_kh_approval_request_form_base'), 'form')]"/>
     </record>
 
     <menuitem id="menu_kh_approvals_root" name="Approvals" sequence="20"/>
@@ -58,7 +52,6 @@
               action="kh_approvals.action_kh_approval_requests_all_v2"
               sequence="3"/>
 
-    <!-- Your existing actions must exist in Python/XML already -->
     <menuitem id="menu_kh_approvals_rules"
               name="Rules"
               parent="menu_kh_approvals_root"

@@ -7,47 +7,45 @@
       <field name="name">kh.approval.line.list</field>
       <field name="model">kh.approval.line</field>
       <field name="arch" type="xml">
-        <list editable="bottom">
+        <tree editable="bottom">
           <field name="name"/>
           <field name="approver_id"/>
           <field name="required"/>
           <field name="state"/>
           <field name="note"/>
-        </list>
+        </tree>
       </field>
     </record>
 
-    <!-- SEARCH view (no Python in domains) -->
+    <!-- SEARCH view -->
     <record id="view_kh_approval_request_search" model="ir.ui.view">
       <field name="name">kh.approval.request.search</field>
       <field name="model">kh.approval.request</field>
       <field name="arch" type="xml">
         <search>
           <filter name="my_requests" string="My Requests" domain="[('requester_id','=',uid)]"/>
+          <!-- use computed boolean + state to avoid O2M traversal -->
           <filter name="to_approve" string="To Approve"
-                  domain="[('approval_line_ids.approver_id','=',uid), ('approval_line_ids.state','=','pending')]"/>
+                  domain="[('is_current_user_approver','=',True), ('state','=','in_review')]"/>
           <separator/>
           <field name="state"/>
           <field name="requester_id"/>
           <field name="company_id" groups="base.group_multi_company"/>
           <field name="department_id"/>
-          <!-- expose date; users can pick ranges via the UI popover -->
           <field name="create_date" string="Created On"/>
-          <!-- simple “Today” is OK; no timedelta/strftime -->
-          <filter string="Today" domain="[('create_date', '>=', context_today())]"/>
-          <!-- group-bys -->
-          <filter string="Group by Status" context="{'group_by':'state'}"/>
-          <filter string="Group by Department" context="{'group_by':'department_id'}"/>
+          <filter name="created_today" string="Today" domain="[('create_date', '>=', context_today())]"/>
+          <filter name="grp_state" string="Group by Status" context="{'group_by':'state'}"/>
+          <filter name="grp_dept" string="Group by Department" context="{'group_by':'department_id'}"/>
         </search>
       </field>
     </record>
 
-    <!-- LIST view (sorted by newest, shows Created On) -->
+    <!-- LIST view -->
     <record id="view_kh_approval_request_list" model="ir.ui.view">
       <field name="name">kh.approval.request.list</field>
       <field name="model">kh.approval.request</field>
       <field name="arch" type="xml">
-        <list default_order="create_date desc">
+        <tree default_order="create_date desc">
           <field name="name"/>
           <field name="requester_id"/>
           <field name="amount"/>
@@ -56,11 +54,11 @@
           <field name="department_id"/>
           <field name="create_date" string="Created On"/>
           <field name="state"/>
-        </list>
+        </tree>
       </field>
     </record>
 
-    <!-- FORM view (Approve/Reject only for current pending approver) -->
+    <!-- FORM view -->
     <record id="view_kh_approval_request_form_base" model="ir.ui.view">
       <field name="name">kh.approval.request.form</field>
       <field name="model">kh.approval.request</field>
@@ -70,18 +68,15 @@
             <button name="action_submit" type="object" string="Submit"
                     class="oe_highlight"
                     invisible="state != 'draft'"/>
-
             <button name="action_approve_request" type="object" string="Approve"
                     class="btn-primary"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
             <button name="action_reject_request" type="object" string="Reject"
                     class="btn-secondary"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
-
             <button name="action_revise_request" type="object" string="Edit Request"
                     class="btn-secondary"
                     invisible="state == 'draft' or requester_id != uid"/>
-
             <field name="state" widget="statusbar"
                    statusbar_visible="draft,in_review,approved,rejected"/>
           </header>
@@ -111,7 +106,8 @@
               <page string="Approval Steps" name="approval_steps">
                 <field name="approval_line_ids"
                        context="{'default_request_id': id}"
-                       views="{'list': 'kh_approvals.view_kh_approval_line_list'}"/>
+                       views="{'tree': 'kh_approvals.view_kh_approval_line_list'}"/>
+                <field name="steps_overview_html" widget="html"/>
               </page>
             </notebook>
           </sheet>
