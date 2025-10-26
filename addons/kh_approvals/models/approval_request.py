@@ -480,11 +480,21 @@ class KhApprovalRequest(models.Model):
             if next_line:
                 rec._notify_first_pending()
             else:
-                rec.sudo().with_context(tracking_disable=True).write({"state": "approved"})
-                rec._post_note(
-                    _("✅ Request approved."),
-                    partner_ids=[rec.requester_id.partner_id.id],
+                # Final approval: log state change in chatter
+                old_state = rec.state
+                rec.sudo().write({"state": "approved"})
+                rec.message_post(
+                    body=_("Request approved."),
+                    tracking_value_ids=[(0, 0, {
+                        'field': self.env['ir.model.fields']._get(self._name, 'state').id,
+                        'old_value_char': dict(self._fields['state'].selection).get(old_state),
+                        'new_value_char': dict(self._fields['state'].selection).get('approved'),
+                    })],
+                    message_type="notification",
+                    subtype_xmlid="mail.mt_comment",
+                    partner_ids=[rec.requester_id.partner_id.id]
                 )
+
                 rec._notify_partner(
                     rec.requester_id.partner_id,
                     _("✅ <b>Approved</b>: <a href='%(link)s'>%(name)s: %(title)s</a>") % {"link": rec._deeplink(), "name": rec.name, "title": rec.title},

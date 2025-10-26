@@ -106,9 +106,8 @@
 
             <notebook>
               <page string="Approval Steps" name="approval_steps">
-                <field name="approval_line_ids"
-                       context="{'default_request_id': id}"
-                       views="{'list': 'kh_approvals.view_kh_approval_line_list'}"/>
+                <!-- This HTML field uses sudo to show all steps to all viewers, bypassing record rules -->
+                <field name="steps_overview_html" nolabel="1"/>
               </page>
             </notebook>
           </sheet>
