@@ -9,8 +9,10 @@
     <field name="name">Requests: Read Own or as Approver</field>
     <field name="model_id" ref="model_kh_approval_request"/>
     <field name="domain_force">
-      ['|',
-        ('requester_id.id', '=', user.id),
+      [
+        '|',
+        ('requester_id', '=', user.id),
+        '&amp;', ('id', '!=', False), # This forces correct evaluation
         ('approval_line_ids.approver_id', '=', user.id)
       ]
     </field>
@@ -49,10 +51,11 @@
   <record id="rule_kh_line_own_or_approver" model="ir.rule">
     <field name="name">Lines: All steps for my readable requests</field>
     <field name="model_id" ref="model_kh_approval_line"/>
+    <!-- A user can see a line if they are the approver on THAT line, or if they are the requester of the parent request -->
     <field name="domain_force">
       ['|',
-        ('request_id.requester_id.id', '=', user.id),
-        ('approver_id.id', '=', user.id)
+        ('approver_id', '=', user.id),
+        ('request_id.requester_id', '=', user.id)
       ]
     </field>
     <field name="groups" eval="[(4, ref('base.group_user'))]"/>
