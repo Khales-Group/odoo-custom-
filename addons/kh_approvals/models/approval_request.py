@@ -65,6 +65,7 @@ class KhApprovalRequest(models.Model):
     revision = fields.Integer(default=0, tracking=True)
     last_revised_by = fields.Many2one('res.users', readonly=True)
     last_revised_on = fields.Datetime(readonly=True)
+    submitted_on = fields.Datetime(string="Submitted On", readonly=True, tracking=True)
 
     # Single rule selector (rule defines company/department/approver sequence)
     rule_id = fields.Many2one(
@@ -371,7 +372,10 @@ class KhApprovalRequest(models.Model):
             with rec.env.cr.savepoint():
                 rec._ensure_followers()
             # 🔇 Avoid email from tracking on state change
-            rec.with_context(tracking_disable=True).write({"state": "in_review"})
+            rec.with_context(tracking_disable=True).write({
+                "state": "in_review",
+                "submitted_on": fields.Datetime.now(),
+            })
             rec._post_note(
                 _("Request submitted for approval."),
                 partner_ids=[rec.requester_id.partner_id.id],  # Ping requester only
@@ -404,6 +408,7 @@ class KhApprovalRequest(models.Model):
                 'revision': rec.revision + 1,
                 'last_revised_by': self.env.user.id,
                 'last_revised_on': fields.Datetime.now(),
+                'submitted_on': False, # Clear submission date on revise
             })
 
             rec._post_note(
