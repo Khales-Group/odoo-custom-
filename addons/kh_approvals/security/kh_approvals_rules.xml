@@ -42,6 +42,19 @@
     <field name="perm_unlink" eval="0"/>
   </record>
 
+  <!-- RULE 4 (USER): Can write on their own non-draft requests (to allow 'Revise'). -->
+  <record id="rule_kh_request_write_own_submitted" model="ir.rule">
+    <field name="name">Requests: Write Own Submitted</field>
+    <field name="model_id" ref="model_kh_approval_request"/>
+    <field name="domain_force">[('requester_id', '=', user.id), ('state', 'in', ['in_review', 'approved', 'rejected'])]</field>
+    <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    <field name="perm_read" eval="0"/>
+    <field name="perm_write" eval="1"/>
+    <field name="perm_create" eval="0"/>
+    <field name="perm_unlink" eval="0"/>
+  </record>
+
+
   <!-- REQUESTS: managers see all -->
   <record id="rule_kh_request_manager_all" model="ir.rule">
     <field name="name">Requests: Manager All</field>
