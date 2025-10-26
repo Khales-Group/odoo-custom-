@@ -329,7 +329,7 @@ class KhApprovalRequest(models.Model):
                 existing = existing.filtered(lambda a: a.user_id.id == line.approver_id.id)
             if not existing[:1]:
                 with rec.env.cr.savepoint():
-                    rec.activity_schedule(
+                    rec.sudo().activity_schedule(
                         "mail.mail_activity_data_todo",
                         user_id=line.approver_id.id,
                         summary=_("Approval needed"),
