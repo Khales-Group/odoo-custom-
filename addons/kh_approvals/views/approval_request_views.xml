@@ -69,15 +69,15 @@
 
             <!-- Approve/Reject ONLY for the current pending approver -->
             <button name="action_approve_request" type="object" string="Approve"
-                    class="btn-primary"
+                    class="btn-primary o_mobile_force_show"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
             <button name="action_reject_request" type="object" string="Reject"
-                    class="btn-secondary"
+                    class="btn-secondary o_mobile_force_show"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
 
             <!-- Edit Request (owner-only) -->
             <button name="action_revise_request" type="object" string="Edit Request"
-                    class="btn-secondary"
+                    class="btn-secondary o_mobile_force_show"
                     invisible="state == 'draft' or requester_id != uid"/>
 
             <field name="state" widget="statusbar" statusbar_visible="draft,in_review,approved,rejected"/>
