@@ -2,7 +2,6 @@
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, AccessError
 
-
 # ============================================================================
 # Approval Request
 # ============================================================================
@@ -11,12 +10,10 @@ class KhApprovalRequest(models.Model):
     _description = "Khales Approval Request"
     _inherit = ["mail.thread", "mail.activity.mixin"]
     _check_company_auto = True
-
     # -------------------------------------------------------------------------
     # Fields
     # -------------------------------------------------------------------------
     name = fields.Char(required=True, tracking=True)
-
     company_id = fields.Many2one(
         "res.company",
         required=True,
@@ -153,7 +150,6 @@ class KhApprovalRequest(models.Model):
                 """
             else:
                 rec.steps_overview_html = "<i>No approval steps.</i>"
-
     def _critical_fields(self):
         """Fields that, if changed, should trigger a new approval cycle."""
         return {'name', 'amount', 'currency_id', 'company_id', 'department_id', 'rule_id'}
@@ -331,7 +327,6 @@ class KhApprovalRequest(models.Model):
                 )
             else:
                 existing = existing.filtered(lambda a: a.user_id.id == line.approver_id.id)
-
             if not existing[:1]:
                 with rec.env.cr.savepoint():
                     rec.activity_schedule(
@@ -354,7 +349,6 @@ class KhApprovalRequest(models.Model):
                         subtype_xmlid="mail.mt_comment",
                         email_layout_xmlid="mail.mail_notification_light",
                     )
-
     # -------------------------------------------------------------------------
     # Steps generation
     # -------------------------------------------------------------------------
@@ -397,9 +391,7 @@ class KhApprovalRequest(models.Model):
 
             if not vals:
                 raise UserError(_("This rule has no approvers defined."))
-
             self.env["kh.approval.line"].sudo().create(vals)
-
     # -------------------------------------------------------------------------
     # Actions (buttons)
     # -------------------------------------------------------------------------
@@ -458,11 +450,9 @@ class KhApprovalRequest(models.Model):
                     partner_ids=prev_approver_partners.ids,
                 )
         return True
-
     def action_withdraw_request(self):
         # Feature disabled at your request
         raise UserError(_("This option has been disabled by your administrator."))
-
     def action_approve_request(self):
         """Current approver approves their step; finish or notify next approver."""
         for rec in self:
