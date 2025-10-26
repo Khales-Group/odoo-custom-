@@ -4,9 +4,9 @@
   <delete id="mc_rule_rule_company" model="ir.rule"/>
   <delete id="mc_rule_line_company" model="ir.rule"/>
 
-  <!-- REQUESTS: requester OR any approver -->
-  <record id="rule_kh_request_own_or_approver" model="ir.rule">
-    <field name="name">Requests: Own or Approver</field>
+  <!-- REQUESTS (READ): requester OR any approver. READ-ONLY. -->
+  <record id="rule_kh_request_read_own_or_approver" model="ir.rule">
+    <field name="name">Requests: Read Own or as Approver</field>
     <field name="model_id" ref="model_kh_approval_request"/>
     <field name="domain_force">
       ['|',
@@ -16,6 +16,18 @@
     </field>
     <field name="groups" eval="[(4, ref('base.group_user'))]"/>
     <field name="perm_read" eval="1"/>
+    <field name="perm_write" eval="0"/>
+    <field name="perm_create" eval="0"/>
+    <field name="perm_unlink" eval="0"/>
+  </record>
+
+  <!-- REQUESTS (WRITE/CREATE): Requester can create, and can edit their own DRAFT requests. -->
+  <record id="rule_kh_request_write_own_draft" model="ir.rule">
+    <field name="name">Requests: Write/Create Own Drafts</field>
+    <field name="model_id" ref="model_kh_approval_request"/>
+    <field name="domain_force">[('requester_id.id', '=', user.id), ('state', '=', 'draft')]</field>
+    <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    <field name="perm_read" eval="0"/>
     <field name="perm_write" eval="1"/>
     <field name="perm_create" eval="1"/>
     <field name="perm_unlink" eval="0"/>
