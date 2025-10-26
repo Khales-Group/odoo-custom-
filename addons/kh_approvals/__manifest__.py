@@ -13,17 +13,23 @@
         "security/ir.model.access.csv",
         "security/kh_approvals_rules.xml",
 
-        # --- data (sequences etc.) ---
+        # --- data ---
         "data/sequence.xml",
 
-        # --- ALL VIEWS FIRST (define XMLIDs used later by actions/menus) ---
+        # --- views ---
         "views/approval_request_views.xml",
         "views/approval_rule_views.xml",
+        "views/qweb_templates.xml",
         "views/department_views.xml",
 
         # --- ACTIONS + MENUS LAST (they may reference the views above) ---
         "views/menu.xml",
     ],
+    "assets": {
+        "web.assets_backend": [
+            "kh_approvals/static/src/css/approvals_backend.css",
+        ],
+    },
     "application": True,
     "installable": True,
     "license": "LGPL-3",

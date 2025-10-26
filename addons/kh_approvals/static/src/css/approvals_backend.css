@@ -1,0 +1,63 @@
+/* /kh_approvals/static/src/css/approvals_backend.css */
+
+/*
+ * =================================================================
+ * Khales Brand Colors
+ * =================================================================
+ * Extracted from your website's code.
+ */
+:root {
+  --kh-brand-primary: #66a109;
+  --kh-brand-secondary: #5a9008; /* Darker shade for hover */
+  --kh-brand-light-bg: #eef6e3; /* Light green for backgrounds */
+}
+
+/*
+ * =================================================================
+ * Apply Branding to Approval Request Form
+ * =================================================================
+ */
+
+/* --- Primary Buttons (Submit, Approve) --- */
+.o_form_view[data-model="kh.approval.request"]
+  .o_form_statusbar
+  > .o_statusbar_buttons
+  > .btn-primary {
+  background-color: var(--kh-brand-primary);
+  border-color: var(--kh-brand-primary);
+  font-weight: 600;
+}
+
+.o_form_view[data-model="kh.approval.request"]
+  .o_form_statusbar
+  > .o_statusbar_buttons
+  > .btn-primary:hover {
+  background-color: var(--kh-brand-secondary);
+  border-color: var(--kh-brand-secondary);
+}
+
+/* --- Statusbar Widget --- */
+.o_form_view[data-model="kh.approval.request"]
+  .o_statusbar_status
+  .o_arrow_button.btn-primary.disabled {
+  color: white;
+  background-color: var(--kh-brand-primary);
+  opacity: 1;
+}
+
+/* Make past steps slightly less prominent */
+.o_form_view[data-model="kh.approval.request"]
+  .o_statusbar_status
+  .o_arrow_button.btn-secondary.disabled:not(.o_arrow_button_current) {
+  opacity: 0.8;
+}
+
+/* --- Approval Steps HTML Table --- */
+.o_form_view[data-model="kh.approval.request"] .o_field_html table {
+  font-size: 13px !important;
+}
+
+.o_form_view[data-model="kh.approval.request"] .o_field_html table thead {
+  background-color: #f9f9f9 !important; /* Match website's light gray */
+  color: #1a1a1a;
+}
