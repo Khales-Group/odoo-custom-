@@ -13,7 +13,7 @@ class KhApprovalRequest(models.Model):
     # -------------------------------------------------------------------------
     # Fields
     # -------------------------------------------------------------------------
-    name = fields.Char(required=True, tracking=True)
+    name = fields.Char(required=True, tracking=True, default=_("New"), copy=False)
     company_id = fields.Many2one(
         "res.company",
         required=True,
@@ -162,14 +162,13 @@ class KhApprovalRequest(models.Model):
         """Assign company, department (from rule if empty), and company-scoped name/sequence."""
         for vals in vals_list:
             vals.setdefault("company_id", self.env.company.id)
-
-            # name from sequence, scoped by company
-            if not vals.get("name"):
+ 
+            # If name is default "New", assign a sequence number
+            if vals.get("name", _("New")) == _("New"):
                 seq = self.env["ir.sequence"].with_context(
                     force_company=vals["company_id"]
                 ).next_by_code("kh.approval.request")
                 vals["name"] = seq or _("New")
-
             # auto-pick department from chosen rule if left empty
             if vals.get("rule_id") and not vals.get("department_id"):
                 rule = self.env["kh.approval.rule"].browse(vals["rule_id"])

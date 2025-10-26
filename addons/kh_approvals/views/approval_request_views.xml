@@ -83,7 +83,7 @@
           <sheet>
             <group>
               <group>
-                <field name="name" required="1" readonly="state != 'draft'"/>
+                <field name="name" readonly="1"/>
                 <field name="requester_id" readonly="1"/>
                 <field name="amount" readonly="state != 'draft'"/>
                 <field name="currency_id" readonly="state != 'draft'"/>
