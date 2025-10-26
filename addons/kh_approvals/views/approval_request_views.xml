@@ -42,14 +42,15 @@
       <field name="model">kh.approval.request</field>
       <field name="arch" type="xml">
         <list>
-          <field name="name"/>
+          <field name="name" string="Request ID"/>
           <field name="title"/>
           <field name="requester_id"/>
+          <field name="department_id"/>
           <field name="amount"/>
           <field name="currency_id"/>
-          <field name="company_id" groups="base.group_multi_company"/>
-          <field name="department_id"/>
+          <field name="submitted_on"/>
           <field name="state"/>
+          <field name="company_id" groups="base.group_multi_company"/>
         </list>
       </field>
     </record>
