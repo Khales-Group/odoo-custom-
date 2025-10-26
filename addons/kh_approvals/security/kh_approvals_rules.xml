@@ -54,6 +54,18 @@
     <field name="perm_unlink" eval="0"/>
   </record>
 
+  <!-- RULE 5 (USER): Approver can write on a request they are pending on (to approve/reject). -->
+  <record id="rule_kh_request_write_as_approver" model="ir.rule">
+    <field name="name">Requests: Write as current approver</field>
+    <field name="model_id" ref="model_kh_approval_request"/>
+    <field name="domain_force">[('state', '=', 'in_review'), ('approval_line_ids.approver_id', '=', user.id), ('approval_line_ids.state', '=', 'pending')]</field>
+    <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    <field name="perm_read" eval="0"/>
+    <field name="perm_write" eval="1"/>
+    <field name="perm_create" eval="0"/>
+    <field name="perm_unlink" eval="0"/>
+  </record>
+
 
   <!-- REQUESTS: managers see all -->
   <record id="rule_kh_request_manager_all" model="ir.rule">
