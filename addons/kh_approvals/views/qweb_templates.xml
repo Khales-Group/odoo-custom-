@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+        <template id="kh_approvals.steps_overview_template" name="Approval Steps Overview">
+            <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <thead style="background:#f9fafb;">
+                        <tr>
+                            <th style="text-align:left;padding:8px 10px;">Name</th>
+                            <th style="text-align:left;padding:8px 10px;">Approver</th>
+                            <th style="text-align:center;padding:8px 10px;">Required</th>
+                            <th style="text-align:left;padding:8px 10px;">State</th>
+                            <th style="text-align:left;padding:8px 10px;">Note</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <t t-if="not lines">
+                            <tr>
+                                <td colspan="5" style="padding:16px 8px;text-align:center;">
+                                    <i>No approval steps.</i>
+                                </td>
+                            </tr>
+                        </t>
+                        <t t-foreach="lines" t-as="line">
+                            <t t-set="status_badge" t-value="{
+                                'pending':  '#d97706',
+                                'approved': '#059669',
+                                'rejected': '#dc2626',
+                                'withdrawn': '#6b7280',
+                            }"/>
+                            <t t-set="color" t-value="status_badge.get(line.state or 'pending', '#6b7280')"/>
+                            <tr>
+                                <td style="padding:6px 8px;border-bottom:1px solid #eee;" t-esc="line.name or ''"/>
+                                <td style="padding:6px 8px;border-bottom:1px solid #eee;" t-esc="line.approver_id.name or ''"/>
+                                <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">
+                                    <t t-if="line.required">✓</t>
+                                </td>
+                                <td style="padding:6px 8px;border-bottom:1px solid #eee;">
+                                    <span t-attf-style="display:inline-block;padding:2px 8px;border-radius:12px;background:{{color}}20;color:{{color}};font-weight:600;text-transform:capitalize;">
+                                        <t t-esc="line.state or 'pending'"/>
+                                    </span>
+                                </td>
+                                <td style="padding:6px 8px;border-bottom:1px solid #eee;" t-esc="line.note or ''"/>
+                            </tr>
+                        </t>
+                    </tbody>
+                </table>
+            </div>
+        </template>
+    </data>
+</odoo>
