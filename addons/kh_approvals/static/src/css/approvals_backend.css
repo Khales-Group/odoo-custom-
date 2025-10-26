@@ -61,3 +61,19 @@
   background-color: #f9f9f9 !important; /* Match website's light gray */
   color: #1a1a1a;
 }
+
+/*
+ * =================================================================
+ * Mobile View Fixes
+ * =================================================================
+ */
+
+/* Force key action buttons to be visible on mobile, not hidden in the gear menu */
+@media (max-width: 767px) {
+  .o_form_view[data-model="kh.approval.request"]
+    .o_form_statusbar
+    .o_statusbar_buttons
+    > .o_mobile_force_show {
+    display: block !important;
+  }
+}
