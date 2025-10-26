@@ -9,8 +9,8 @@
     "depends": ["base", "mail"],
     "data": [
         # --- security first ---
-        "security/ir.model.access.csv",
         "security/kh_approvals_security.xml",
+        "security/ir.model.access.csv",
         "security/kh_approvals_rules.xml",
 
         # --- data (sequences etc.) ---
