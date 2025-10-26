@@ -1,0 +1,25 @@
+<odoo>
+  <!-- Requests: only current user's companies or global (company_id False) -->
+  <record id="mc_rule_request_company" model="ir.rule">
+    <field name="name">Approvals: company domain</field>
+    <field name="model_id" ref="model_kh_approval_request"/>
+    <field name="domain_force">['|', ('company_id','=',False), ('company_id','in', company_ids)]</field>
+    <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+  </record>
+
+  <!-- Rules: same -->
+  <record id="mc_rule_rule_company" model="ir.rule">
+    <field name="name">Approval Rules: company domain</field>
+    <field name="model_id" ref="model_kh_approval_rule"/>
+    <field name="domain_force">['|', ('company_id','=',False), ('company_id','in', company_ids)]</field>
+    <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+  </record>
+
+  <!-- Lines: same -->
+  <record id="mc_rule_line_company" model="ir.rule">
+    <field name="name">Approval Lines: company domain</field>
+    <field name="model_id" ref="model_kh_approval_line"/>
+    <field name="domain_force">['|', ('company_id','=',False), ('company_id','in', company_ids)]</field>
+    <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+  </record>
+</odoo>
