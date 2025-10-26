@@ -1,49 +1,72 @@
-from odoo import models, _
+from odoo import models, api, _
 from odoo.exceptions import UserError
 
-PROTECTED_FIELDS = {
-    "user_id", "res_model", "res_id", "activity_type_id",
-    "summary", "note", "date_deadline", "recommended_activity_type_id",
-}
 
 class MailActivity(models.Model):
     _inherit = "mail.activity"
 
-    def _applies_to_kh_approval(self):
-        self.ensure_one()
-        return self.res_model == "kh.approval.request"
+    # --- Config knobs from mail_activity_guard.py ---
+    def _kh_guard_excluded_models(self):
+        """Models to exclude from the global activity guard."""
+        param = self.env['ir.config_parameter'].sudo().get_param(
+            'kh_approvals.activity_guard_exclude_models', ''
+        ) or ''
+        return {m.strip() for m in param.split(',') if m.strip()}
 
-    def _bypass_guard(self):
-        """Allow superuser, Approvals Manager, or explicit context bypass."""
-        return (
-            self.env.su
-            or self.env.user.has_group("kh_approvals.group_kh_approvals_manager")
-            or self.env.context.get("kh_allow_activity_edit")
-            or self.env.context.get("kh_from_mark_done")  # <- allow during Mark Done only
-        )
+    def _kh_guard_is_bypassed(self):
+        """Check for various bypass conditions."""
+        if self.env.context.get('kh_activity_guard_bypass'):
+            return True
+        if self.env.is_superuser():
+            return True
+        if self.env.user.has_group('kh_approvals.group_kh_approvals_manager'):
+            return True
+        return False
 
-    def _check_creator_guard_or_raise(self):
+    def _kh_check_activity_permission(self):
+        """
+        Global Guard: Only the assigned user or creator can complete/edit/delete.
+        Managers and superusers are always allowed.
+        Some models can be excluded via system parameter.
+        """
+        if self._kh_guard_is_bypassed():
+            return
+
+        user = self.env.user
+        excluded_models = self._kh_guard_excluded_models()
+
         for act in self:
-            if act._applies_to_kh_approval() and not act._bypass_guard():
-                if act.create_uid.id != self.env.uid:
-                    raise UserError(
-                        _("Only the user who created this activity can edit or cancel it.")
-                    )
+            # Skip excluded models
+            if act.res_model in excluded_models:
+                continue
 
-    # Cancel/Delete
+            # Allow if current user is the assignee or the creator
+            if act.user_id and act.user_id.id == user.id:
+                continue
+            if act.create_uid and act.create_uid.id == user.id:
+                continue
+
+            # If none of the above, block the operation
+            raise UserError(_("Only the assigned user or the activity creator (or an Approvals Manager) can modify or delete this activity."))
+
+    # --- ORM Overrides to apply the guard ---
+
     def unlink(self):
-        self._check_creator_guard_or_raise()
+        # The context check is to allow internal operations like 'Mark Done' to proceed
+        if not self.env.context.get('kh_from_mark_done'):
+            self._kh_check_activity_permission()
         return super().unlink()
 
-    # Edit (not Mark Done)
     def write(self, vals):
-        if vals and (set(vals.keys()) & PROTECTED_FIELDS):
-            self._check_creator_guard_or_raise()
+        # The context check is to allow internal operations like 'Mark Done' to proceed
+        if not self.env.context.get('kh_from_mark_done'):
+            self._kh_check_activity_permission()
         return super().write(vals)
 
-    # Mark Done: allow, but only for this call path
+    def action_done(self):
+        self._kh_check_activity_permission()
+        return super(MailActivity, self.with_context(kh_from_mark_done=True)).action_done()
+
     def action_feedback(self, feedback=False, attachment_ids=None, **kwargs):
-        # Set a context flag so write()/unlink() during Mark Done are allowed.
-        return super(
-            MailActivity, self.with_context(kh_from_mark_done=True)
-        ).action_feedback(feedback=feedback, attachment_ids=attachment_ids, **kwargs)
+        self._kh_check_activity_permission()
+        return super(MailActivity, self.with_context(kh_from_mark_done=True)).action_feedback(feedback=feedback, attachment_ids=attachment_ids, **kwargs)
