@@ -13,7 +13,13 @@ class KhApprovalRequest(models.Model):
     # -------------------------------------------------------------------------
     # Fields
     # -------------------------------------------------------------------------
-    name = fields.Char(required=True, tracking=True, default=_("New"), copy=False)
+    name = fields.Char(string="Request ID", required=True, tracking=True, default=_("New"), copy=False)
+    title = fields.Char(
+        string="Title",
+        required=True,
+        tracking=True,
+        states={'in_review': [('readonly', True)], 'approved': [('readonly', True)], 'rejected': [('readonly', True)]}
+    )
     company_id = fields.Many2one(
         "res.company",
         required=True,
@@ -152,7 +158,7 @@ class KhApprovalRequest(models.Model):
                 rec.steps_overview_html = "<i>No approval steps.</i>"
     def _critical_fields(self):
         """Fields that, if changed, should trigger a new approval cycle."""
-        return {'name', 'amount', 'currency_id', 'company_id', 'department_id', 'rule_id'}
+        return {'title', 'amount', 'currency_id', 'company_id', 'department_id', 'rule_id'}
 
     # -------------------------------------------------------------------------
     # ORM overrides
@@ -220,7 +226,7 @@ class KhApprovalRequest(models.Model):
             self.message_notify(
                 partner_ids=partner_ids,
                 body=body_html,
-                subject=self.name,
+                subject=f"{self.name}: {self.title}",
                 subtype_xmlid="mail.mt_note",
                 email_layout_xmlid="mail.mail_notification_light",
             )
@@ -241,7 +247,7 @@ class KhApprovalRequest(models.Model):
         self.message_notify(
             partner_ids=[partner.id],
             body=body_html,
-            subject=subject or self.name,
+            subject=subject or f"{self.name}: {self.title}",
             subtype_xmlid="mail.mt_comment",
             email_layout_xmlid="mail.mail_notification_light",  # no SMTP
         )
@@ -331,8 +337,8 @@ class KhApprovalRequest(models.Model):
                     rec.sudo().activity_schedule(
                         "mail.mail_activity_data_todo",
                         user_id=line.approver_id.id,
-                        summary=_("Approval needed"),
-                        note=_("Please review approval request: %s") % rec.name,
+                        summary=_("Approval needed: %s") % rec.title,
+                        note=_("Please review approval request %s: %s") % (rec.name, rec.title),
                     )
 
             # 2) Optional chatter ping (OFF by default)
@@ -344,7 +350,7 @@ class KhApprovalRequest(models.Model):
                     rec.message_notify(
                         partner_ids=[line.approver_id.partner_id.id],
                         body=html,
-                        subject=rec.name,
+                        subject=f"{rec.name}: {rec.title}",
                         subtype_xmlid="mail.mt_comment",
                         email_layout_xmlid="mail.mail_notification_light",
                     )
@@ -481,8 +487,8 @@ class KhApprovalRequest(models.Model):
                 )
                 rec._notify_partner(
                     rec.requester_id.partner_id,
-                    _("✅ <b>Approved</b>: <a href='%s'>%s</a>") % (rec._deeplink(), rec.name),
-                    subject=rec.name,
+                    _("✅ <b>Approved</b>: <a href='%(link)s'>%(name)s: %(title)s</a>") % {"link": rec._deeplink(), "name": rec.name, "title": rec.title},
+                    subject=f"Approved: {rec.name}",
                 )
         return True
 
@@ -507,8 +513,8 @@ class KhApprovalRequest(models.Model):
             )
             rec._notify_partner(
                 rec.requester_id.partner_id,
-                _("❌ <b>Rejected</b>: <a href='%s'>%s</a>") % (rec._deeplink(), rec.name),
-                subject=rec.name,
+                _("❌ <b>Rejected</b>: <a href='%(link)s'>%(name)s: %(title)s</a>") % {"link": rec._deeplink(), "name": rec.name, "title": rec.title},
+                subject=f"Rejected: {rec.name}",
             )
         return True
 

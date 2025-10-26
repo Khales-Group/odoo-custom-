@@ -27,6 +27,7 @@
           <filter name="to_approve" string="To Approve"
                   domain="[('approval_line_ids.approver_id','=',uid), ('approval_line_ids.state','=','pending')]"/>
           <separator/>
+          <field name="title"/>
           <field name="state"/>
           <field name="requester_id"/>
           <field name="company_id" groups="base.group_multi_company"/>
@@ -42,6 +43,7 @@
       <field name="arch" type="xml">
         <list>
           <field name="name"/>
+          <field name="title"/>
           <field name="requester_id"/>
           <field name="amount"/>
           <field name="currency_id"/>
@@ -83,7 +85,8 @@
           <sheet>
             <group>
               <group>
-                <field name="name" readonly="1"/>
+                <field name="title"/>
+                <field name="name" readonly="1" string="Request ID"/>
                 <field name="requester_id" readonly="1"/>
                 <field name="amount" readonly="state != 'draft'"/>
                 <field name="currency_id" readonly="state != 'draft'"/>
