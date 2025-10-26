@@ -10,7 +10,7 @@
     <field name="model_id" ref="model_kh_approval_request"/>
     <field name="domain_force">
       ['|',
-        ('requester_id', '=', user.id),
+        ('requester_id.id', '=', user.id),
         ('approval_line_ids.approver_id', '=', user.id)
       ]
     </field>
@@ -39,8 +39,8 @@
     <field name="model_id" ref="model_kh_approval_line"/>
     <field name="domain_force">
       ['|',
-        ('request_id.requester_id', '=', user.id),
-        ('request_id.approval_line_ids.approver_id', '=', user.id)
+        ('request_id.requester_id.id', '=', user.id),
+        ('approver_id.id', '=', user.id)
       ]
     </field>
     <field name="groups" eval="[(4, ref('base.group_user'))]"/>
