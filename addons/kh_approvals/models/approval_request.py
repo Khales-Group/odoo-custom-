@@ -480,7 +480,7 @@ class KhApprovalRequest(models.Model):
             if next_line:
                 rec._notify_first_pending()
             else:
-                rec.with_context(tracking_disable=True).write({"state": "approved"})
+                rec.sudo().with_context(tracking_disable=True).write({"state": "approved"})
                 rec._post_note(
                     _("✅ Request approved."),
                     partner_ids=[rec.requester_id.partner_id.id],
@@ -505,7 +505,7 @@ class KhApprovalRequest(models.Model):
             rec._close_my_open_todos()
             line.sudo().write({"state": "rejected"})
 
-            rec.with_context(tracking_disable=True).write({"state": "rejected"})
+            rec.sudo().with_context(tracking_disable=True).write({"state": "rejected"})
 
             rec._post_note(
                 _("❌ Rejected by <b>%s</b>.") % self.env.user.name,
