@@ -486,7 +486,7 @@ class KhApprovalRequest(models.Model):
                 rec.message_post(
                     body=_("Request approved."),
                     tracking_value_ids=[(0, 0, {
-                        'field': self.env['ir.model.fields']._get(self._name, 'state').id,
+                        'field_id': self.env['ir.model.fields']._get(self._name, 'state').id,
                         'old_value_char': dict(self._fields['state'].selection).get(old_state),
                         'new_value_char': dict(self._fields['state'].selection).get('approved'),
                     })],
@@ -515,12 +515,21 @@ class KhApprovalRequest(models.Model):
             rec._close_my_open_todos()
             line.sudo().write({"state": "rejected"})
 
-            rec.sudo().with_context(tracking_disable=True).write({"state": "rejected"})
-
-            rec._post_note(
-                _("❌ Rejected by <b>%s</b>.") % self.env.user.name,
-                partner_ids=[rec.requester_id.partner_id.id],
+            # Log state change in chatter
+            old_state = rec.state
+            rec.sudo().write({"state": "rejected"})
+            rec.message_post(
+                body=_("❌ Rejected by <b>%s</b>.") % self.env.user.name,
+                tracking_value_ids=[(0, 0, {
+                    'field_id': self.env['ir.model.fields']._get(self._name, 'state').id,
+                    'old_value_char': dict(self._fields['state'].selection).get(old_state),
+                    'new_value_char': dict(self._fields['state'].selection).get('rejected'),
+                })],
+                message_type="notification",
+                subtype_xmlid="mail.mt_comment",
+                partner_ids=[rec.requester_id.partner_id.id]
             )
+
             rec._notify_partner(
                 rec.requester_id.partner_id,
                 _("❌ <b>Rejected</b>: <a href='%(link)s'>%(name)s: %(title)s</a>") % {"link": rec._deeplink(), "name": rec.name, "title": rec.title},
