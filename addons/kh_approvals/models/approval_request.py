@@ -296,12 +296,15 @@ class KhApprovalRequest(models.Model):
             else:
                 existing = existing.filtered(lambda a: a.user_id.id == line.approver_id.id)
             if not existing[:1]:
+                # Switch to the requester's user to ensure they are the creator of the activity.
+                # This allows the requester to cancel it later if they revise the request.
+                request_as_requester = rec.with_user(rec.requester_id)
                 with rec.env.cr.savepoint():
-                    rec.sudo().activity_schedule(
+                    request_as_requester.activity_schedule(
                         "mail.mail_activity_data_todo",
                         user_id=line.approver_id.id,
-                        summary=_("Approval needed: %s") % rec.title,
-                        note=_("Please review approval request %s: %s") % (rec.name, rec.title),
+                        summary=_("Approval needed: %s") % request_as_requester.title,
+                        note=_("Please review approval request %s: %s") % (request_as_requester.name, request_as_requester.title),
                     )
 
             # 2) Optional chatter ping (OFF by default)
