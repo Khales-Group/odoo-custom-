@@ -246,7 +246,7 @@ class KhApprovalRequest(models.Model):
         """Close all To-Do activities on this request (any user)."""
         for rec in self:
             for act in rec.activity_ids:
-                rec._activity_done_silent(act)
+                rec.sudo()._activity_done_silent(act)
 
     # -------------------------------------------------------------------------
     # Throttle helper
