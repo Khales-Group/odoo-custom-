@@ -85,20 +85,40 @@
 
           <sheet>
             <group>
-              <group>
+              <group string="Request Details">
                 <field name="title"/>
-                <field name="name" readonly="1" string="Request ID"/>
-                <field name="requester_id" readonly="1"/>
-                <field name="amount" readonly="state != 'draft'"/>
-                <field name="currency_id" readonly="state != 'draft'"/>
+                <label for="name" string="Request ID"/>
+                <div class="o_row">
+                  <i class="fa fa-hashtag text-muted me-2"/>
+                  <field name="name" readonly="1"/>
+                </div>
+                <label for="requester_id"/>
+                <div class="o_row">
+                  <i class="fa fa-user-o text-muted me-2"/>
+                  <field name="requester_id" readonly="1" widget="many2one_avatar_user"/>
+                </div>
+                <label for="amount"/>
+                <div class="o_row">
+                  <i class="fa fa-money text-muted me-2"/>
+                  <field name="amount" readonly="state != 'draft'"/>
+                  <field name="currency_id" readonly="state != 'draft'"/>
+                </div>
                 <field name="revision" readonly="1"/>
                 <field name="last_revised_by" readonly="1"/>
                 <field name="last_revised_on" readonly="1"/>
                 <field name="submitted_on" readonly="1"/>
               </group>
-              <group>
-                <field name="company_id" groups="base.group_multi_company" readonly="state != 'draft'"/>
-                <field name="department_id" readonly="state != 'draft'"/>
+              <group string="Configuration">
+                <label for="company_id" groups="base.group_multi_company"/>
+                <div class="o_row" groups="base.group_multi_company">
+                  <i class="fa fa-building-o text-muted me-2"/>
+                  <field name="company_id" readonly="state != 'draft'"/>
+                </div>
+                <label for="department_id"/>
+                <div class="o_row">
+                  <i class="fa fa-sitemap text-muted me-2"/>
+                  <field name="department_id" readonly="state != 'draft'"/>
+                </div>
                 <field name="rule_id"
                        readonly="state != 'draft'"
                        domain="[('company_id','in',[False, company_id]), '|', ('department_id','=',False), ('department_id','=',department_id)]"

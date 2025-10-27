@@ -10,6 +10,10 @@
   --kh-brand-primary: #66a109;
   --kh-brand-secondary: #5a9008; /* Darker shade for hover */
   --kh-brand-light-bg: #eef6e3; /* Light green for backgrounds */
+
+  --kh-status-approved: #66a109;
+  --kh-status-rejected: #dc3545;
+  --kh-status-pending: #ffc107;
 }
 
 /*
@@ -62,6 +66,32 @@
   color: #1a1a1a;
 }
 
+.o_form_view[data-model="kh.approval.request"] .o_field_html .kh-status-badge {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  color: white;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.o_form_view[data-model="kh.approval.request"]
+  .o_field_html
+  .kh-status-approved {
+  background-color: var(--kh-status-approved);
+}
+
+.o_form_view[data-model="kh.approval.request"]
+  .o_field_html
+  .kh-status-rejected {
+  background-color: var(--kh-status-rejected);
+}
+
+.o_form_view[data-model="kh.approval.request"]
+  .o_field_html
+  .kh-status-pending {
+  background-color: var(--kh-status-pending);
+}
 /*
  * =================================================================
  * Mobile View Fixes
