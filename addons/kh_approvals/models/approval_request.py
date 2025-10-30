@@ -547,11 +547,12 @@ class KhApprovalRequest(models.Model):
             try:
                 user_to_notify = self.env['res.users'].browse(user_to_notify_id).exists()
                 if user_to_notify:
-                    rec.activity_schedule(
+                    # Bypass the activity guard, as this is a system-generated notification.
+                    rec.with_context(kh_activity_guard_bypass=True).activity_schedule(
                         'mail.mail_activity_data_todo',
                         summary=_("Payment Processed: %s") % rec.title,
                         note=_("Approval request %s for %s has been marked as paid.") % (rec.name, rec.requester_id.name),
-                        user_id=user_to_notify.id,
+                        user_id=user_to_notify.id
                     )
             except Exception:
                 # Fails silently if user 152 doesn't exist to avoid blocking the process.
