@@ -481,15 +481,26 @@ class KhApprovalRequest(models.Model):
                     subject=f"Approved: {rec.name}",
                 )
 
-                # Schedule an activity for the designated user (ID 152)
+                # Schedule an activity and notify the designated user (ID 152)
                 try:
                     user_to_notify = self.env['res.users'].browse(152).exists()
                     if user_to_notify:
+                        # Schedule activity
                         rec.sudo().activity_schedule(
                             'mail.mail_activity_data_todo',
                             summary=_("Request Approved: %s") % rec.title,
-                            note=_("Approval request %s for %s has been approved.") % (rec.name, rec.requester_id.name),
+                            note=_("Approval request %s for %s has been approved and is ready for payment processing.") % (rec.name, rec.requester_id.name),
                             user_id=user_to_notify.id
+                        )
+                        # Send notification
+                        rec._notify_partner(
+                            user_to_notify.partner_id,
+                            _("<b>Request Approved and Ready for Payment</b>: <a href='%(link)s'>%(name)s: %(title)s</a> has been fully approved.") % {
+                                "link": rec._deeplink(),
+                                "name": rec.name,
+                                "title": rec.title
+                            },
+                            subject=f"Approved and Ready for Payment: {rec.name}",
                         )
                 except Exception:
                     # Fails silently if user 152 doesn't exist to avoid blocking the process.

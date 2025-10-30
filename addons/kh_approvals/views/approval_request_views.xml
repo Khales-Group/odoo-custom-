@@ -83,7 +83,7 @@
             <!-- Mark as Paid (for approved payment requests) -->
             <button name="action_mark_as_paid" type="object" string="Mark as Paid"
                     class="btn-primary"
-                    invisible="state != 'approved' or payment_state != 'not_paid' or amount &lt;= 0"/>
+                    invisible="state != 'approved' or payment_state != 'not_paid' or amount &lt;= 0 or uid != 152"/>
 
             <field name="state" widget="statusbar" statusbar_visible="draft,in_review,approved,rejected"/>
             <field name="payment_state" widget="statusbar"
