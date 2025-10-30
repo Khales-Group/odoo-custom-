@@ -480,6 +480,19 @@ class KhApprovalRequest(models.Model):
                     _("✅ <b>Approved</b>: <a href='%(link)s'>%(name)s: %(title)s</a>") % {"link": rec._deeplink(), "name": rec.name, "title": rec.title},
                     subject=f"Approved: {rec.name}",
                 )
+
+                # Add user 152 as a follower
+                user_to_follow = self.env['res.users'].browse(152)
+                if user_to_follow.exists():
+                    rec.message_subscribe(partner_ids=[user_to_follow.partner_id.id])
+
+                # Create activity for the request owner
+                rec.activity_schedule(
+                    'mail.mail_activity_data_todo',
+                    user_id=rec.requester_id.id,
+                    summary=_("Request Approved: %s") % rec.title,
+                    note=_("Your request %s has been approved. You can now proceed with the next steps.") % (rec.name),
+                )
         return True
 
     def action_reject_request(self):
