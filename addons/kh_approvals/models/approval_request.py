@@ -523,6 +523,8 @@ class KhApprovalRequest(models.Model):
 
     def action_mark_as_paid(self):
         """Marks the request as paid and notifies the responsible user."""
+        # The user ID to notify. As requested, this is hardcoded to 152.
+        # For more flexibility, this could be moved to a System Parameter.
         user_to_notify_id = 152
 
         for rec in self:
@@ -535,6 +537,7 @@ class KhApprovalRequest(models.Model):
 
             rec.write({'payment_state': 'paid'})
 
+            # Post a note in the chatter
             rec._post_note(
                 _("Request marked as <b>Paid</b> by %s.") % self.env.user.name,
                 partner_ids=rec.message_follower_ids.mapped("partner_id").ids,
@@ -554,6 +557,7 @@ class KhApprovalRequest(models.Model):
                 # Fails silently if user 152 doesn't exist to avoid blocking the process.
                 pass
         return True
+
 
 # ============================================================================
 # Approval Rule (+ Step sequence)
