@@ -306,7 +306,6 @@ class KhApprovalRequest(models.Model):
                         summary=_("Approval needed: %s") % request_as_requester.title,
                         note=_("Please review approval request %s: %s") % (request_as_requester.name, request_as_requester.title),
                     )
-
             # 2) Optional chatter ping (OFF by default)
             if notify_mode == 'message':
                 html = _(
