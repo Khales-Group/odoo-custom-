@@ -80,7 +80,15 @@
                     class="btn-secondary o_mobile_force_show"
                     invisible="state == 'draft' or requester_id != uid"/>
 
+            <!-- Mark as Paid (for approved payment requests) -->
+            <button name="action_mark_as_paid" type="object" string="Mark as Paid"
+                    class="btn-primary"
+                    invisible="state != 'approved' or payment_state != 'not_paid' or amount &lt;= 0"
+                    groups="kh_approvals.group_kh_approvals_accountant,kh_approvals.group_kh_approvals_manager"/>
+
             <field name="state" widget="statusbar" statusbar_visible="draft,in_review,approved,rejected"/>
+            <field name="payment_state" widget="statusbar"
+                   invisible="amount &lt;= 0"/>
           </header>
 
           <sheet>
