@@ -61,6 +61,17 @@ class KhApprovalRequest(models.Model):
         tracking=True,  # tracking kept, but we mute it on write
     )
 
+    payment_state = fields.Selection(
+        [
+            ("not_paid", "Not Paid"),
+            ("paid", "Paid"),
+        ],
+        string="Payment Status",
+        default="not_paid",
+        tracking=True,
+        copy=False,
+    )
+
     # Revision / audit helpers
     revision = fields.Integer(default=0, tracking=True)
     last_revised_by = fields.Many2one('res.users', readonly=True)
