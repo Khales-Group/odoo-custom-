@@ -27,7 +27,6 @@ class KhApprovalRequest(models.Model):
         index=True,
         tracking=True,
     )
-
     department_id = fields.Many2one(
         "kh.approvals.department",
         string="Department",
