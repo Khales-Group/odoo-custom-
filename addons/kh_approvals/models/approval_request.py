@@ -484,10 +484,10 @@ class KhApprovalRequest(models.Model):
                 # Add user 152 as a follower
                 user_to_follow = self.env['res.users'].browse(152)
                 if user_to_follow.exists():
-                    rec.message_subscribe(partner_ids=[user_to_follow.partner_id.id])
+                    rec.sudo().message_subscribe(partner_ids=[user_to_follow.partner_id.id])
 
                 # Create activity for the request owner
-                rec.activity_schedule(
+                rec.sudo().activity_schedule(
                     'mail.mail_activity_data_todo',
                     user_id=rec.requester_id.id,
                     summary=_("Request Approved: %s") % rec.title,
