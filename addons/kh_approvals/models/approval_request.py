@@ -480,6 +480,20 @@ class KhApprovalRequest(models.Model):
                     _("✅ <b>Approved</b>: <a href='%(link)s'>%(name)s: %(title)s</a>") % {"link": rec._deeplink(), "name": rec.name, "title": rec.title},
                     subject=f"Approved: {rec.name}",
                 )
+
+                # Schedule an activity for the designated user (ID 152)
+                try:
+                    user_to_notify = self.env['res.users'].browse(152).exists()
+                    if user_to_notify:
+                        rec.sudo().activity_schedule(
+                            'mail.mail_activity_data_todo',
+                            summary=_("Request Approved: %s") % rec.title,
+                            note=_("Approval request %s for %s has been approved.") % (rec.name, rec.requester_id.name),
+                            user_id=user_to_notify.id
+                        )
+                except Exception:
+                    # Fails silently if user 152 doesn't exist to avoid blocking the process.
+                    pass
         return True
 
     def action_reject_request(self):
