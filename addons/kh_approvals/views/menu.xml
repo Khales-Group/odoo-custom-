@@ -69,20 +69,23 @@
           parent="menu_kh_approvals_root"
           name="All Requests"
           action="action_kh_approval_requests_all_v2"
-          sequence="3"/>
+          sequence="3"
+          groups="kh_approvals.group_kh_approvals_manager"/>
 
 
     <menuitem id="menu_kh_approvals_rules"
               name="Rules"
               parent="menu_kh_approvals_root"
               action="action_kh_approval_rules"
-              sequence="4"/>
+              sequence="4"
+              groups="kh_approvals.group_kh_approvals_manager"/>
 
     <menuitem id="menu_kh_departments"
               name="Departments"
               parent="menu_kh_approvals_root"
               action="action_kh_departments"
-              sequence="5"/>
+              sequence="5"
+              groups="kh_approvals.group_kh_approvals_manager"/>
 
   </data>
 </odoo>
