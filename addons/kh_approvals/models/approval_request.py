@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from odoo import api, fields, models, _
+import logging
 from odoo.exceptions import UserError, AccessError
 
 # ============================================================================
@@ -60,6 +61,8 @@ class KhApprovalRequest(models.Model):
         required=True,
         tracking=True,  # tracking kept, but we mute it on write
     )
+
+_logger = logging.getLogger(__name__)
 
     payment_state = fields.Selection(
         [
@@ -544,23 +547,30 @@ class KhApprovalRequest(models.Model):
             )
 
             # Schedule an activity for the designated user
+            # We use sudo() and kh_activity_guard_bypass=True to ensure the activity is created
+            # regardless of the current user's permissions or custom activity guards.
             try:
                 user_to_notify = self.env['res.users'].browse(user_to_notify_id).exists()
-                if user_to_notify:
-                    # To ensure the activity is created correctly without being overridden by other logic,
-                    # we create it as a superuser. This bypasses any user-context-based rules that might
-                    # alter the assigned user.
-                    self.env['mail.activity'].with_context(mail_activity_quick_update=True).sudo().create({
-                        'res_id': rec.id,
-                        'res_model_id': self.env['ir.model']._get_id(rec._name),
-                        'activity_type_id': self.env.ref('mail.mail_activity_data_todo').id,
-                        'summary': _("Payment Processed: %s") % rec.title,
-                        'note': _("Approval request %s for %s has been marked as paid.") % (rec.name, rec.requester_id.name),
-                        'user_id': user_to_notify.id,
-                    })
+                if not user_to_notify:
+                    _logger.warning("Payment activity not created for request %s: User with ID %s does not exist.", rec.name, user_to_notify_id)
+                    # Optionally, you could raise a UserError here if user 152 is critical.
+                    # raise UserError(_("The designated payment user (ID %s) does not exist. Please contact your administrator.") % user_to_notify_id)
+                    continue # Skip to the next record if processing multiple
+
+                self.env['mail.activity'].with_context(
+                    mail_activity_quick_update=True,
+                    kh_activity_guard_bypass=True # Explicitly bypass your custom activity guard
+                ).sudo().create({
+                    'res_id': rec.id,
+                    'res_model_id': self.env['ir.model']._get_id(rec._name),
+                    'activity_type_id': self.env.ref('mail.mail_activity_data_todo').id,
+                    'summary': _("Payment Processed: %s") % rec.title,
+                    'note': _("Approval request %s for %s has been marked as paid.") % (rec.name, rec.requester_id.name),
+                    'user_id': user_to_notify.id,
+                })
             except Exception as e:
-                # Fails silently if user 152 doesn't exist to avoid blocking the process.
-                pass
+                _logger.error("Failed to create payment activity for request %s (user ID %s): %s", rec.name, user_to_notify_id, e)
+                raise UserError(_("An unexpected error occurred while creating the payment activity. Please contact your administrator."))
         return True
 
 
