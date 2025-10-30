@@ -9,7 +9,7 @@
     "depends": ["base", "mail"],
     "data": [
         # --- security first ---
-        "security/kh_approvals_security.xml", # This file was missing, I've added it.
+        "security/kh_approvals_security.xml",
         "security/ir.model.access.csv",
         "security/kh_approvals_rules.xml",
 

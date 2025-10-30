@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 from odoo import api, fields, models, _
-import logging
 from odoo.exceptions import UserError, AccessError
 
 # ============================================================================
@@ -60,19 +59,6 @@ class KhApprovalRequest(models.Model):
         default="draft",
         required=True,
         tracking=True,  # tracking kept, but we mute it on write
-    )
-
-_logger = logging.getLogger(__name__)
-
-    payment_state = fields.Selection(
-        [
-            ("not_paid", "Not Paid"),
-            ("paid", "Paid"),
-        ],
-        string="Payment Status",
-        default="not_paid",
-        tracking=True,
-        copy=False,
     )
 
     # Revision / audit helpers
@@ -523,49 +509,6 @@ _logger = logging.getLogger(__name__)
     def action_opt_out_as_approver(self):
         # Feature disabled at your request
         raise UserError(_("This option has been disabled by your administrator."))
-
-    def action_mark_as_paid(self):
-        """Marks the request as paid and notifies the responsible user."""
-        # The user ID to notify. As requested, this is hardcoded to 152.
-        # For more flexibility, this could be moved to a System Parameter.
-        user_to_notify_id = 152
-
-        for rec in self:
-            if rec.state != 'approved':
-                raise UserError(_("Only approved requests can be marked as paid."))
-            if rec.payment_state == 'paid':
-                raise UserError(_("This request has already been marked as paid."))
-            if not rec.amount > 0:
-                raise UserError(_("This action is only for requests with a payment amount."))
-
-            rec.write({'payment_state': 'paid'})
-
-            # Post a note in the chatter
-            rec._post_note(
-                _("Request marked as <b>Paid</b> by %s.") % self.env.user.name,
-                partner_ids=rec.message_follower_ids.mapped("partner_id").ids,
-            )
-
-            # Schedule an activity for the designated user.
-            # We use sudo() to ensure the activity can be created for a user (the accountant)
-            # who may not otherwise have access to create records on behalf of the current user.
-            # The with_context() bypasses our custom guard just in case.
-            try:
-                user_to_notify = self.env['res.users'].browse(user_to_notify_id).exists()
-                if not user_to_notify:
-                    _logger.warning("Payment activity not created for request %s: User with ID %s does not exist.", rec.name, user_to_notify_id)
-                    continue
-
-                rec.with_context(kh_activity_guard_bypass=True).sudo().activity_schedule(
-                    'mail.mail_activity_data_todo',
-                    summary=_("Payment Processed: %s") % rec.title,
-                    note=_("Approval request %s for %s has been marked as paid.") % (rec.name, rec.requester_id.name),
-                    user_id=user_to_notify.id,
-                )
-            except Exception as e:
-                _logger.error("Failed to create payment activity for request %s (user ID %s): %s", rec.name, user_to_notify_id, e)
-                # We don't raise a UserError here to avoid blocking the 'paid' status change if activity creation fails.
-        return True
 
 
 # ============================================================================
