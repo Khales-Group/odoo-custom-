@@ -1,7 +1,6 @@
 from odoo import models, api, _
 from odoo.exceptions import UserError
 
-
 class MailActivity(models.Model):
     _inherit = "mail.activity"
 
@@ -15,13 +14,13 @@ class MailActivity(models.Model):
 
     def _kh_guard_is_bypassed(self):
         """Check for various bypass conditions."""
+        # Allow explicit bypass from server code: with_context(kh_activity_guard_bypass=True)
         if self.env.context.get('kh_activity_guard_bypass'):
             return True
         if self.env.is_superuser():
             return True
         if self.env.user.has_group('kh_approvals.group_kh_approvals_manager'):
             return True
-        return False
 
     def _kh_check_activity_permission(self):
         """
@@ -47,26 +46,24 @@ class MailActivity(models.Model):
                 continue
 
             # If none of the above, block the operation
-            raise UserError(_("Only the assigned user or the activity creator (or an Approvals Manager) can modify or delete this activity."))
+            raise UserError(_("Only the assigned user, the activity creator, or an Approvals Manager can modify or delete this activity."))
 
     # --- ORM Overrides to apply the guard ---
 
     def unlink(self):
-        # The context check is to allow internal operations like 'Mark Done' to proceed
-        if not self.env.context.get('kh_from_mark_done'):
-            self._kh_check_activity_permission()
+        self._kh_check_activity_permission()
         return super().unlink()
 
     def write(self, vals):
-        # The context check is to allow internal operations like 'Mark Done' to proceed
-        if not self.env.context.get('kh_from_mark_done'):
+        # Guard against unauthorized changes to key fields or state.
+        if any(k in vals for k in ('state', 'res_model', 'res_id', 'user_id')):
             self._kh_check_activity_permission()
         return super().write(vals)
 
     def action_done(self):
         self._kh_check_activity_permission()
-        return super(MailActivity, self.with_context(kh_from_mark_done=True)).action_done()
+        return super().action_done()
 
-    def action_feedback(self, feedback=False, attachment_ids=None, **kwargs):
+    def action_feedback(self, feedback=False, attachment_ids=None):
         self._kh_check_activity_permission()
-        return super(MailActivity, self.with_context(kh_from_mark_done=True)).action_feedback(feedback=feedback, attachment_ids=attachment_ids, **kwargs)
+        return super().action_feedback(feedback=feedback, attachment_ids=attachment_ids)

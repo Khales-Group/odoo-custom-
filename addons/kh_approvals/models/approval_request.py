@@ -546,31 +546,25 @@ _logger = logging.getLogger(__name__)
                 partner_ids=rec.message_follower_ids.mapped("partner_id").ids,
             )
 
-            # Schedule an activity for the designated user
-            # We use sudo() and kh_activity_guard_bypass=True to ensure the activity is created
-            # regardless of the current user's permissions or custom activity guards.
+            # Schedule an activity for the designated user.
+            # We use sudo() to ensure the activity can be created for a user (the accountant)
+            # who may not otherwise have access to create records on behalf of the current user.
+            # The with_context() bypasses our custom guard just in case.
             try:
                 user_to_notify = self.env['res.users'].browse(user_to_notify_id).exists()
                 if not user_to_notify:
                     _logger.warning("Payment activity not created for request %s: User with ID %s does not exist.", rec.name, user_to_notify_id)
-                    # Optionally, you could raise a UserError here if user 152 is critical.
-                    # raise UserError(_("The designated payment user (ID %s) does not exist. Please contact your administrator.") % user_to_notify_id)
-                    continue # Skip to the next record if processing multiple
+                    continue
 
-                self.env['mail.activity'].with_context(
-                    mail_activity_quick_update=True,
-                    kh_activity_guard_bypass=True # Explicitly bypass your custom activity guard
-                ).sudo().create({
-                    'res_id': rec.id,
-                    'res_model_id': self.env['ir.model']._get_id(rec._name),
-                    'activity_type_id': self.env.ref('mail.mail_activity_data_todo').id,
-                    'summary': _("Payment Processed: %s") % rec.title,
-                    'note': _("Approval request %s for %s has been marked as paid.") % (rec.name, rec.requester_id.name),
-                    'user_id': user_to_notify.id,
-                })
+                rec.with_context(kh_activity_guard_bypass=True).sudo().activity_schedule(
+                    'mail.mail_activity_data_todo',
+                    summary=_("Payment Processed: %s") % rec.title,
+                    note=_("Approval request %s for %s has been marked as paid.") % (rec.name, rec.requester_id.name),
+                    user_id=user_to_notify.id,
+                )
             except Exception as e:
                 _logger.error("Failed to create payment activity for request %s (user ID %s): %s", rec.name, user_to_notify_id, e)
-                raise UserError(_("An unexpected error occurred while creating the payment activity. Please contact your administrator."))
+                # We don't raise a UserError here to avoid blocking the 'paid' status change if activity creation fails.
         return True
 
 
