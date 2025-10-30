@@ -47,9 +47,12 @@ class MailActivity(models.Model):
             if act.res_model in excluded:
                 continue
 
-            # Allowed if assignee or creator
-            if act.user_id and act.user_id.id == user.id:
-                continue
+            # An assignee who is NOT the creator is NOT allowed to modify/delete.
+            # They can only mark as done or give feedback.
+            if act.user_id and act.user_id.id == user.id and act.create_uid.id != user.id:
+                raise UserError(_("As the assignee, you can mark this activity as done, but you cannot edit or delete it because you are not the creator."))
+
+            # Allow if the user is the creator.
             if act.create_uid and act.create_uid.id == user.id:
                 continue
 
@@ -67,7 +70,7 @@ class MailActivity(models.Model):
 
     def write(self, vals):
         # Catch status transitions done via write (e.g., state->done/cancel)
-        if any(k in vals for k in ('state', 'res_model', 'res_id', 'user_id')):
+        if any(k in vals for k in ('res_model', 'res_id', 'user_id', 'summary', 'note', 'date_deadline')):
             self._kh_check_activity_permission()
         return super().write(vals)
 
