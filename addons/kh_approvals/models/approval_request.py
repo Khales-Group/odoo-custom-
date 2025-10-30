@@ -61,6 +61,17 @@ class KhApprovalRequest(models.Model):
         tracking=True,  # tracking kept, but we mute it on write
     )
 
+    payment_state = fields.Selection(
+        [
+            ("not_paid", "Not Paid"),
+            ("paid", "Paid"),
+        ],
+        string="Payment Status",
+        default="not_paid",
+        tracking=True,
+        copy=False,
+    )
+
     # Revision / audit helpers
     revision = fields.Integer(default=0, tracking=True)
     last_revised_by = fields.Many2one('res.users', readonly=True)
@@ -509,6 +520,43 @@ class KhApprovalRequest(models.Model):
     def action_opt_out_as_approver(self):
         # Feature disabled at your request
         raise UserError(_("This option has been disabled by your administrator."))
+
+    def action_mark_as_paid(self):
+        """Marks the request as paid and notifies the responsible user."""
+        # The user ID to notify. As requested, this is hardcoded to 152.
+        # For more flexibility, this could be moved to a System Parameter.
+        user_to_notify_id = 152
+
+        for rec in self:
+            if rec.state != 'approved':
+                raise UserError(_("Only approved requests can be marked as paid."))
+            if rec.payment_state == 'paid':
+                raise UserError(_("This request has already been marked as paid."))
+            if not rec.amount > 0:
+                raise UserError(_("This action is only for requests with a payment amount."))
+
+            rec.write({'payment_state': 'paid'})
+
+            # Post a note in the chatter
+            rec._post_note(
+                _("Request marked as <b>Paid</b> by %s.") % self.env.user.name,
+                partner_ids=rec.message_follower_ids.mapped("partner_id").ids,
+            )
+
+            # Schedule an activity for the designated user
+            try:
+                user_to_notify = self.env['res.users'].browse(user_to_notify_id).exists()
+                if user_to_notify:
+                    rec.activity_schedule(
+                        'mail.mail_activity_data_todo',
+                        summary=_("Payment Processed: %s") % rec.title,
+                        note=_("Approval request %s for %s has been marked as paid.") % (rec.name, rec.requester_id.name),
+                        user_id=user_to_notify.id,
+                    )
+            except Exception:
+                # Fails silently if user 152 doesn't exist to avoid blocking the process.
+                pass
+        return True
 
 
 # ============================================================================
