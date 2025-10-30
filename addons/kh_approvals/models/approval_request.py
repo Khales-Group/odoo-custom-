@@ -547,13 +547,18 @@ class KhApprovalRequest(models.Model):
             try:
                 user_to_notify = self.env['res.users'].browse(user_to_notify_id).exists()
                 if user_to_notify:
-                    rec.activity_schedule(
-                        'mail.mail_activity_data_todo',
-                        summary=_("Payment Processed: %s") % rec.title,
-                        note=_("Approval request %s for %s has been marked as paid.") % (rec.name, rec.requester_id.name),
-                        user_id=user_to_notify.id,
-                    )
-            except Exception:
+                    # To ensure the activity is created correctly without being overridden by other logic,
+                    # we create it as a superuser. This bypasses any user-context-based rules that might
+                    # alter the assigned user.
+                    self.env['mail.activity'].with_context(mail_activity_quick_update=True).sudo().create({
+                        'res_id': rec.id,
+                        'res_model_id': self.env['ir.model']._get_id(rec._name),
+                        'activity_type_id': self.env.ref('mail.mail_activity_data_todo').id,
+                        'summary': _("Payment Processed: %s") % rec.title,
+                        'note': _("Approval request %s for %s has been marked as paid.") % (rec.name, rec.requester_id.name),
+                        'user_id': user_to_notify.id,
+                    })
+            except Exception as e:
                 # Fails silently if user 152 doesn't exist to avoid blocking the process.
                 pass
         return True
