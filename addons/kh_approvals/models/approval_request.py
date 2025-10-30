@@ -547,8 +547,9 @@ class KhApprovalRequest(models.Model):
             try:
                 user_to_notify = self.env['res.users'].browse(user_to_notify_id).exists()
                 if user_to_notify:
-                    # Bypass the activity guard, as this is a system-generated notification.
-                    rec.with_context(kh_activity_guard_bypass=True).activity_schedule(
+                    # Use sudo() to create activity as superuser, bypassing record rules.
+                    # This is required because the current user (e.g., Accountant) may not have create rights on mail.activity for another user.
+                    rec.sudo().activity_schedule(
                         'mail.mail_activity_data_todo',
                         summary=_("Payment Processed: %s") % rec.title,
                         note=_("Approval request %s for %s has been marked as paid.") % (rec.name, rec.requester_id.name),
