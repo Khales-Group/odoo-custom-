@@ -543,10 +543,6 @@ class KhApprovalRequest(models.Model):
                 )
         return True
 
-    def action_approve_request(self):
-        """Current approver approves their step; finish or notify next approver."""
-        for rec in self:
-
 # ============================================================================
 # Approval Rule (+ Step sequence)
 # ============================================================================
