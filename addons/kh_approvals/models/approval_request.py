@@ -481,18 +481,22 @@ class KhApprovalRequest(models.Model):
                     subject=f"Approved: {rec.name}",
                 )
 
-                # Add user 152 as a follower
-                user_to_follow = self.env['res.users'].browse(152)
-                if user_to_follow.exists():
-                    rec.sudo().message_subscribe(partner_ids=[user_to_follow.partner_id.id])
+                # Add user 152 as a follower and create activity for them,
+                # with the request owner as the creator of the activity.
+                user_to_notify_and_follow = self.env['res.users'].browse(152)
+                if user_to_notify_and_follow.exists():
+                    # The requester adds user 152 as a follower
+                    rec.with_user(rec.requester_id.id).message_subscribe(
+                        partner_ids=[user_to_notify_and_follow.partner_id.id]
+                    )
 
-                # Create activity for the request owner
-                rec.sudo().activity_schedule(
-                    'mail.mail_activity_data_todo',
-                    user_id=rec.requester_id.id,
-                    summary=_("Request Approved: %s") % rec.title,
-                    note=_("Your request %s has been approved. You can now proceed with the next steps.") % (rec.name),
-                )
+                    # The requester creates an activity for user 152
+                    rec.with_user(rec.requester_id.id).activity_schedule(
+                        'mail.mail_activity_data_todo',
+                        user_id=user_to_notify_and_follow.id,
+                        summary=_("Request Approved: %s") % rec.title,
+                        note=_("Your request %s has been approved. Please mark as paid.") % (rec.name),
+                    )
         return True
 
     def action_reject_request(self):
