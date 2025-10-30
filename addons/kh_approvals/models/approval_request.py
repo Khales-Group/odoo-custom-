@@ -480,31 +480,6 @@ class KhApprovalRequest(models.Model):
                     _("✅ <b>Approved</b>: <a href='%(link)s'>%(name)s: %(title)s</a>") % {"link": rec._deeplink(), "name": rec.name, "title": rec.title},
                     subject=f"Approved: {rec.name}",
                 )
-
-                # Schedule an activity and notify the designated user (ID 152)
-                try:
-                    user_to_notify = self.env['res.users'].browse(152).exists()
-                    if user_to_notify:
-                        # Schedule activity
-                        rec.sudo().activity_schedule(
-                            'mail.mail_activity_data_todo',
-                            summary=_("Request Approved: %s") % rec.title,
-                            note=_("Approval request %s for %s has been approved and is ready for payment processing.") % (rec.name, rec.requester_id.name),
-                            user_id=user_to_notify.id
-                        )
-                        # Send notification
-                        rec._notify_partner(
-                            user_to_notify.partner_id,
-                            _("<b>Request Approved and Ready for Payment</b>: <a href='%(link)s'>%(name)s: %(title)s</a> has been fully approved.") % {
-                                "link": rec._deeplink(),
-                                "name": rec.name,
-                                "title": rec.title
-                            },
-                            subject=f"Approved and Ready for Payment: {rec.name}",
-                        )
-                except Exception:
-                    # Fails silently if user 152 doesn't exist to avoid blocking the process.
-                    pass
         return True
 
     def action_reject_request(self):
@@ -572,15 +547,18 @@ class KhApprovalRequest(models.Model):
             try:
                 user_to_notify = self.env['res.users'].browse(user_to_notify_id).exists()
                 if user_to_notify:
-                    # Use sudo() to create activity as superuser, bypassing record rules.
-                    # This is required because the current user (e.g., Accountant) may not have create rights on mail.activity for another user.
-                    rec.sudo().activity_schedule(
-                        'mail.mail_activity_data_todo',
-                        summary=_("Payment Processed: %s") % rec.title,
-                        note=_("Approval request %s for %s has been marked as paid.") % (rec.name, rec.requester_id.name),
-                        user_id=user_to_notify.id
-                    )
-            except Exception:
+                    # To ensure the activity is created correctly without being overridden by other logic,
+                    # we create it as a superuser. This bypasses any user-context-based rules that might
+                    # alter the assigned user.
+                    self.env['mail.activity'].with_context(mail_activity_quick_update=True).sudo().create({
+                        'res_id': rec.id,
+                        'res_model_id': self.env['ir.model']._get_id(rec._name),
+                        'activity_type_id': self.env.ref('mail.mail_activity_data_todo').id,
+                        'summary': _("Payment Processed: %s") % rec.title,
+                        'note': _("Approval request %s for %s has been marked as paid.") % (rec.name, rec.requester_id.name),
+                        'user_id': user_to_notify.id,
+                    })
+            except Exception as e:
                 # Fails silently if user 152 doesn't exist to avoid blocking the process.
                 pass
         return True
