@@ -83,8 +83,8 @@
             <!-- Mark as Paid (for approved payment requests) -->
             <button name="action_mark_as_paid" type="object" string="Mark as Paid"
                     class="btn-primary"
-                    invisible="not (state == 'approved' and payment_state == 'not_paid' and amount > 0 and (is_current_user_assigned_for_payment or in_group('kh_approvals.group_kh_approvals_accountant') or in_group('kh_approvals.group_kh_approvals_manager')))"
-                    />
+                    invisible="state != 'approved' or payment_state != 'not_paid' or amount &lt;= 0"
+                    groups="kh_approvals.group_kh_approvals_accountant,kh_approvals.group_kh_approvals_manager"/>
 
             <field name="state" widget="statusbar" statusbar_visible="draft,in_review,approved,rejected"/>
             <field name="payment_state" widget="statusbar"
