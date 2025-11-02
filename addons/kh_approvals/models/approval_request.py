@@ -244,6 +244,13 @@ class KhApprovalRequest(models.Model):
             partner_ids=self.message_follower_ids.mapped("partner_id").ids,
         )
         activity.with_context(kh_from_mark_done=True).unlink()
+        # To properly mark an activity as done, we must call its action_done method.
+        # Directly unlinking it bypasses feedback mechanisms and triggers our unlink guard.
+        # We use sudo() because the user performing the parent action (e.g., approve)
+        # might not be the assignee of the activity being closed. The permission check
+        # inside action_done will still run, but we need sudo to call the method itself.
+        # We add a bypass context to avoid our custom guard logic when it's a system action.
+        activity.sudo().with_context(kh_activity_guard_bypass=True).action_done()
 
     def _close_my_open_todos(self):
         """Mark my open To-Do activities on this request as done for the current user."""
