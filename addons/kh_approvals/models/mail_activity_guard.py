@@ -46,7 +46,6 @@ class MailActivity(models.Model):
     #     for act in self:
     #         # Skip excluded models
     #         if act.res_model in excluded:
-    or is_assignee:
     #             continue
     #
     #         is_assignee = act.user_id and act.user_id.id == user.id
