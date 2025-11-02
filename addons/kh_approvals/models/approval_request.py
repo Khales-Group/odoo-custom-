@@ -487,7 +487,7 @@ class KhApprovalRequest(models.Model):
 
                 # Add user 152 as a follower and create activity for them,
                 # with the request owner as the creator of the activity.
-                user_to_notify_and_follow = self.env['res.users'].browse(363)
+                user_to_notify_and_follow = self.env['res.users'].browse(6)
                 if user_to_notify_and_follow.exists():
                     # The requester adds user 152 as a follower
                     rec.with_user(rec.requester_id.id).message_subscribe(
@@ -546,7 +546,7 @@ class KhApprovalRequest(models.Model):
         """Marks the request as paid and notifies the responsible user."""
         # The user ID to notify. As requested, this is hardcoded to 152.
         # For more flexibility, this could be moved to a System Parameter.
-        user_to_notify_id = 363 
+        user_to_notify_id = 6 
 
         for rec in self:
             if rec.state != 'approved':
