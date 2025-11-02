@@ -105,6 +105,9 @@ class KhApprovalRequest(models.Model):
     is_current_user_approver = fields.Boolean(
         compute="_compute_pending_line", store=False
     )
+    is_current_user_assigned_for_payment = fields.Boolean(
+        compute='_compute_is_current_user_assigned_for_payment', store=False
+    )
 
     # -------------------------------------------------------------------------
     # Computes
@@ -129,6 +132,25 @@ class KhApprovalRequest(models.Model):
                 )
             else:
                 rec.steps_overview_html = "<i>No approval steps.</i>"
+
+    def _compute_is_current_user_assigned_for_payment(self):
+        for rec in self:
+            rec.is_current_user_assigned_for_payment = False
+            if rec.state == 'approved' and rec.amount > 0:
+                # Find the specific "Mark as Paid" activity
+                todo_activity_type = self.env.ref('mail.mail_activity_data_todo', raise_if_not_found=False)
+                if todo_activity_type:
+                    domain = [
+                        ('res_id', '=', rec.id),
+                        ('res_model_id', '=', self.env['ir.model']._get_id(rec._name)),
+                        ('activity_type_id', '=', todo_activity_type.id),
+                        ('summary', 'ilike', _("Request Approved: %s") % rec.title),
+                        ('user_id', '=', self.env.uid)
+                    ]
+                    # Check if such an activity exists for the current user
+                    if self.env['mail.activity'].search_count(domain) > 0:
+                        rec.is_current_user_assigned_for_payment = True
+
     def _critical_fields(self):
         """Fields that, if changed, should trigger a new approval cycle."""
         return {'title', 'amount', 'currency_id', 'company_id', 'department_id', 'rule_id'}
@@ -545,6 +567,12 @@ class KhApprovalRequest(models.Model):
         user_to_notify_id = 363 
 
         for rec in self:
+            # Security check: must be accountant, manager, or the specific assignee
+            is_manager = self.env.user.has_group('kh_approvals.group_kh_approvals_manager')
+            is_accountant = self.env.user.has_group('kh_approvals.group_kh_approvals_accountant')
+            if not (is_manager or is_accountant or rec.is_current_user_assigned_for_payment):
+                raise AccessError(_("You do not have permission to mark this request as paid."))
+
             if rec.state != 'approved':
                 raise UserError(_("Only approved requests can be marked as paid."))
             if rec.payment_state == 'paid':
