@@ -50,19 +50,25 @@ class MailActivity(models.Model):
     # --- ORM Overrides ---
     def action_done(self):
         self._kh_check_permission('done')
-        return super().action_done()
+        # Use context to signal that the subsequent unlink is part of a 'done' action.
+        return super(MailActivity, self.with_context(activity_mark_as_done=True)).action_done()
 
     def action_feedback(self, feedback=False, attachment_ids=None):
-        # Feedback is similar to marking as done, so we use the same permission.
         self._kh_check_permission('done')
-        return super().action_feedback(feedback=feedback, attachment_ids=attachment_ids)
+        # Use context for feedback as well, as it can also trigger an unlink.
+        return super(MailActivity, self.with_context(activity_mark_as_done=True)).action_feedback(feedback=feedback, attachment_ids=attachment_ids)
 
     def write(self, vals):
-        # Any attempt to write triggers the check.
         if self:
             self._kh_check_permission('write')
         return super().write(vals)
 
     def unlink(self):
+        # If the unlink is happening as part of marking an activity as done,
+        # the permission check has already been performed in action_done().
+        if self.env.context.get('activity_mark_as_done'):
+            return super().unlink()
+        
+        # Otherwise, this is a direct cancel/delete action, so check unlink permission.
         self._kh_check_permission('unlink')
         return super().unlink()
