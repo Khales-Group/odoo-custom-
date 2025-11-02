@@ -447,7 +447,12 @@ class KhApprovalRequest(models.Model):
             if not line or line.approver_id.id != self.env.uid:
                 raise UserError(_("You are not the current approver."))
 
-            rec._close_my_open_todos()
+            # Find the open activity for the current user (the approver) and, as the
+            # request owner (creator), unlink it to avoid permission errors.
+            activity_to_close = rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid)[:1]
+            if activity_to_close:
+                activity_to_close.with_user(rec.requester_id).unlink()
+
             line.sudo().write({"state": "approved"})
 
             rec._post_note(
