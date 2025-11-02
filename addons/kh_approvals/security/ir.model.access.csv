@@ -5,3 +5,6 @@ access_kh_approval_rule_user,kh.approval.rule user,model_kh_approval_rule,base.g
 
 access_kh_approvals_department_manager,kh.approvals.department manager,model_kh_approvals_department,group_kh_approvals_manager,1,1,1,1
 access_kh_approvals_department_user,kh.approvals.department user,model_kh_approvals_department,base.group_user,1,0,0,0
+
+access_kh_approval_request_user,kh.approval.request user,model_kh_approval_request,kh_approvals.group_kh_approvals_user,1,1,1,1
+access_kh_approval_request_manager,kh.approval.request manager,model_kh_approval_request,kh_approvals.group_kh_approvals_manager,1,1,1,1
