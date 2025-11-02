@@ -20,7 +20,7 @@ class MailActivity(models.Model):
             return False
         return True
 
-    def _kh_check_activity_permission(self):
+    def _kh_check_activity_permission(self, for_write_or_unlink=False):
         """
         Global guard (all apps, now and future):
         Only the assigned user, the creator, or Approvals Manager can complete / give feedback / delete activities.
@@ -29,6 +29,9 @@ class MailActivity(models.Model):
           - SUPERUSER always allowed
           - Activities with no user assigned (user_id is False) -> anyone can’t complete; only creator/manager/superuser can
           - Models listed in system param 'kh_approvals.activity_guard_exclude_models' are ignored
+
+        :param for_write_or_unlink: If True, the check is stricter for assignees,
+                                    preventing them from editing or deleting.
         """
         if not self._kh_guard_enabled():
             return
@@ -47,13 +50,16 @@ class MailActivity(models.Model):
             if act.res_model in excluded:
                 continue
 
-            # An assignee who is NOT the creator is NOT allowed to modify/delete.
-            # They can only mark as done or give feedback.
-            if act.user_id and act.user_id.id == user.id and act.create_uid.id != user.id:
-                raise UserError(_("As the assignee, you can mark this activity as done, but you cannot edit or delete it because you are not the creator."))
+            is_assignee = act.user_id and act.user_id.id == user.id
+            is_creator = act.create_uid and act.create_uid.id == user.id
 
-            # Allow if the user is the creator.
-            if act.create_uid and act.create_uid.id == user.id:
+            # If the check is for a write/unlink operation, an assignee who is not the
+            # creator should be blocked.
+            if for_write_or_unlink and is_assignee and not is_creator:
+                raise UserError(_("As the assignee, you can only mark this activity as done or give feedback. You cannot edit or delete it."))
+
+            # Allow if the user is the creator or the assignee.
+            if is_creator or is_assignee:
                 continue
 
             # Otherwise block
@@ -61,19 +67,19 @@ class MailActivity(models.Model):
 
     # Guard all completion paths
     def action_done(self):
-        self._kh_check_activity_permission()
+        self._kh_check_activity_permission(for_write_or_unlink=False)
         return super().action_done()
 
     def action_feedback(self, feedback=False, attachment_ids=None):
-        self._kh_check_activity_permission()
+        self._kh_check_activity_permission(for_write_or_unlink=False)
         return super().action_feedback(feedback=feedback, attachment_ids=attachment_ids)
 
     def write(self, vals):
         # Catch status transitions done via write (e.g., state->done/cancel)
         if any(k in vals for k in ('res_model', 'res_id', 'user_id', 'summary', 'note', 'date_deadline')):
-            self._kh_check_activity_permission()
+            self._kh_check_activity_permission(for_write_or_unlink=True)
         return super().write(vals)
 
     def unlink(self):
-        self._kh_check_activity_permission()
+        self._kh_check_activity_permission(for_write_or_unlink=True)
         return super().unlink()

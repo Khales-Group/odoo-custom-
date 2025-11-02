@@ -125,7 +125,9 @@
                 <label for="department_id"/>
                 <div class="o_row">
                   <i class="fa fa-sitemap text-muted me-2"/>
-                  <field name="department_id" readonly="state != 'draft'"/>
+                  <field name="department_id"
+                         readonly="state != 'draft'"
+                         options="{'no_create_edit': True}"/>
                 </div>
                 <field name="rule_id"
                        readonly="state != 'draft'"

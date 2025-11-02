@@ -20,6 +20,7 @@
         "views/approval_request_views.xml",
         "views/approval_rule_views.xml",
         "views/qweb_templates.xml",
+        "views/mail_activity_views.xml",
         "views/department_views.xml",
 
         # --- ACTIONS + MENUS LAST (they may reference the views above) ---
