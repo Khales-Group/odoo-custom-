@@ -8,27 +8,17 @@
       <field name="sequence">20</field>
     </record>
 
-    <!-- Base User Group -->
-    <record id="group_kh_approvals_user" model="res.groups">
-      <field name="name">Approvals / User</field>
-      <field name="category_id" ref="kh_approvals.module_category_kh_approvals"/>
-      <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
-      <field name="comment">Base access for all users to see the Approvals application.</field>
-    </record>
-
-    <!-- Manager Group -->
     <record id="group_kh_approvals_manager" model="res.groups">
       <field name="name">Approvals / Manager</field>
       <field name="category_id" ref="kh_approvals.module_category_kh_approvals"/>
-      <field name="implied_ids" eval="[(4, ref('group_kh_approvals_user'))]"/>
+      <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
       <field name="comment">Managers can see and manage all approval requests.</field>
     </record>
 
-    <!-- Accountant Group -->
     <record id="group_kh_approvals_accountant" model="res.groups">
       <field name="name">Approvals / Accountant</field>
       <field name="category_id" ref="kh_approvals.module_category_kh_approvals"/>
-      <field name="implied_ids" eval="[(4, ref('group_kh_approvals_user'))]"/>
+      <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
       <field name="comment">Users in this group can process payments for approved requests.</field>
     </record>
 
