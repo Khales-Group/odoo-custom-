@@ -37,8 +37,6 @@ class MailActivity(models.Model):
             return
 
         user = self.env.user
-        if self.env.is_superuser():
-            return
         is_manager = user.has_group('kh_approvals.group_kh_approvals_manager')
         if is_manager:
             return
@@ -52,6 +50,11 @@ class MailActivity(models.Model):
 
             is_assignee = act.user_id and act.user_id.id == user.id
             is_creator = act.create_uid and act.create_uid.id == user.id
+
+            # A superuser who is also the creator should always be allowed to bypass further checks.
+            # Otherwise, they must follow the same rules as others (e.g., being an assignee).
+            if self.env.is_superuser() and is_creator:
+                continue
 
             # If the check is for a write/unlink operation, an assignee who is not the
             # creator should be blocked.
