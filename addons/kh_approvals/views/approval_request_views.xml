@@ -32,6 +32,11 @@
           <field name="requester_id"/>
           <field name="company_id" groups="base.group_multi_company"/>
           <field name="department_id"/>
+          <separator/>
+          <filter name="not_paid" string="Not Paid" domain="[('payment_state','=','not_paid')]"/>
+          <filter name="paid" string="Paid" domain="[('payment_state','=','paid')]"/>
+          <separator/>
+          <field name="payment_state"/>
         </search>
       </field>
     </record>
