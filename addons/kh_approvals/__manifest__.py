@@ -29,6 +29,9 @@
             "kh_approvals/static/src/css/approvals_backend.css",
             "kh_approvals/static/src/js/dashboard.js",
         ],
+        "web.assets_qweb": [
+            "kh_approvals/views/dashboard_views.xml",
+        ],
     },
     "application": True,
     "installable": True,
