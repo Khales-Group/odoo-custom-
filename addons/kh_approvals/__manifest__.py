@@ -6,7 +6,7 @@
     "author": "Khales Team",
     "website": "https://khales.ae",
     "category": "Operations/Approvals",
-    "depends": ["base", "mail"],
+    "depends": ["base", "mail", "web"],
     "data": [
         # --- security first ---
         "security/kh_approvals_security.xml", # This file was missing, I've added it.
