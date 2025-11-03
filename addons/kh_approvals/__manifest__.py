@@ -12,10 +12,8 @@
         "security/kh_approvals_security.xml", # This file was missing, I've added it.
         "security/ir.model.access.csv",
         "security/kh_approvals_rules.xml",
-
         # --- data ---
         "data/sequence.xml",
-
         # --- views ---
         "views/approval_request_views.xml",
         "views/approval_rule_views.xml",
