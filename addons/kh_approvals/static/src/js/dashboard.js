@@ -23,6 +23,16 @@ odoo.define('kh_approvals.dashboard', function (require) {
                 });
             });
         },
+
+        start: function () {
+            var self = this;
+            return this._super().then(function () {
+                self.$el.html(core.qweb.render('kh_approvals.dashboard_template', {
+                    widget: self,
+                    rules: self.rules
+                }));
+            });
+        },
     });
 
     core.action_registry.add('kh_approvals.dashboard', ApprovalDashboard);

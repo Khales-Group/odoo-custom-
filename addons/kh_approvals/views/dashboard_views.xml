@@ -15,7 +15,7 @@
               <div class="o_kanban_record">
                 <div class="o_kanban_card_header">
                   <div class="o_kanban_card_header_title">
-                    <div class="o_primary">[RULE_NAME]</div>
+                    <div class="o_primary"><t t-esc="rule.name"/></div>
                   </div>
                 </div>
                 <div class="o_kanban_card_content">

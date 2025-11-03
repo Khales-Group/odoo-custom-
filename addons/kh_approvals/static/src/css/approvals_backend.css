@@ -107,3 +107,17 @@
     display: block !important;
   }
 }
+
+/* Dashboard Styling */
+.o_kanban_view .o_kanban_record {
+    margin: 10px;
+    border: 1px solid #ccc;
+    padding: 10px;
+    border-radius: 5px;
+    display: inline-block;
+    width: 200px;
+}
+
+.o_kanban_card_header_title .o_primary {
+    font-weight: bold;
+}

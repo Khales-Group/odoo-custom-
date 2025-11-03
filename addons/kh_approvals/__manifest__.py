@@ -19,6 +19,7 @@
         "views/approval_rule_views.xml",
         "views/qweb_templates.xml",
         "views/department_views.xml",
+        "views/dashboard_views.xml",
 
         # --- ACTIONS + MENUS LAST (they may reference the views above) ---
         "views/menu.xml",
@@ -26,6 +27,7 @@
     "assets": {
         "web.assets_backend": [
             "kh_approvals/static/src/css/approvals_backend.css",
+            "kh_approvals/static/src/js/dashboard.js",
         ],
     },
     "application": True,
