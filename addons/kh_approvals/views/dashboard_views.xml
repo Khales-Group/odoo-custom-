@@ -3,7 +3,7 @@
     <!-- Dashboard Action -->
     <record id="action_kh_approval_dashboard" model="ir.actions.client">
       <field name="name">Dashboard</field>
-      <field name="tag">kh_approvals.dashboard</field>
+      <field name="tag">kh_approvals.approvals_dashboard</field>
     </record>
 
     <!-- Dashboard Template -->
