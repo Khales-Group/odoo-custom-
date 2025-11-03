@@ -53,12 +53,6 @@
     <menuitem id="menu_kh_approvals_root" name="Approvals" sequence="20"/>
 
 <!-- Point menus to the NEW actions -->
-<menuitem id="menu_kh_approvals_dashboard"
-              name="Dashboard"
-              parent="menu_kh_approvals_root"
-              action="action_kh_approval_dashboard"
-              sequence="0"/>
-
 <menuitem id="menu_kh_approvals_my"
           parent="menu_kh_approvals_root"
           name="My Requests"

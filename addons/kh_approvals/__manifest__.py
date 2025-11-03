@@ -6,7 +6,7 @@
     "author": "Khales Team",
     "website": "https://khales.ae",
     "category": "Operations/Approvals",
-    "depends": ["base", "mail", "web"],
+    "depends": ["base", "mail"],
     "data": [
         # --- security first ---
         "security/kh_approvals_security.xml", # This file was missing, I've added it.
@@ -19,7 +19,6 @@
         "views/approval_rule_views.xml",
         "views/qweb_templates.xml",
         "views/department_views.xml",
-        "views/dashboard_views.xml",
 
         # --- ACTIONS + MENUS LAST (they may reference the views above) ---
         "views/menu.xml",
@@ -27,7 +26,6 @@
     "assets": {
         "web.assets_backend": [
             "kh_approvals/static/src/css/approvals_backend.css",
-            "kh_approvals/static/src/js/approvals_dashboard.js",
         ],
     },
     "application": True,
