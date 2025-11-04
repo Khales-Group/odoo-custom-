@@ -129,7 +129,6 @@
                 </div>
                 <field name="rule_id"
                        readonly="state != 'draft'"
-                       domain="[('company_id','in',[False, company_id]), '|', ('department_id','=',False), ('department_id','=',department_id)]"
                        options="{'no_create_edit': True}"/>
               </group>
             </group>

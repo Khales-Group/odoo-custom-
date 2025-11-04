@@ -31,6 +31,7 @@ class KhApprovalRequest(models.Model):
         "kh.approvals.department",
         string="Department",
         tracking=True,
+        domain="[('company_id', '=', company_id)]"
     )
 
     requester_id = fields.Many2one(
@@ -82,7 +83,7 @@ class KhApprovalRequest(models.Model):
         "kh.approval.rule",
         string="Approval Rule",
         required=True,
-        domain="[('company_id','in',[False, company_id]), '|', ('department_id','=',False), ('department_id','=',department_id)]",
+        domain="[ ('department_id','=',department_id)]",
         tracking=True,
     )
 
