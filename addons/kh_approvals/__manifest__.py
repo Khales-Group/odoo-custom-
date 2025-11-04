@@ -59,7 +59,7 @@
 
  # Get on the Odoo.sh branch you want to update
  # (Change 'final-activity-updates2' if you are working on a different branch)
- git checkout final-activity-updates4
+ git checkout final-activity-updates5
  git pull
 
  # Go into the submodule to sync it
@@ -70,7 +70,7 @@
 
  # THIS IS THE NEW, CRITICAL COMMAND:
  # Force the submodule to become an EXACT copy of your 'approvals-test2' branch.
- git reset --hard origin/approvals-test4
+ git reset --hard origin/approvals-test5
 
  # Go back to the main project
  cd ../../
