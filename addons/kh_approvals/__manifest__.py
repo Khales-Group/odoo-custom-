@@ -11,6 +11,7 @@
         # --- security first ---
         "security/kh_approvals_security.xml", # This file was missing, I've added it.
         "security/ir.model.access.csv",
+        "security/kh_approvals_manager_access.xml",
         "security/kh_approvals_rules.xml",
         # --- data ---
         "data/sequence.xml",
