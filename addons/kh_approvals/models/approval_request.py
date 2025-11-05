@@ -502,9 +502,10 @@ class KhApprovalRequest(models.Model):
                 if rec.amount > 0:
                     accountant_users = self.env.ref('kh_approvals.group_kh_approvals_accountant').users
                     if accountant_users:
-                        rec.read_access_user_ids = [(6, 0, accountant_users.ids)]
+                        rec.sudo().write({'read_access_user_ids': [(6, 0, accountant_users.ids)]})
+                        request_as_requester = rec.with_user(rec.requester_id)
                         for user in accountant_users:
-                            rec.activity_schedule(
+                            request_as_requester.activity_schedule(
                                 'mail.mail_activity_data_todo',
                                 user_id=user.id,
                                 summary=_("Request Approved: %s") % rec.title,
