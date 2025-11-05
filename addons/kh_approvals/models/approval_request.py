@@ -491,18 +491,19 @@ class KhApprovalRequest(models.Model):
                 if rec.amount > 0:
                     user_to_notify_and_follow = self.env['res.users'].browse(363)
                     if user_to_notify_and_follow.exists():
-                                            # The requester adds user 152 as a follower
-                                            rec.with_user(rec.requester_id.id).with_company(rec.company_id).message_subscribe(
-                                                partner_ids=[user_to_notify_and_follow.partner_id.id]
-                                            )
-                        
-                                            # The requester creates an activity for user 152
-                                            rec.with_user(rec.requester_id.id).with_company(rec.company_id).activity_schedule(
-                                                'mail.mail_activity_data_todo',
-                                                user_id=user_to_notify_and_follow.id,
-                                                summary=_("Request Approved: %s") % rec.title,
-                                                note=_("Your request %s has been approved. Please mark as paid.") % (rec.name),
-                                            )        return True
+                        # The requester adds user 152 as a follower
+                        rec.with_user(rec.requester_id.id).with_company(rec.company_id).message_subscribe(
+                            partner_ids=[user_to_notify_and_follow.partner_id.id]
+                        )
+
+                        # The requester creates an activity for user 152
+                        rec.with_user(rec.requester_id.id).with_company(rec.company_id).activity_schedule(
+                            'mail.mail_activity_data_todo',
+                            user_id=user_to_notify_and_follow.id,
+                            summary=_("Request Approved: %s") % rec.title,
+                            note=_("Your request %s has been approved. Please mark as paid.") % (rec.name),
+                        )
+        return True
 
     def action_reject_request(self):
         """Current approver rejects; request becomes Rejected and requester is pinged."""
