@@ -633,7 +633,7 @@ class KhApprovalLine(models.Model):
 
     request_id = fields.Many2one("kh.approval.request", required=True, ondelete="cascade")
     company_id = fields.Many2one(
-        "res.company", related="request_id.company_id", store=True, index=True
+        "res.company", related="request_id.company_.id", store=True, index=True
     )
     name = fields.Char()
     approver_id = fields.Many2one("res.users", required=True)
