@@ -83,18 +83,9 @@ class KhApprovalRequest(models.Model):
         "kh.approval.rule",
         string="Approval Rule",
         required=True,
-        domain="[('company_id', '=', company_id), ('department_id', '=', department_id)]",
+        domain="[ ('department_id','=',department_id)]",
         tracking=True,
     )
-
-    @api.onchange('company_id')
-    def _onchange_company_id(self):
-        self.department_id = False
-        self.rule_id = False
-
-    @api.onchange('department_id')
-    def _onchange_department_id(self):
-        self.rule_id = False
 
     # Concrete steps generated from the rule's step_ids
     approval_line_ids = fields.One2many(
@@ -633,7 +624,7 @@ class KhApprovalLine(models.Model):
 
     request_id = fields.Many2one("kh.approval.request", required=True, ondelete="cascade")
     company_id = fields.Many2one(
-        "res.company", related="request_id.company_.id", store=True, index=True
+        "res.company", related="request_id.company_id", store=True, index=True
     )
     name = fields.Char()
     approver_id = fields.Many2one("res.users", required=True)

@@ -1,62 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
 <odoo>
   <data>
-    <!-- RULE list -->
-    <record id="view_kh_approval_rule_list" model="ir.ui.view">
-      <field name="name">kh.approval.rule.list</field>
-      <field name="model">kh.approval.rule</field>
+
+    <!-- Line subview (list view) -->
+    <record id="view_kh_approval_line_list" model="ir.ui.view">
+      <field name="name">kh.approval.line.list</field>
+      <field name="model">kh.approval.line</field>
       <field name="arch" type="xml">
-        <list>
+        <list editable="bottom">
           <field name="name"/>
-          <field name="active"/>
-          <field name="company_id"/>
-          <field name="department_id"/>
-          <field name="min_amount"/>
-          <field name="currency_id"/>
+          <field name="approver_id"/>
+          <field name="required"/>
+          <field name="state"/>
+          <field name="note"/>
         </list>
       </field>
     </record>
 
-    <!-- RULE form -->
-    <record id="view_kh_approval_rule_form" model="ir.ui.view">
-      <field name="name">kh.approval.rule.form</field>
-      <field name="model">kh.approval.rule</field>
+    <!-- Search -->
+    <record id="view_kh_approval_request_search" model="ir.ui.view">
+      <field name="name">kh.approval.request.search</field>
+      <field name="model">kh.approval.request</field>
       <field name="arch" type="xml">
-        <form string="Approval Rule">
+        <search>
+          <filter name="my_requests" string="My Requests" domain="[('requester_id','=',uid)]"/>
+          <filter name="to_approve" string="To Approve"
+                  domain="[('approval_line_ids.approver_id','=',uid), ('approval_line_ids.state','=','pending')]"/>
+          <separator/>
+          <field name="title"/>
+          <field name="state"/>
+          <field name="requester_id"/>
+          <field name="company_id" groups="base.group_multi_company"/>
+          <field name="department_id"/>
+        </search>
+      </field>
+    </record>
+
+    <!-- List -->
+    <record id="view_kh_approval_request_list" model="ir.ui.view">
+      <field name="name">kh.approval.request.list</field>
+      <field name="model">kh.approval.request</field>
+      <field name="arch" type="xml">
+        <list>
+          <field name="name" string="Request ID"/>
+          <field name="title"/>
+          <field name="requester_id"/>
+          <field name="department_id"/>
+          <field name="amount"/>
+          <field name="currency_id"/>
+          <field name="submitted_on"/>
+          <field name="state"/>
+          <field name="company_id" groups="base.group_multi_company"/>
+        </list>
+      </field>
+    </record>
+
+    <!-- Form (Odoo 17+: use 'invisible' not 'attrs') -->
+    <record id="view_kh_approval_request_form_base" model="ir.ui.view">
+      <field name="name">kh.approval.request.form</field>
+      <field name="model">kh.approval.request</field>
+      <field name="arch" type="xml">
+        <form string="Approval Request">
+          <header>
+            <!-- Draft only -->
+            <button name="action_submit" type="object" string="Submit"
+                    class="oe_highlight"
+                    invisible="state != 'draft'"/>
+
+            <!-- Approve/Reject ONLY for the current pending approver -->
+            <button name="action_approve_request" type="object" string="Approve"
+                    class="btn-primary o_mobile_force_show"
+                    invisible="state != 'in_review' or not is_current_user_approver"/>
+            <button name="action_reject_request" type="object" string="Reject"
+                    class="btn-secondary o_mobile_force_show"
+                    invisible="state != 'in_review' or not is_current_user_approver"/>
+
+            <!-- Edit Request (owner-only) -->
+            <button name="action_revise_request" type="object" string="Edit Request"
+                    class="btn-secondary o_mobile_force_show"
+                    invisible="state == 'draft' or requester_id != uid"/>
+
+            <!-- Mark as Paid (for approved payment requests) -->
+            <button name="action_mark_as_paid" type="object" string="Mark as Paid"
+                    class="btn-primary"
+                    invisible="state != 'approved' or payment_state != 'not_paid' or amount &lt;= 0"
+                    groups="kh_approvals.group_kh_approvals_accountant,kh_approvals.group_kh_approvals_manager"/>
+
+            <field name="state" widget="statusbar" statusbar_visible="draft,in_review,approved,rejected"/>
+            <field name="payment_state" widget="statusbar"
+                   invisible="amount &lt;= 0"/>
+          </header>
+
           <sheet>
             <group>
-              <group>
-                <field name="active"/>
-                <field name="name" required="1"/>
-                <field name="company_id"/>
-                <field name="department_id"/>
+              <group string="Request Details">
+                <field name="title"/>
+                <label for="name" string="Request ID"/>
+                <div class="o_row">
+                  <i class="fa fa-hashtag text-muted me-2"/>
+                  <field name="name" readonly="1"/>
+                </div>
+                <label for="requester_id"/>
+                <div class="o_row">
+                  <i class="fa fa-user-o text-muted me-2"/>
+                  <field name="requester_id" readonly="1" widget="many2one_avatar_user"/>
+                </div>
+                <label for="amount"/>
+                <div class="o_row">
+                  <i class="fa fa-money text-muted me-2"/>
+                  <field name="amount" readonly="state != 'draft'"/>
+                  <field name="currency_id" readonly="state != 'draft'"/>
+                </div>
+                <field name="revision" readonly="1"/>
+                <field name="last_revised_by" readonly="1"/>
+                <field name="last_revised_on" readonly="1"/>
+                <field name="submitted_on" readonly="1"/>
               </group>
-              <group>
-                <field name="min_amount"/>
-                <field name="currency_id"/>
+              <group string="Configuration">
+                <label for="company_id" groups="base.group_multi_company"/>
+                <div class="o_row" groups="base.group_multi_company">
+                  <i class="fa fa-building-o text-muted me-2"/>
+                  <field name="company_id" readonly="state != 'draft'"/>
+                </div>
+                <label for="department_id"/>
+                <div class="o_row">
+                  <i class="fa fa-sitemap text-muted me-2"/>
+                  <field name="department_id" readonly="state != 'draft'"/>
+                </div>
+                <field name="rule_id"
+                       readonly="state != 'draft'"
+                       options="{'no_create_edit': True}"/>
               </group>
             </group>
 
             <notebook>
-              <page string="Steps">
-                <field name="step_ids">
-                  <list editable="bottom">
-                    <field name="sequence"/>
-                    <field name="name"/>
-                    <field name="approver_id"/>
-                  </list>
-                </field>
+              <page string="Approval Steps" name="approval_steps">
+                <!-- This HTML field uses sudo to show all steps to all viewers, bypassing record rules -->
+                <field name="steps_overview_html" nolabel="1"/>
               </page>
             </notebook>
           </sheet>
+
+          <chatter>
+            <field name="message_follower_ids"/>
+            <field name="activity_ids"/>
+            <field name="message_ids"/>
+          </chatter>
         </form>
       </field>
     </record>
 
-    <!-- RULE action -->
-    <record id="action_kh_approval_rules" model="ir.actions.act_window">
-      <field name="name">⚙️ Approval Rules</field>
-      <field name="res_model">kh.approval.rule</field>
-      <field name="view_mode">list,form</field>
-    </record>
   </data>
 </odoo>
