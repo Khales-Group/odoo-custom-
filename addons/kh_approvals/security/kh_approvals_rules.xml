@@ -70,8 +70,20 @@
   <record id="rule_kh_request_read_as_accountant" model="ir.rule">
     <field name="name">Requests: Read as Accountant for Payment</field>
     <field name="model_id" ref="model_kh_approval_request"/>
-    <field name="domain_force">[('state', '=', 'approved'), ('amount', '>', 0)]</field>
+    <field name="domain_force">[(0, '=', 1)]</field>
     <field name="groups" eval="[(4, ref('kh_approvals.group_kh_approvals_accountant'))]"/>
+    <field name="perm_read" eval="1"/>
+    <field name="perm_write" eval="0"/>
+    <field name="perm_create" eval="0"/>
+    <field name="perm_unlink" eval="0"/>
+  </record>
+
+  <!-- RULE 7 (ACCOUNTANT): Can read requests where they have been explicitly granted read access. -->
+  <record id="rule_kh_request_read_as_accountant_dynamic" model="ir.rule">
+    <field name="name">Requests: Read as explicitly granted user</field>
+    <field name="model_id" ref="model_kh_approval_request"/>
+    <field name="domain_force">[('read_access_user_ids', 'in', [user.id])]</field>
+    <field name="groups" eval="[(4, ref('base.group_user'))]"/>
     <field name="perm_read" eval="1"/>
     <field name="perm_write" eval="0"/>
     <field name="perm_create" eval="0"/>
