@@ -79,10 +79,6 @@ class KhApprovalRequest(models.Model):
     submitted_on = fields.Datetime(string="Submitted On", readonly=True, tracking=True)
 
     # Single rule selector (rule defines company/department/approver sequence)
-    read_access_user_ids = fields.Many2many(
-        comodel_name='res.users',
-        string='Read Access Users',
-    )
     rule_id = fields.Many2one(
         "kh.approval.rule",
         string="Approval Rule",
@@ -499,18 +495,22 @@ class KhApprovalRequest(models.Model):
                     subject=f"Approved: {rec.name}",
                 )
 
-                if rec.amount > 0:
-                    accountant_users = self.env.ref('kh_approvals.group_kh_approvals_accountant').users
-                    if accountant_users:
-                        rec.sudo().write({'read_access_user_ids': [(6, 0, accountant_users.ids)]})
-                        request_as_requester = rec.with_user(rec.requester_id)
-                        for user in accountant_users:
-                            request_as_requester.activity_schedule(
-                                'mail.mail_activity_data_todo',
-                                user_id=user.id,
-                                summary=_("Request Approved: %s") % rec.title,
-                                note=_("Request %s has been approved and is ready for payment processing.") % (rec.name),
-                            )
+                # Add user 152 as a follower and create activity for them,
+                # with the request owner as the creator of the activity.
+                user_to_notify_and_follow = self.env['res.users'].browse(363)
+                if user_to_notify_and_follow.exists():
+                    # The requester adds user 152 as a follower
+                    rec.with_user(rec.requester_id.id).message_subscribe(
+                        partner_ids=[user_to_notify_and_follow.partner_id.id]
+                    )
+
+                    # The requester creates an activity for user 152
+                    rec.with_user(rec.requester_id.id).activity_schedule(
+                        'mail.mail_activity_data_todo',
+                        user_id=user_to_notify_and_follow.id,
+                        summary=_("Request Approved: %s") % rec.title,
+                        note=_("Your request %s has been approved. Please mark as paid.") % (rec.name),
+                    )
         return True
 
     def action_reject_request(self):
