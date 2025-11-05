@@ -309,7 +309,7 @@ class KhApprovalRequest(models.Model):
             if not existing[:1]:
                 # Switch to the requester's user to ensure they are the creator of the activity.
                 # This allows the requester to cancel it later if they revise the request.
-                request_as_requester = rec.with_user(rec.requester_id)
+                request_as_requester = rec.with_user(rec.requester_id).with_company(rec.company_id)
                 with rec.env.cr.savepoint():
                     request_as_requester.activity_schedule(
                         "mail.mail_activity_data_todo",
@@ -486,23 +486,23 @@ class KhApprovalRequest(models.Model):
                     subject=f"Approved: {rec.name}",
                 )
 
-                # Add user 152 as a follower and create activity for them,
+                # If there is an amount, add user 152 as a follower and create activity for them,
                 # with the request owner as the creator of the activity.
-                user_to_notify_and_follow = self.env['res.users'].browse(363)
-                if user_to_notify_and_follow.exists():
-                    # The requester adds user 152 as a follower
-                    rec.with_user(rec.requester_id.id).message_subscribe(
-                        partner_ids=[user_to_notify_and_follow.partner_id.id]
-                    )
-
-                    # The requester creates an activity for user 152
-                    rec.with_user(rec.requester_id.id).activity_schedule(
-                        'mail.mail_activity_data_todo',
-                        user_id=user_to_notify_and_follow.id,
-                        summary=_("Request Approved: %s") % rec.title,
-                        note=_("Your request %s has been approved. Please mark as paid.") % (rec.name),
-                    )
-        return True
+                if rec.amount > 0:
+                    user_to_notify_and_follow = self.env['res.users'].browse(363)
+                    if user_to_notify_and_follow.exists():
+                                            # The requester adds user 152 as a follower
+                                            rec.with_user(rec.requester_id.id).with_company(rec.company_id).message_subscribe(
+                                                partner_ids=[user_to_notify_and_follow.partner_id.id]
+                                            )
+                        
+                                            # The requester creates an activity for user 152
+                                            rec.with_user(rec.requester_id.id).with_company(rec.company_id).activity_schedule(
+                                                'mail.mail_activity_data_todo',
+                                                user_id=user_to_notify_and_follow.id,
+                                                summary=_("Request Approved: %s") % rec.title,
+                                                note=_("Your request %s has been approved. Please mark as paid.") % (rec.name),
+                                            )        return True
 
     def action_reject_request(self):
         """Current approver rejects; request becomes Rejected and requester is pinged."""
