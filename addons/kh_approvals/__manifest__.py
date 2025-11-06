@@ -22,6 +22,7 @@
         "views/qweb_templates.xml",
         "views/department_views.xml",
         "views/hr_employee_views.xml",
+        "data/kh_approvals_digest_fix.xml",
 
         # --- ACTIONS + MENUS LAST (they may reference the views above) ---
         "views/menu.xml",
