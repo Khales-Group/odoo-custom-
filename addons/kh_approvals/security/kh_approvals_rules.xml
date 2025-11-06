@@ -1,9 +1,4 @@
 <odoo>
-  <!-- Remove old broad company rules if they exist -->
-  <delete id="mc_rule_request_company" model="ir.rule"/>
-  <delete id="mc_rule_rule_company" model="ir.rule"/>
-  <delete id="mc_rule_line_company" model="ir.rule"/>
-
   <!-- RULE 1 (USER): Can read their OWN requests. -->
   <record id="rule_kh_request_read_own" model="ir.rule">
     <field name="name">Requests: Read Own</field>
