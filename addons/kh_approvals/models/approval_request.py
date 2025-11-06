@@ -264,8 +264,10 @@ class KhApprovalRequest(models.Model):
     def _close_all_todos(self):
         """Close all To-Do activities on this request (any user)."""
         for rec in self:
-            for act in rec.activity_ids:
-                rec.sudo()._activity_done_silent(act)
+            # When a request is revised, we cancel (unlink) all open approval activities.
+            # The activities were created by the requester, who is the one revising,
+            # so they have the permission to unlink them.
+            rec.activity_ids.unlink()
 
     # -------------------------------------------------------------------------
     # Throttle helper
