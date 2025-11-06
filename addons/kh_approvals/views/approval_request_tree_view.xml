@@ -5,12 +5,12 @@
             <field name="name">kh.approval.request.tree.for.employee</field>
             <field name="model">kh.approval.request</field>
             <field name="arch" type="xml">
-                <tree string="Approval Requests">
+                <list string="Approval Requests">
                     <field name="name"/>
                     <field name="title"/>
                     <field name="state"/>
                     <field name="submitted_on"/>
-                </tree>
+                </list>
             </field>
         </record>
     </data>
