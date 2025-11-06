@@ -545,11 +545,7 @@ class KhApprovalRequest(models.Model):
         raise UserError(_("This option has been disabled by your administrator."))
 
     def action_mark_as_paid(self):
-        """Marks the request as paid and notifies the responsible user."""
-        # The user ID to notify. As requested, this is hardcoded to 152.
-        # For more flexibility, this could be moved to a System Parameter.
-        user_to_notify_id = 363 
-
+        """Marks the request as paid and closes the associated activity."""
         for rec in self:
             if rec.state != 'approved':
                 raise UserError(_("Only approved requests can be marked as paid."))
@@ -558,6 +554,9 @@ class KhApprovalRequest(models.Model):
             if not rec.amount > 0:
                 raise UserError(_("This action is only for requests with a payment amount."))
 
+            # Close the open "To-Do" activity for the current user (the accountant).
+            rec._close_my_open_todos()
+
             rec.write({'payment_state': 'paid'})
 
             # Post a note in the chatter
@@ -565,25 +564,6 @@ class KhApprovalRequest(models.Model):
                 _("Request marked as <b>Paid</b> by %s.") % self.env.user.name,
                 partner_ids=rec.message_follower_ids.mapped("partner_id").ids,
             )
-
-            # Schedule an activity for the designated user
-            try:
-                user_to_notify = self.env['res.users'].browse(user_to_notify_id).exists()
-                if user_to_notify:
-                    # To ensure the activity is created correctly without being overridden by other logic,
-                    # we create it as a superuser. This bypasses any user-context-based rules that might
-                    # alter the assigned user.
-                    self.env['mail.activity'].with_context(mail_activity_quick_update=True).sudo().create({
-                        'res_id': rec.id,
-                        'res_model_id': self.env['ir.model']._get_id(rec._name),
-                        'activity_type_id': self.env.ref('mail.mail_activity_data_todo').id,
-                        'summary': _("Payment Processed: %s") % rec.title,
-                        'note': _("Approval request %s for %s has been marked as paid.") % (rec.name, rec.requester_id.name),
-                        'user_id': user_to_notify.id,
-                    })
-            except Exception as e:
-                # Fails silently if user 152 doesn't exist to avoid blocking the process.
-                pass
         return True
 
 
