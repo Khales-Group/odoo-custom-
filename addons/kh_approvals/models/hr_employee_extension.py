@@ -10,3 +10,12 @@ class HrEmployee(models.Model):
         'employee_id',
         string="Approval Requests",
     )
+
+    approval_request_count = fields.Integer(
+        string="Approval Request Count",
+        compute='_compute_approval_request_count',
+    )
+
+    def _compute_approval_request_count(self):
+        for employee in self:
+            employee.approval_request_count = len(employee.approval_request_ids)
