@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <record id="view_kh_approval_request_tree_for_employee" model="ir.ui.view">
+            <field name="name">kh.approval.request.tree.for.employee</field>
+            <field name="model">kh.approval.request</field>
+            <field name="arch" type="xml">
+                <tree string="Approval Requests">
+                    <field name="name"/>
+                    <field name="title"/>
+                    <field name="state"/>
+                    <field name="submitted_on"/>
+                </tree>
+            </field>
+        </record>
+    </data>
+</odoo>

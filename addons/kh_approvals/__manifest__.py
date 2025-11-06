@@ -20,6 +20,7 @@
         "views/approval_rule_views.xml",
         "views/qweb_templates.xml",
         "views/department_views.xml",
+        "views/approval_request_tree_view.xml",
         "views/hr_employee_views_extension.xml",
 
         # --- ACTIONS + MENUS LAST (they may reference the views above) ---
