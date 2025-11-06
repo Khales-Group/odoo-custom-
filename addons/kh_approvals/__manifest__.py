@@ -6,7 +6,7 @@
     "author": "Khales Team",
     "website": "https://khales.ae",
     "category": "Operations/Approvals",
-    "depends": ["base", "mail"],
+    "depends": ["base", "mail", "hr"],
     "data": [
         # --- security first ---
         "security/kh_approvals_security.xml", # This file was missing, I've added it.
@@ -20,6 +20,7 @@
         "views/approval_rule_views.xml",
         "views/qweb_templates.xml",
         "views/department_views.xml",
+        "views/hr_employee_views_extension.xml",
 
         # --- ACTIONS + MENUS LAST (they may reference the views above) ---
         "views/menu.xml",
