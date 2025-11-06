@@ -6,14 +6,13 @@
     "author": "Khales Team",
     "website": "https://khales.ae",
     "category": "Operations/Approvals",
-    "depends": ["base", "mail", "hr"],
+    "depends": ["base", "mail"],
     "data": [
         # --- security first ---
         "security/kh_approvals_security.xml", # This file was missing, I've added it.
         "security/ir.model.access.csv",
         "security/kh_approvals_manager_access.xml",
-        "security/kh_approvals_mc_rules.xml",
-        "security/kh_approvals_rules.xml", # This was missing from the manifest
+        "security/kh_approvals_rules.xml",
         # --- data ---
         "data/sequence.xml",
         # --- views ---
@@ -21,8 +20,6 @@
         "views/approval_rule_views.xml",
         "views/qweb_templates.xml",
         "views/department_views.xml",
-        "views/hr_employee_views.xml",
-        "data/kh_approvals_digest_fix.xml",
 
         # --- ACTIONS + MENUS LAST (they may reference the views above) ---
         "views/menu.xml",
