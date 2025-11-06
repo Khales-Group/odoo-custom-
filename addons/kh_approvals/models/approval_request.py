@@ -41,6 +41,14 @@ class KhApprovalRequest(models.Model):
         tracking=True,
     )
 
+    employee_id = fields.Many2one(
+        "hr.employee",
+        string="Employee",
+        related="requester_id.employee_id",
+        store=True,
+        readonly=True,
+    )
+
     amount = fields.Monetary(string="Amount", currency_field="currency_id", tracking=True)
 
     currency_id = fields.Many2one(

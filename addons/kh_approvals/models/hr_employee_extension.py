@@ -7,17 +7,6 @@ class HrEmployee(models.Model):
 
     approval_request_ids = fields.One2many(
         'kh.approval.request',
-        'requester_id',
+        'employee_id',
         string="Approval Requests",
-        compute='_compute_approval_request_ids',
-        store=False,
     )
-
-    def _compute_approval_request_ids(self):
-        for employee in self:
-            if employee.user_id:
-                employee.approval_request_ids = self.env['kh.approval.request'].search([
-                    ('requester_id', '=', employee.user_id.id)
-                ])
-            else:
-                employee.approval_request_ids = False,
