@@ -8,7 +8,7 @@
             <field name="arch" type="xml">
                 <xpath expr="//notebook" position="inside">
                     <page string="Approval Requests">
-                        <field name="approval_request_ids" mode="tree" view_mode="list">
+                        <field name="approval_request_ids" view_mode="list">
                             <views>
                                 <tree string="Approval Requests" ref="kh_approvals.view_kh_approval_request_tree_for_employee"/>
                             </views>
