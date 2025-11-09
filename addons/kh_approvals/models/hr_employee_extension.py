@@ -23,8 +23,8 @@ class HrEmployee(models.Model):
             # We check both to be robust.
             user = employee.user_id or self.env['res.users'].search([('employee_id', '=', employee.id)], limit=1)
             if user:
-                # Search for all requests made by this user. Record rules will handle visibility.
-                requests = self.env['kh.approval.request'].search([('requester_id', '=', user.id)])
+                # Search for all requests made by this user, bypassing record rules for visibility.
+                requests = self.env['kh.approval.request'].sudo().search([('requester_id', '=', user.id)])
                 employee.approval_request_ids = requests
             else:
                 employee.approval_request_ids = False
