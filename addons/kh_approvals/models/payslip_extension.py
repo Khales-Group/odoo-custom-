@@ -27,22 +27,8 @@ class HrPayslipExtension(models.Model):
         tracking=True,
     )
 
-    def _get_ceo_user(self):
-        # Find the CEO user based on their job title or a specific configuration
-        # This is a placeholder implementation. You should adapt it to your needs.
-        ceo_job = self.env["hr.job"].search([("name", "=", "Chief Executive Officer")], limit=1)
-        if ceo_job:
-            ceo_employee = self.env["hr.employee"].search([("job_id", "=", ceo_job.id)], limit=1)
-            if ceo_employee and ceo_employee.user_id:
-                return ceo_employee.user_id
-        return self.env["res.users"]
-
     def action_request_approval(self):
         # Create a new approval request
-        ceo_user = self._get_ceo_user()
-        if not ceo_user:
-            raise UserError(_("No CEO user found. Please configure a CEO in the system."))
-
         approval_request = self.env["kh.approval.request"].create({
             "title": "Payslip Approval Request",
             "requester_id": self.env.user.id,
