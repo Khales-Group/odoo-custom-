@@ -57,8 +57,8 @@ class HrPayslipExtension(models.Model):
             "approval_request_id": approval_request.id,
         })
 
-        # Create an activity for the CEO
-        self.activity_schedule(
+        # Create an activity for the CEO on the approval request
+        approval_request.activity_schedule(
             "mail.mail_activity_data_todo",
             user_id=ceo_user.id,
             summary=_("Payslip Approval"),
