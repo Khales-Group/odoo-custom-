@@ -51,6 +51,22 @@ class KhApprovalRequest(models.Model):
 
     amount = fields.Monetary(string="Amount", currency_field="currency_id", tracking=True)
 
+    payslip_ids = fields.Many2many(
+        "hr.payslip",
+        string="Payslips",
+        readonly=True,
+    )
+
+    approval_type = fields.Selection(
+        [
+            ("standard", "Standard"),
+            ("payslip", "Payslip"),
+        ],
+        string="Approval Type",
+        default="standard",
+        required=True,
+    )
+
     currency_id = fields.Many2one(
         "res.currency",
         default=lambda self: self.env.company.currency_id.id,
@@ -496,6 +512,8 @@ class KhApprovalRequest(models.Model):
                     subject=f"Approved: {rec.name}",
                 )
 
+                if rec.approval_type == "payslip":
+                    rec.payslip_ids.write({"approval_state": "approved"})
                 # If there is an amount, add user 152 as a follower and create activity for them,
                 # with the request owner as the creator of the activity.
                 if rec.amount > 0:
@@ -548,6 +566,8 @@ class KhApprovalRequest(models.Model):
                 _("❌ <b>Rejected</b>: <a href='%(link)s'>%(name)s: %(title)s</a>") % {"link": rec._deeplink(), "name": rec.name, "title": rec.title},
                 subject=f"Rejected: {rec.name}",
             )
+            if rec.approval_type == "payslip":
+                rec.payslip_ids.write({"approval_state": "rejected"})
         return True
 
     def action_opt_out_as_approver(self):
