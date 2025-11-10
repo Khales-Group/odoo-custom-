@@ -4,7 +4,7 @@ from odoo.exceptions import UserError, AccessError
 
 
 class HrPayslipExtension(models.Model):
-    _inherit = "hr.payslip"
+    _inherit = "hr.payroll"
 
     approval_request_id = fields.Many2one(
         "kh.approval.request",
