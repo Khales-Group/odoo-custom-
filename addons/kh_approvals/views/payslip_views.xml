@@ -5,7 +5,7 @@
     <!-- Inherit hr.payslip tree view to add approval_state field -->
     <record id="view_hr_payslip_tree_inherited" model="ir.ui.view">
       <field name="name">hr.payslip.tree.inherited</field>
-      <field name="model">hr.payroll</field>
+      <field name="model">hr.payslip</field>
       <field name="inherit_id" ref="hr_payroll.view_hr_payslip_tree"/>
       <field name="arch" type="xml">
         <xpath expr="//field[@name='state']" position="after">
@@ -17,7 +17,7 @@
     <!-- Inherit hr.payslip form view to add approval_state and approval_request_id fields -->
     <record id="view_hr_payslip_form_inherited" model="ir.ui.view">
       <field name="name">hr.payslip.form.inherited</field>
-      <field name="model">hr.payroll</field>
+      <field name="model">hr.payslip</field>
       <field name="inherit_id" ref="hr_payroll.view_hr_payslip_form"/>
       <field name="arch" type="xml">
         <xpath expr="//field[@name='state']" position="after">
@@ -30,8 +30,8 @@
     <!-- Server action for requesting approval -->
     <record id="action_request_payslip_approval" model="ir.actions.server">
       <field name="name">Request Approval</field>
-      <field name="model_id" ref="hr_payroll.model_hr_payroll"/>
-      <field name="binding_model_id" ref="hr_payroll.model_hr_payroll"/>
+      <field name="model_id" ref="hr_payroll.model_hr_payslip"/>
+      <field name="binding_model_id" ref="hr_payroll.model_hr_payslip"/>
       <field name="state">code</field>
       <field name="code">
         action = records.action_request_approval()
