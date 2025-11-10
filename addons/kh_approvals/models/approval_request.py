@@ -106,7 +106,6 @@ class KhApprovalRequest(models.Model):
     rule_id = fields.Many2one(
         "kh.approval.rule",
         string="Approval Rule",
-        required=True,
         domain="[ ('department_id','=',department_id)]",
         tracking=True,
     )
