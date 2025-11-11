@@ -73,6 +73,30 @@
     <field name="perm_unlink" eval="0"/>
   </record>
 
+  <!-- RULE FOR HR: Can read all requests -->
+  <record id="rule_kh_request_read_as_hr" model="ir.rule">
+    <field name="name">Requests: Read as HR</field>
+    <field name="model_id" ref="model_kh_approval_request"/>
+    <field name="domain_force">[(1,'=',1)]</field>
+    <field name="groups" eval="[(4, ref('hr.group_hr_user'))]"/>
+    <field name="perm_read" eval="1"/>
+    <field name="perm_write" eval="0"/>
+    <field name="perm_create" eval="0"/>
+    <field name="perm_unlink" eval="0"/>
+  </record>
+
+  <!-- RULE FOR Project Users: Can read all requests -->
+  <record id="rule_kh_request_read_as_project_user" model="ir.rule">
+    <field name="name">Requests: Read as Project User</field>
+    <field name="model_id" ref="model_kh_approval_request"/>
+    <field name="domain_force">[(1,'=',1)]</field>
+    <field name="groups" eval="[(4, ref('project.group_project_user'))]"/>
+    <field name="perm_read" eval="1"/>
+    <field name="perm_write" eval="0"/>
+    <field name="perm_create" eval="0"/>
+    <field name="perm_unlink" eval="0"/>
+  </record>
+
 
   <!-- REQUESTS: managers see all -->
   <record id="rule_kh_request_manager_all" model="ir.rule">
