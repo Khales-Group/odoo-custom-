@@ -1,0 +1,127 @@
+<?xml version="1.0"?>
+<odoo>
+    <record id="is_chatgpt_res_config_settings_view" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.is.chatgpt.inherit</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app data-string="Chatgpt" string="Turbo AIAgent 🚀" name="chatgpt" logo="odoo_turbo_ai_agent/static/description/icon.png">
+                    <block title="Turbo AIAgent 🚀">
+                        <div class="col-xs-12 row o_settings_container o_chatgpt_chatgpt_container">
+                            <div class="col-xs-12 col-md-6 o_setting_box">
+                                <div class="o_setting_right_pane border-start-0">
+                                    <div class="content-group">
+                                        <div class="row mt8">
+                                            <label class="col-lg-3" string="API Key" for="openapi_api_key"/>
+                                            <field name="openapi_api_key" title="OpenAPI API Key"/>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-xs-12 col-md-6 o_setting_box">
+                                <div class="o_setting_left_pane"/>
+                                <div class="o_setting_right_pane">
+                                    <span class="o_form_label">ChatGPT Model</span>
+                                    <div class="text-muted">
+                                        Mode for the ChatGPT request
+                                    </div>
+                                    <div class="content-group mt16">
+                                        <field name="chatgpt_model_id" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- # odoo Database cred. -->
+                            <div class="col-xs-12 col-md-6 o_setting_box">
+                                <div class="o_setting_left_pane"/>
+                                <div class="o_setting_right_pane">
+                                    <span class="o_form_label">Database Name</span>
+                                    <div class="text-muted">
+                                        Name of the database
+                                    </div>
+                                    <div class="content-group mt16">
+                                        <field name="odoodb_dbname"/>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-xs-12 col-md-6 o_setting_box">
+                                <div class="o_setting_left_pane"/>
+                                <div class="o_setting_right_pane">
+                                    <span class="o_form_label">Database Host</span>
+                                    <div class="text-muted">
+                                        Host of the database
+                                    </div>
+                                    <div class="content-group mt16">
+                                        <field name="odoodb_host"/>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-xs-12 col-md-6 o_setting_box">
+                                <div class="o_setting_left_pane"/>
+                                <div class="o_setting_right_pane">
+                                    <span class="o_form_label">Database Port</span>
+                                    <div class="text-muted">
+                                        Port of the database
+                                    </div>
+                                    <div class="content-group mt16">
+                                        <field name="odoodb_port"/>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-xs-12 col-md-6 o_setting_box">
+                                <div class="o_setting_left_pane"/>
+                                <div class="o_setting_right_pane">
+                                    <span class="o_form_label">Database User</span>
+                                    <div class="text-muted">
+                                        User of the database
+                                    </div>
+                                    <div class="content-group mt16">
+                                        <field name="odoodb_user"/>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-xs-12 col-md-6 o_setting_box">
+                                <div class="o_setting_left_pane"/>
+                                <div class="o_setting_right_pane">
+                                    <span class="o_form_label">Database Password</span>
+                                    <div class="text-muted">
+                                        Password of the database
+                                    </div>
+                                    <div class="content-group mt16">
+                                        <field name="odoodb_password"/>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- # odoo Database cred. -->
+                            <div class="col-xs-12 col-md-6 o_setting_box">
+                                <div class="o_setting_left_pane"/>
+                                <div class="o_setting_right_pane">
+                                    <span class="o_form_label">Odoo User</span>
+                                    <div class="text-muted">
+                                        Odoo User
+                                    </div>
+                                    <div class="content-group mt16">
+                                        <field name="odoo_user"/>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-xs-12 col-md-6 o_setting_box">
+                                <div class="o_setting_left_pane"/>
+                                <div class="o_setting_right_pane">
+                                    <span class="o_form_label">Odoo User Password</span>
+                                    <div class="text-muted">
+                                        User Password
+                                    </div>
+                                    <div class="content-group mt16">
+                                        <field name="odoo_password"/>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </block>
+                </app>
+            </xpath>
+        </field>
+    </record>
+</odoo>

@@ -1,460 +1,1074 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Automation Base - Odoo Module</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f8f9fa;
-        }
-        .container {
-            background: white;
-            border-radius: 10px;
-            padding: 30px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-            padding: 30px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 10px;
-        }
-        .header h1 {
-            margin: 0;
-            font-size: 2.5em;
-            font-weight: 300;
-        }
-        .header p {
-            font-size: 1.2em;
-            margin: 10px 0 0 0;
-            opacity: 0.9;
-        }
-        .feature-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin: 30px 0;
-        }
-        .feature-card {
-            background: #f8f9fa;
-            padding: 25px;
-            border-radius: 8px;
-            border-left: 4px solid #007bff;
-        }
-        .feature-card h3 {
-            color: #007bff;
-            margin-top: 0;
-        }
-        .feature-card.security {
-            border-left-color: #28a745;
-        }
-        .feature-card.security h3 {
-            color: #28a745;
-        }
-        .feature-card.performance {
-            border-left-color: #ffc107;
-        }
-        .feature-card.performance h3 {
-            color: #ffc107;
-        }
-        .section {
-            margin: 40px 0;
-            padding: 25px;
-            background: white;
-            border-radius: 8px;
-            border: 1px solid #e9ecef;
-        }
-        .section h2 {
-            color: #2c3e50;
-            border-bottom: 2px solid #007bff;
-            padding-bottom: 10px;
-            margin-top: 0;
-        }
-        .capabilities-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 15px;
-            margin: 20px 0;
-        }
-        .capability {
-            background: #e3f2fd;
-            padding: 20px;
-            border-radius: 6px;
-            text-align: center;
-        }
-        .capability strong {
-            color: #1976d2;
-            display: block;
-            margin-bottom: 10px;
-        }
-        .use-cases {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin: 20px 0;
-        }
-        .use-case {
-            text-align: center;
-            padding: 20px;
-            background: white;
-            border-radius: 6px;
-            border: 1px solid #e9ecef;
-        }
-        .use-case-icon {
-            font-size: 2em;
-            margin-bottom: 10px;
-            color: #007bff;
-        }
-        .tech-specs {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 30px;
-        }
-        .tech-specs h4 {
-            color: #388e3c;
-            margin-top: 0;
-        }
-        .tech-specs ul {
-            margin: 10px 0;
-            padding-left: 20px;
-        }
-        .getting-started {
-            background: #e1f5fe;
-            padding: 25px;
-            border-radius: 8px;
-            margin: 30px 0;
-        }
-        .getting-started h3 {
-            color: #0277bd;
-            margin-top: 0;
-        }
-        .getting-started ol {
-            margin: 15px 0;
-            padding-left: 20px;
-        }
-        .getting-started li {
-            margin: 8px 0;
-        }
-        .highlight-box {
-            background: #fff3e0;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px 0;
-            border-left: 4px solid #f57c00;
-        }
-        .highlight-box h3 {
-            color: #f57c00;
-            margin-top: 0;
-        }
-        .footer {
-            text-align: center;
-            background: #f5f5f5;
-            padding: 20px;
-            border-radius: 8px;
-            margin-top: 30px;
-        }
-        .badge {
-            display: inline-block;
-            padding: 5px 10px;
-            background: #007bff;
-            color: white;
-            border-radius: 15px;
-            font-size: 0.8em;
-            margin: 2px;
-        }
-        .badge.success {
-            background: #28a745;
-        }
-        .badge.warning {
-            background: #ffc107;
-            color: #333;
-        }
-        .badge.info {
-            background: #17a2b8;
-        }
-        @media (max-width: 768px) {
-            .tech-specs {
-                grid-template-columns: 1fr;
-            }
-            .feature-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Odoo 18 Turbo AI Agent Integration</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/css/bootstrap.min.css"
+    integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script type="text/javascript" src="//ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
 </head>
+
 <body>
-    <div class="container">
-        <div class="header">
-            <img src="cover.png" alt="AI Automation Base Cover" style="max-width: 100%; height: auto; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
-            <h1>🤖 AI Automation Base</h1>
-            <p>The Ultimate Foundation for AI-Powered Odoo Applications</p>
-            <div style="margin-top: 20px;">
-                <span class="badge success">Odoo 18.0+</span>
-                <span class="badge info">Enterprise Grade</span>
-                <span class="badge warning">Production Ready</span>
-            </div>
-        </div>
-
-        <div class="section">
-            <h2>🚀 Transform Your Odoo with AI</h2>
-            <p style="font-size: 1.1em; line-height: 1.8;">
-                Seamlessly integrate OpenAI, Google Gemini, and Anthropic Claude into your Odoo ecosystem. 
-                Build intelligent applications, automate workflows, and unlock the power of AI across your business processes.
-                This comprehensive module provides a secure, scalable, and extensible foundation for AI automation in Odoo.
-            </p>
-        </div>
-
-        <div class="feature-grid">
-            <div class="feature-card security">
-                <h3>🔐 Enterprise Security</h3>
-                <ul>
-                    <li>Secure API key management with encryption</li>
-                    <li>Granular access control with role-based permissions</li>
-                    <li>Comprehensive audit logging for all AI interactions</li>
-                    <li>Encrypted data transmission with HTTPS</li>
-                </ul>
-            </div>
-            
-            <div class="feature-card">
-                <h3>🔄 Provider Agnostic</h3>
-                <ul>
-                    <li>Unified interface for multiple LLM providers</li>
-                    <li>Easy switching between OpenAI, Gemini, and Claude</li>
-                    <li>No vendor lock-in - choose the best for each use case</li>
-                    <li>Extensible architecture for future providers</li>
-                </ul>
-            </div>
-
-            <div class="feature-card performance">
-                <h3>⚡ High Performance</h3>
-                <ul>
-                    <li>Intelligent rate limiting and caching</li>
-                    <li>Asynchronous processing for better UX</li>
-                    <li>Real-time monitoring and analytics</li>
-                    <li>Optimized for enterprise workloads</li>
-                </ul>
-            </div>
-        </div>
-
-        <div class="section">
-            <h2>🎯 Core AI Capabilities</h2>
-            <div class="capabilities-grid">
-                <div class="capability">
-                    <strong>Text Generation</strong>
-                    <p>Generate high-quality text content for emails, reports, and documentation</p>
-                </div>
-                <div class="capability">
-                    <strong>Chat Completion</strong>
-                    <p>Build conversational AI interfaces with context-aware responses</p>
-                </div>
-                <div class="capability">
-                    <strong>Embeddings</strong>
-                    <p>Convert text to vector representations for semantic search and analysis</p>
-                </div>
-                <div class="capability">
-                    <strong>Streaming Responses</strong>
-                    <p>Real-time AI responses for interactive user experiences</p>
-                </div>
-                <div class="capability">
-                    <strong>Function Calling</strong>
-                    <p>Enable AI to execute actions within your Odoo system</p>
-                </div>
-                <div class="capability">
-                    <strong>Usage Analytics</strong>
-                    <p>Monitor costs, performance, and usage patterns</p>
-                </div>
-            </div>
-        </div>
-
-        <div class="section">
-            <h2>🏗️ Architecture Benefits</h2>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
-                <div>
-                    <h4 style="color: #f57c00;">Modular Design</h4>
-                    <p>
-                        Clean separation of concerns with abstract base services. 
-                        Easy to extend and maintain without affecting existing functionality.
-                        Provider-agnostic interface ensures no vendor lock-in.
+  <div id="module-description">
+    <div id="loempia_tabs">
+      <ul role="tablist" class="nav nav-tabs justify-content-center" data-tabs="tabs">
+        <li class="nav-item">
+          <a href="#desc" class="nav-link active" data-bs-toggle="tab">Description</a>
+        </li>
+        <li class="nav-item">
+          <a href="#license" class="nav-link" data-bs-toggle="tab">License</a>
+        </li>
+      </ul>
+      <div id="loempia_tabs_content" class="tab-content">
+        <div class="tab-pane active" id="desc">
+          <div class="container" style="
+                font-family: 'Inter', sans-serif !important;
+                background-color: #fff !important;
+              ">
+            <div class="oe_styling_v8">
+              <!-- Hero Section with Value Proposition -->
+              <section class="oe_container pt16 mt16"
+                style="margin-left: calc(-42vw + 50%); width: 84vw; position: relative; z-index: 1;">
+                <div class="row o_equal_col_sm"
+                  style="max-width: 1540px; margin: 0 auto; background-color: lightgrey; padding-bottom: 30px; padding-top: 30px; border-radius: 20px; box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.2);">
+                  <div class="col-12 text-center">
+                    <h1 style="color: #0f1e40; font-weight: 800; font-size: 42px; margin-bottom: 10px;">🚀 Odoo Turbo AI
+                      Agent</h1>
+                    <p style="font-size: 16px; color: #333; margin-top: 5px; margin-bottom: 0;">
+                      <span
+                        style="background-color: #0074ff; color: white; padding: 3px 10px; border-radius: 20px; font-weight: bold; font-size: 14px;">Compatible
+                        with Odoo 16, 17 & 18</span>
                     </p>
-                </div>
-                <div>
-                    <h4 style="color: #f57c00;">Performance Optimized</h4>
-                    <p>
-                        Intelligent rate limiting, caching, and asynchronous processing. 
-                        Built for high-volume enterprise usage with proactive monitoring.
-                        Optimized for cost efficiency and reliability.
+                    <p style="font-size: 18px; color: #333; margin-top: 15px;">
+                      <span style="font-weight: bold;">Free Version:</span> Sales, Inventory & Purchase Module Support
                     </p>
-                </div>
-            </div>
-        </div>
+                    <p style="font-size: 18px; color: #333;">
+                      <span style="font-weight: bold;">Advanced Version:</span> Complete Enterprise Module Support <span
+                        style="background-color: #ff5722; color: white; padding: 3px 10px; border-radius: 20px; font-weight: bold; font-size: 14px;">Try
+                        now for free for limited time</span>
+                    </p>
 
-        <div class="section">
-            <h2>🎨 Modern User Interface</h2>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0;">
-                <div style="text-align: center;">
-                    <img src="main_screenshot.png" alt="Main AI Dashboard" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 10px;">
-                    <p><strong>Main AI Dashboard</strong></p>
+                    <!-- Countdown Timer -->
+                    <!-- <div class="mt-3">
+                      <p style="font-size: 14px; color: #333; margin-bottom: 5px;">Limited time offer ends in:</p>
+                      <div style="display: inline-flex; gap: 10px; margin-top: 5px;">
+                        <div
+                          style="background-color: #0f1e40; color: white; padding: 8px 12px; border-radius: 5px; min-width: 40px;">
+                          <span id="days" style="font-size: 18px; font-weight: bold;">14</span>
+                          <div style="font-size: 10px;">DAYS</div>
+                        </div>
+                        <div
+                          style="background-color: #0f1e40; color: white; padding: 8px 12px; border-radius: 5px; min-width: 40px;">
+                          <span id="hours" style="font-size: 18px; font-weight: bold;">23</span>
+                          <div style="font-size: 10px;">HOURS</div>
+                        </div>
+                        <div
+                          style="background-color: #0f1e40; color: white; padding: 8px 12px; border-radius: 5px; min-width: 40px;">
+                          <span id="minutes" style="font-size: 18px; font-weight: bold;">59</span>
+                          <div style="font-size: 10px;">MINS</div>
+                        </div>
+                        <div
+                          style="background-color: #0f1e40; color: white; padding: 8px 12px; border-radius: 5px; min-width: 40px;">
+                          <span id="seconds" style="font-size: 18px; font-weight: bold;">59</span>
+                          <div style="font-size: 10px;">SECS</div>
+                        </div>
+                      </div> -->
+                    </div>
+                  </div>
                 </div>
-                <div style="text-align: center;">
-                    <img src="provider_configuration.png" alt="Provider Configuration" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 10px;">
-                    <p><strong>Provider Configuration</strong></p>
-                </div>
-                <div style="text-align: center;">
-                    <img src="ai_dashboard.png" alt="AI Analytics Dashboard" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 10px;">
-                    <p><strong>AI Analytics Dashboard</strong></p>
-                </div>
-                <div style="text-align: center;">
-                    <img src="usage_analytics.png" alt="Usage Analytics" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 10px;">
-                    <p><strong>Usage Analytics</strong></p>
-                </div>
-            </div>
-            <ul>
-                <li><strong>Responsive Design:</strong> Works perfectly on desktop, tablet, and mobile devices</li>
-                <li><strong>Dark Mode Support:</strong> Automatic theme adaptation for better user experience</li>
-                <li><strong>Real-time Monitoring:</strong> Live dashboards showing AI usage and performance</li>
-                <li><strong>Intuitive Controls:</strong> Easy-to-use interface for managing providers and API keys</li>
-            </ul>
-        </div>
+              </section>
 
-        <div class="section">
-            <h2>🔧 Technical Specifications</h2>
-            <div class="tech-specs">
-                <div>
-                    <h4>Supported Providers</h4>
-                    <ul>
-                        <li>OpenAI (GPT-4, GPT-3.5, GPT-4o)</li>
-                        <li>Google Gemini (Gemini Pro, Gemini Flash)</li>
-                        <li>Anthropic Claude (Claude 3 Opus, Sonnet, Haiku)</li>
-                    </ul>
-                </div>
-                <div>
-                    <h4>Odoo Compatibility</h4>
-                    <ul>
-                        <li>Odoo 18.0+ (Fully Compatible)</li>
-                        <li>Modern UI Components</li>
-                        <li>REST API Endpoints</li>
-                        <li>WebSocket Support</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
+              <!-- Main Value Proposition -->
+              <section class="oe_container bg-transparent position-relative" style="margin: 20px 0 0; z-index: 0;">
+                <div class="o_equal_col_sm">
+                  <div class="shadow bg-white pb32 pt32 px-2"
+                    style="border-radius: 20px; box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.2); padding: 2%;">
+                    <h3 class="oe_slogan"
+                      style="color: #0f1e40; font-weight: 700; text-align: center; opacity: 1; font-size: 26px; margin-bottom: 18px; margin-top: 18px;">
+                      🚀 Transform Your Business with AI-Powered Insights
+                    </h3>
 
-        <div class="section">
-            <h2>🚀 Use Cases</h2>
-            <div class="use-cases">
-                <div class="use-case">
-                    <div class="use-case-icon">📧</div>
-                    <strong>Email Automation</strong>
-                    <p>Generate personalized emails and responses</p>
-                </div>
-                <div class="use-case">
-                    <div class="use-case-icon">📊</div>
-                    <strong>Report Generation</strong>
-                    <p>Create intelligent business reports</p>
-                </div>
-                <div class="use-case">
-                    <div class="use-case-icon">🤖</div>
-                    <strong>Chatbots</strong>
-                    <p>Build customer support assistants</p>
-                </div>
-                <div class="use-case">
-                    <div class="use-case-icon">🔍</div>
-                    <strong>Data Analysis</strong>
-                    <p>Intelligent data insights and summaries</p>
-                </div>
-            </div>
-        </div>
+                    <!-- Stronger value proposition with benefits highlighted -->
+                    <div class="row mb-4">
+                      <div class="col-md-4 text-center">
+                        <p style="font-size: 40px; color: #0074ff;">📈</p>
+                        <h4 style="font-size: 18px; margin-top: 10px; color: #0f1e40; font-weight: 600;">Make Faster
+                          Decisions</h4>
+                        <p style="color: #11335b; font-size: 15px;">Get insights in seconds, not hours</p>
+                      </div>
+                      <div class="col-md-4 text-center">
+                        <p style="font-size: 40px; color: #0074ff;">🤖</p>
+                        <h4 style="font-size: 18px; margin-top: 10px; color: #0f1e40; font-weight: 600;">Save 15+ Hours
+                          Weekly</h4>
+                        <p style="color: #11335b; font-size: 15px;">Automate reports & data analysis</p>
+                      </div>
+                      <div class="col-md-4 text-center">
+                        <p style="font-size: 40px; color: #0074ff;">🛡️</p>
+                        <h4 style="font-size: 18px; margin-top: 10px; color: #0f1e40; font-weight: 600;">100% Secure
+                          Integration</h4>
+                        <p style="color: #11335b; font-size: 15px;">Your data stays within Odoo</p>
+                      </div>
+                    </div>
 
-        <div class="getting-started">
-            <h3>💡 Getting Started</h3>
-            <ol>
-                <li><strong>Install the Module:</strong> Add AI Automation Base to your Odoo instance</li>
-                <li><strong>Configure API Keys:</strong> Securely store your LLM provider credentials</li>
-                <li><strong>Set Up Providers:</strong> Configure your preferred AI providers and models</li>
-                <li><strong>Assign Permissions:</strong> Give users appropriate AI access levels</li>
-                <li><strong>Start Building:</strong> Create AI-powered applications and automations</li>
-            </ol>
-        </div>
+                    <p class="mb16 text-center text-black-dark px-3"
+                      style="margin-left: 20px; margin-right: 20px; font-family: Roboto; font-weight: normal; color: #11335b; font-size: 18px; text-align: justify !important;">
+                      Unlock the full potential of your Odoo data with our AI-powered assistant! Get instant insights,
+                      automate analysis, and make data-driven decisions in seconds. Whether you're in sales, finance,
+                      inventory, or HR - our AI agent turns your complex business data into actionable intelligence.
+                    </p>
+                    <div class="text-center mt-4">
+                      <a href="https://techspawn.com/odoo-demo/"
+                        target="_blank" class="btn btn-success btn-lg"
+                        style="background-color: #28a745; border: none; padding: 15px 30px; font-size: 18px; border-radius: 10px; margin: 10px;">
+                        🔴 Live Demo
+                      </a>
+                      <a href="mailto:support@techspawn.com?subject=Book%20Demo%20for%20Advance%20version%20of%20Turbo%20AI%20Agent"
+                        target="_blank" class="btn btn-primary btn-lg"
+                        style="background-color: #0074ff; border: none; padding: 15px 30px; font-size: 18px; border-radius: 10px; margin: 10px;">
+                        🚀 Get Started Free
+                      </a>
+                      <p class="mt-2" style="color: #666; font-size: 14px;">Try the live demo or contact us to get advanced version for your business</p>
+                    </div>
+                  </div>
+                </div>
+              </section>
 
-        <div class="highlight-box">
-            <h3>🔒 Security Features</h3>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                <div>
-                    <h4>API Key Management</h4>
-                    <ul>
-                        <li>Encrypted storage using cryptography</li>
-                        <li>Role-based access control</li>
-                        <li>Usage tracking and rotation</li>
-                        <li>Secure transmission with HTTPS</li>
-                    </ul>
+              <!-- ROI Benefits Section -->
+              <section class="oe_container pb-3">
+                <div class="mt128 mb32">
+                  <h3 class="oe_slogan"
+                    style="color: #0f1e40; font-weight: 700; text-align: center; text-transform: uppercase; opacity: 1; font-size: 24px; margin-bottom: 5%; margin-top: 5%;">
+                    💰 Drive Business Growth with AI Agent
+                  </h3>
+                  <div class="row">
+                    <div class="col-md-3 text-center mb-4">
+                      <div class="card h-100"
+                        style="border: 2px solid #0074ff; border-radius: 20px; padding: 12px; height: 120px;">
+                        <p style="color: #11335b; font-size: 18px; margin-top: 25px;">Time Saved with AI Agent Analysis
+                        </p>
+                      </div>
+                    </div>
+                    <div class="col-md-3 text-center mb-4">
+                      <div class="card h-100"
+                        style="border: 2px solid #0074ff; border-radius: 20px; padding: 12px; height: 120px;">
+                        <p style="color: #11335b; font-size: 18px; margin-top: 25px;">Faster Decision Making with AI
+                          Agent</p>
+                      </div>
+                    </div>
+                    <div class="col-md-3 text-center mb-4">
+                      <div class="card h-100"
+                        style="border: 2px solid #0074ff; border-radius: 20px; padding: 12px; height: 120px;">
+                        <p style="color: #11335b; font-size: 18px; margin-top: 25px;">24/7 AI Agent Assistance</p>
+                      </div>
+                    </div>
+                    <div class="col-md-3 text-center mb-4">
+                      <div class="card h-100"
+                        style="border: 2px solid #0074ff; border-radius: 20px; padding: 12px; height: 120px;">
+                        <p style="color: #11335b; font-size: 18px; margin-top: 25px;">Increase in Team Productivity</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                    <h4>Data Protection</h4>
-                    <ul>
-                        <li>Input sanitization and validation</li>
-                        <li>Complete audit trail</li>
-                        <li>GDPR-ready data handling</li>
-                        <li>Secure API endpoints</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
+              </section>
 
-        <div class="section">
-            <h2>📊 Monitoring & Analytics</h2>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
-                <div>
-                    <h4>Real-time Dashboard</h4>
-                    <ul>
-                        <li>Live API usage monitoring</li>
-                        <li>Performance metrics tracking</li>
-                        <li>Cost analysis and optimization</li>
-                        <li>Error rate monitoring</li>
-                    </ul>
+              <!-- Key Features Section -->
+              <section class="oe_container pb-5">
+                <div class="mt64 mb64">
+                  <h3 class="oe_slogan"
+                    style="color: #0f1e40; font-weight: 700; text-align: center; text-transform: uppercase; opacity: 1; font-size: 26px; margin-bottom: 18px; margin-top: 5%;">
+                    🎯 Powerful Features for Every Department
+                  </h3>
+                  <div class="row">
+                    <div class="col-md-6 col-sm-12 mt32">
+                      <div class="container shadow" style="
+                            border-radius: 20px;
+                            padding: 10px;
+                            padding-left: 20px;
+                            height: 140px;
+                          ">
+                        <div style="display: flex">
+                          <div style="flex: 0 0 auto; padding-right: 20px">
+                            <img class="img img-responsive" src="assets/ok.svg"
+                              style="max-width: 100px; margin-top: 18px; filter: hue-rotate(164deg);" />
+                          </div>
+                          <div style="flex: 1 1 auto">
+                            <h3 class="mt16 mb0" style="
+                                  font-family: Roboto;
+                                  font-weight: 500;
+                                  font-size: 21px;
+                                ">
+                              Smart Business Assistant
+                            </h3>
+                            <p class="mt16" style="
+                                  font-family: Roboto;
+                                  font-size: 16px;
+                                  margin-top: 10px;
+                                ">
+                              Your AI-powered companion for instant data analysis, reporting, and business insights.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="col-md-6 col-sm-12 mt32">
+                      <div class="container shadow" style="
+                            border-radius: 20px;
+                            padding: 10px;
+                            height: 140px;
+                          ">
+                        <div style="display: flex">
+                          <div style="flex: 0 0 auto; padding-right: 10px">
+                            <img class="img img-responsive" src="assets/ok.svg"
+                              style="max-width: 100px; filter: hue-rotate(164deg);" />
+                          </div>
+                          <div style="flex: 1 1 auto">
+                            <h3 class="mt16 mb0" style="
+                                  font-family: Roboto;
+                                  font-weight: 500;
+                                  font-size: 21px;
+                                ">
+                              Team Collaboration
+                            </h3>
+                            <p class="mt8" style="font-family: Roboto; font-size: 16px">
+                              Enhance team productivity with AI-powered group channels and knowledge sharing.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="col-md-6 col-sm-12 mt32">
+                      <div class="container shadow" style="
+                            border-radius: 20px;
+                            padding: 10px;
+                            height: 140px;
+                          ">
+                        <div style="display: flex">
+                          <div style="flex: 0 0 auto; padding-right: 10px">
+                            <img class="img img-responsive" src="assets/ok.svg"
+                              style="max-width: 100px; filter: hue-rotate(164deg);" />
+                          </div>
+                          <div style="flex: 1 1 auto">
+                            <h3 class="mt16 mb0" style="
+                                  font-family: Roboto;
+                                  font-weight: 500;
+                                  font-size: 21px;
+                                ">
+                              Multi-Department Support
+                            </h3>
+                            <p class="mt8" style="font-family: Roboto; font-size: 16px">
+                              From sales and finance to HR and inventory - AI assistance across all business functions.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="col-md-6 col-sm-12 mt32">
+                      <div class="container shadow" style="
+                            border-radius: 20px;
+                            padding: 10px;
+                            height: 140px;
+                          ">
+                        <div style="display: flex">
+                          <div style="flex: 0 0 auto; padding-right: 10px">
+                            <img class="img img-responsive" src="assets/ok.svg"
+                              style="max-width: 100px; filter: hue-rotate(164deg);" />
+                          </div>
+                          <div style="flex: 1 1 auto">
+                            <h3 class="mt16 mb0" style="
+                                  font-family: Roboto;
+                                  font-weight: 500;
+                                  font-size: 21px;
+                                ">
+                              Natural Language Queries
+                            </h3>
+                            <p class="mt8" style="font-family: Roboto; font-size: 16px">
+                              Get complex business insights by simply asking questions in plain language.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="col-md-6 col-sm-12 mt32">
+                      <div class="container shadow" style="
+                            border-radius: 20px;
+                            padding: 10px;
+                            height: 140px;
+                          ">
+                        <div style="display: flex">
+                          <div style="flex: 0 0 auto; padding-right: 10px">
+                            <img class="img img-responsive" src="assets/ok.svg"
+                              style="max-width: 100px; filter: hue-rotate(164deg);" />
+                          </div>
+                          <div style="flex: 1 1 auto">
+                            <h3 class="mt16 mb0" style="
+                                  font-family: Roboto;
+                                  font-weight: 500;
+                                  font-size: 21px;
+                                ">
+                              Seamless Integration
+                            </h3>
+                            <p class="mt8" style="font-family: Roboto; font-size: 16px">
+                              Quick setup and instant access to AI capabilities across your Odoo workspace.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="col-md-6 col-sm-12 mt32">
+                      <div class="container shadow" style="
+                            border-radius: 20px;
+                            padding: 10px;
+                            height: 140px;
+                          ">
+                        <div style="display: flex">
+                          <div style="flex: 0 0 auto; padding-right: 10px">
+                            <img class="img img-responsive" src="assets/ok.svg"
+                              style="max-width: 100px; filter: hue-rotate(164deg);" />
+                          </div>
+                          <div style="flex: 1 1 auto">
+                            <h3 class="mt16 mb0" style="
+                                  font-family: Roboto;
+                                  font-weight: 500;
+                                  font-size: 21px;
+                                ">
+                              Advanced Security
+                            </h3>
+                            <p class="mt8" style="font-family: Roboto; font-size: 16px">
+                              Enterprise-grade security with BYOK support for complete control over your AI
+                              interactions.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                    <h4>Request Logs</h4>
-                    <ul>
-                        <li>Detailed request/response logging</li>
-                        <li>Token usage tracking</li>
-                        <li>Response time analysis</li>
-                        <li>User activity monitoring</li>
-                    </ul>
-                </div>
-                <div>
-                    <h4>Provider Analytics</h4>
-                    <ul>
-                        <li>Usage breakdown by provider</li>
-                        <li>Model performance comparison</li>
-                        <li>Cost optimization insights</li>
-                        <li>Availability monitoring</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
+              </section>
 
-        <div class="footer">
-            <h3>🌟 Why Choose AI Automation Base?</h3>
-            <p style="font-size: 1.1em; color: #666;">
-                Built by enterprise developers for enterprise needs. 
-                Secure, scalable, and ready for production use. 
-                The foundation for the future of AI-powered business automation.
-            </p>
-            <div style="margin-top: 20px;">
-                <p><strong>Company:</strong> ECOSIRE (PRIVATE) LIMITED</p>
-                <p><strong>Website:</strong> <a href="https://www.ecosire.com" target="_blank">https://www.ecosire.com</a></p>
-                <p><strong>Support:</strong> info@ecosire.com</p>
-            </div>
-        </div>
-    </div>
+              <!-- Real-World Use Cases -->
+              <section class="oe_container pb-5">
+                <div class="mt64 mb64">
+                  <div class="o_equal_col_sm" style="
+                        background-color: #f8f9fa;
+                        border-radius: 20px;
+                        width: 100%;
+                          box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.2);
+                        border: 2px solid #0074ff;
+                      ">
+                    <div class="pb32 pt32 px-4" style="border-radius: 15px; margin-top: 2%; padding: 3%;">
+                      <h3 class="oe_slogan" style="
+                            color: #0f1e40;
+                            font-weight: 700;
+                            text-align: center;
+                            text-transform: uppercase;
+                            opacity: 1;
+                            font-size: 24px;
+                            margin-bottom: 18px;
+                            margin-top: 18px;
+                          ">
+                        🎯 Getting Started & Use Cases
+                      </h3>
+
+                      <!-- Quick Start Guide -->
+                      <div class="row mb-4">
+                        <div class="col-12">
+                          <h4 style="color: #0f1e40; font-weight: 600; font-size: 20px;">
+                            Quick Start Guide
+                          </h4>
+                          <ol style="color: #11335b; font-size: 16px;">
+                            <li class="mb-2">Install the Turbo AI Agent module in your Odoo instance</li>
+                            <li class="mb-2">Configure your OpenAI API key in the settings</li>
+                            <li class="mb-2">Select your preferred AI model and adjust temperature settings</li>
+                            <li class="mb-2">Start chatting with the AI Agent individually or in group channels</li>
+                          </ol>
+                        </div>
+                      </div>
+
+                      <!-- Use Cases -->
+                      <div class="row">
+                        <div class="col-md-6 mb-4">
+                          <div class="card h-100" style="border: 1px solid #0074ff; border-radius: 10px;">
+                            <div class="card-body">
+                              <h5 class="card-title" style="color: #0f1e40; font-weight: 600;">
+                                <!-- <i class="fas fa-database" style="color: #0074ff;"></i> -->
+                                ⭐ Sales & Customer Insights
+                              </h5>
+                              <ul style="list-style-type: none; padding-left: 0;">
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    ☑️ Analyze sales trends and customer behavior patterns
+                                  </span>
+                                </li>
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    ☑️ Get instant customer purchase history summaries
+                                  </span>
+                                </li>
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    ☑️ Track product performance and inventory insights
+                                  </span>
+                                </li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="col-md-6 mb-4">
+                          <div class="card h-100" style="border: 1px solid #0074ff; border-radius: 10px;">
+                            <div class="card-body">
+                              <h5 class="card-title" style="color: #0f1e40; font-weight: 600;">
+                                <!-- <i class="fas fa-chart-bar" style="color: #0074ff;"></i> -->
+                                ⭐ Financial Analysis
+                              </h5>
+                              <ul style="list-style-type: none; padding-left: 0;">
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    ☑️ Quick financial reports and summaries
+                                  </span>
+                                </li>
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    ☑️ Account receivables and payables overview
+                                  </span>
+                                </li>
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    ☑️ Real-time revenue and expense analysis
+                                  </span>
+                                </li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="col-md-6 mb-4">
+                          <div class="card h-100" style="border: 1px solid #0074ff; border-radius: 10px;">
+                            <div class="card-body">
+                              <h5 class="card-title" style="color: #0f1e40; font-weight: 600;">
+                                <!-- <i class="fas fa-boxes" style="color: #0074ff;"></i> -->
+                                ⭐ Inventory Management
+                              </h5>
+                              <ul style="list-style-type: none; padding-left: 0;">
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    ☑️ Stock level monitoring and alerts
+                                  </span>
+                                </li>
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    ☑️ Product movement and turnover analysis
+                                  </span>
+                                </li>
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    ☑️ Warehouse performance insights
+                                  </span>
+                                </li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="col-md-6 mb-4">
+                          <div class="card h-100" style="border: 1px solid #0074ff; border-radius: 10px;">
+                            <div class="card-body">
+                              <h5 class="card-title" style="color: #0f1e40; font-weight: 600;">
+                                <!-- <i class="fas fa-users-cog" style="color: #0074ff;"></i> -->
+                                ⭐ HR & Employee Data
+                              </h5>
+                              <ul style="list-style-type: none; padding-left: 0;">
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    ☑️ Employee performance metrics analysis
+                                  </span>
+                                </li>
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    ☑️ Leave and attendance pattern insights
+                                  </span>
+                                </li>
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    ☑️ Team productivity and workload analysis
+                                  </span>
+                                </li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Pro Tips -->
+                      <div class="row mt-4">
+                        <div class="col-12">
+                          <h4 style="color: #0f1e40; font-weight: 600; font-size: 20px;">
+                            💡 Data Interaction Tips
+                          </h4>
+                          <ul style="list-style-type: none; padding-left: 0;">
+                            <li class="mb-2">
+                              <i class="fas fa-lightbulb" style="color: #0074ff;"></i>
+                              <span style="color: #11335b; margin-left: 10px;">
+                                Ask specific questions about your business data for detailed insights
+                              </span>
+                            </li>
+                            <li class="mb-2">
+                              <i class="fas fa-lightbulb" style="color: #0074ff;"></i>
+                              <span style="color: #11335b; margin-left: 10px;">
+                                Use natural language to query complex reports and analytics
+                              </span>
+                            </li>
+                            <li class="mb-2">
+                              <i class="fas fa-lightbulb" style="color: #0074ff;"></i>
+                              <span style="color: #11335b; margin-left: 10px;">
+                                Combine data from different Odoo modules for comprehensive business intelligence
+                              </span>
+                            </li>
+                          </ul>
+                        </div>
+                      </div>
+
+                      <!-- Example Queries -->
+                      <div class="row mt-4">
+                        <div class="col-12">
+                          <h4 style="color: #0f1e40; font-weight: 600; font-size: 20px;">
+                            🎯 Sample Queries
+                          </h4>
+                          <div class="card" style="border: 1px solid #0074ff; border-radius: 10px;">
+                            <div class="card-body">
+                              <ul style="list-style-type: none; padding-left: 0;">
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    🤖 "Show me the top-selling products this quarter with their profit margins"
+                                  </span>
+                                </li>
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    🤖 "What's the current inventory status of products below reorder point?"
+                                  </span>
+                                </li>
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    🤖 "Analyze customer payment trends over the last 6 months"
+                                  </span>
+                                </li>
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    🤖 "Summarize the project milestones and resource allocation for active projects"
+                                  </span>
+                                </li>
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    🤖 "Compare sales performance across different regions this year vs last year"
+                                  </span>
+                                </li>
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    🤖 "Show me customer retention rates and identify top loyal customers"
+                                  </span>
+                                </li>
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    🤖 "Generate a summary of overdue invoices and payment follow-up status"
+                                  </span>
+                                </li>
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    🤖 "What are the most common customer support issues this month?"
+                                  </span>
+                                </li>
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    🤖 "Show employee productivity metrics and attendance patterns"
+                                  </span>
+                                </li>
+                                <li class="mb-2">
+
+                                  <span style="color: #11335b; margin-left: 10px;">
+                                    🤖 "Analyze manufacturing efficiency and identify bottlenecks in production"
+                                  </span>
+                                </li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- Quick Start Guide -->
+              <section class="oe_container pb-5">
+                <div class="mt64 mb64">
+                  <div class="o_equal_col_sm"
+                    style="background-color: #f8f9fa; border-radius: 20px; width: 100%; box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.2); border: 2px solid #0074ff;">
+                    <div class="pb32 pt32 px-4" style="border-radius: 15px; margin-top: 2%; padding-bottom: 3%;">
+                      <h3 class="oe_slogan"
+                        style="color: #0f1e40; font-weight: 700; text-align: center; text-transform: uppercase; opacity: 1; font-size: 24px; margin-bottom: 18px;">
+                        🚀 Get Started in Minutes
+                      </h3>
+                      <div class="row align-items-center">
+                        <div class="col-lg-6">
+                          <img src="assets/install.png" class="img-fluid rounded" alt="Quick Setup"
+                            style="max-width: 100%; height: auto;" />
+                        </div>
+                        <div class="col-lg-6">
+                          <ol style="color: #11335b; font-size: 18px;">
+                            <li class="mb-3">Install the Turbo AI Agent module</li>
+                            <li class="mb-3">Configure your API key</li>
+                            <li class="mb-3">Start asking questions in natural language</li>
+                            <li class="mb-3">Get instant insights from your data</li>
+                          </ol>
+                          <div class="mt-4">
+                            <a href="https://techspawn.com/odoo-demo/"
+                              target="_blank" class="btn btn-success btn-lg"
+                              style="background-color: #28a745; border: none; border-radius: 8px; font-size: 1.1rem; padding: 12px 32px; margin-right: 10px;">
+                              🔴 Try Live Demo
+                            </a>
+                            <a href="mailto:support@techspawn.com?subject=Book%20Demo%20for%20Advance%20version%20of%20Turbo%20AI%20Agent"
+                              target="_blank" class="btn btn-primary btn-lg"
+                              style="background-color: #0074ff; border: none; border-radius: 8px; font-size: 1.1rem; padding: 12px 32px;">
+                              Schedule a Demo
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- FAQs Section -->
+              <section class="oe_container pb-5">
+                <div class="mt64 mb64">
+                  <div class="o_equal_col_sm"
+                    style="background-color: #f8f9fa; border-radius: 20px; width: 100%; box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.2); border: 2px solid #0074ff;">
+                    <div class="pb32 pt32 px-4" style="border-radius: 15px; margin-top: 2%; padding: 3%;">
+                      <h3 class="oe_slogan"
+                        style="color: #0f1e40; font-weight: 700; text-align: center; text-transform: uppercase; opacity: 1; font-size: 24px; margin-bottom: 25px;">
+                        🤖 Frequently Asked Questions
+                      </h3>
+
+                      <div class="row">
+                        <div class="col-md-6 mb-4">
+                          <div style="border-left: 4px solid #0074ff; padding-left: 15px;">
+                            <h5 style="color: #0f1e40; font-weight: 600; font-size: 18px;">How long does implementation
+                              take?</h5>
+                            <p style="color: #11335b;">Installation and setup takes less than 30 minutes. You'll be up
+                              and running with AI-powered insights on the same day.</p>
+                          </div>
+                        </div>
+
+                        <div class="col-md-6 mb-4">
+                          <div style="border-left: 4px solid #0074ff; padding-left: 15px;">
+                            <h5 style="color: #0f1e40; font-weight: 600; font-size: 18px;">Do I need technical knowledge
+                              to use it?</h5>
+                            <p style="color: #11335b;">Not at all! Just ask questions in plain language. The AI
+                              Assistant understands natural language and provides easy-to-understand answers.</p>
+                          </div>
+                        </div>
+
+                        <div class="col-md-6 mb-4">
+                          <div style="border-left: 4px solid #0074ff; padding-left: 15px;">
+                            <h5 style="color: #0f1e40; font-weight: 600; font-size: 18px;">Is my data secure?</h5>
+                            <p style="color: #11335b;">Absolutely. We use industry-standard security measures,
+                              end-to-end encryption, and your data never leaves your Odoo environment.</p>
+                          </div>
+                        </div>
+
+                        <div class="col-md-6 mb-4">
+                          <div style="border-left: 4px solid #0074ff; padding-left: 15px;">
+                            <h5 style="color: #0f1e40; font-weight: 600; font-size: 18px;">Which Odoo versions are
+                              supported?</h5>
+                            <p style="color: #11335b;">The Turbo AI Agent supports Odoo 16, 17, and 18. Contact us for
+                              implementation assistance with your specific Odoo version.</p>
+                          </div>
+                        </div>
+
+                        <div class="col-md-6 mb-4">
+                          <div style="border-left: 4px solid #0074ff; padding-left: 15px;">
+                            <h5 style="color: #0f1e40; font-weight: 600; font-size: 18px;">Do you offer support?</h5>
+                            <p style="color: #11335b;">Yes, all plans include dedicated technical support. Our team is
+                              available to help with setup, customization, and troubleshooting.</p>
+                          </div>
+                        </div>
+
+                        <div class="col-md-6 mb-4">
+                          <div style="border-left: 4px solid #0074ff; padding-left: 15px;">
+                            <h5 style="color: #0f1e40; font-weight: 600; font-size: 18px;">Can I customize the AI
+                              capabilities?</h5>
+                            <p style="color: #11335b;">Yes, the Advanced Version allows for custom module integration
+                              and AI model optimization for your specific business needs.</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="text-center mt-4">
+                        <a href="https://techspawn.com/odoo-demo/"
+                          target="_blank" class="btn btn-success"
+                          style="background-color: #28a745; border: none; color: white; padding: 10px 25px; font-weight: bold; border-radius: 8px; margin-right: 10px;">
+                          🔴 Try Live Demo
+                        </a>
+                        <a href="mailto:support@techspawn.com?subject=%20Question%20about%20Turbo%20AIAgent"
+                          class="btn btn-outline-primary"
+                          style="border: 2px solid #0074ff; color: #0074ff; padding: 10px 25px; font-weight: bold; border-radius: 8px;">
+                          Ask Us Anything
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section>
+                <div class="container rounded-top">
+                  <div class="tab-content">
+                    <div id="screenshot" class="tab-pane in active show">
+                      <section class="oe_container mt32"
+                        style="background-color: #f8f9fa; border-radius: 20px; box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.2);">
+                        <h3 class="oe_slogan"
+                          style="color: #0f1e40; font-weight: 700; text-align: center; text-transform: uppercase; opacity: 1; font-size: 24px; margin-bottom: 25px; margin-top: 25px; padding-top: 3%;">
+                          📸 Screenshots & Features
+                        </h3>
+                        <div class="mt-4 col-lg-12 d-flex flex-column align-items-center">
+                          <div class="screenshot-container" style="margin: 2rem; max-width: 1000px; width: 100%;">
+                            <img src="assets/fill_form.png" class="img-fluid rounded shadow-sm"
+                              style="width: 100%; border: 1px solid #dee2e6;" />
+                            <p class="mt16 mb32 text-center" style="
+                                  font-family: 'Inter', sans-serif;
+                                  font-size: 18px;
+                                  color: #0f1e40;
+                                  line-height: 1.6;
+                                    font-weight: 500;
+                                    margin-top: 3%;
+
+                                ">
+                              Configure your OpenAI API key , select your preferred model in the settings and <br> Add
+                              your database credentails
+                            </p>
+                          </div>
+                        </div>
+                        <div class="mt-4 col-lg-12 d-flex flex-column align-items-center">
+                          <div class="screenshot-container" style="margin: 2rem; max-width: 1000px; width: 100%;">
+                            <img src="assets/ask_q.png" class="img-fluid rounded shadow-sm"
+                              style="width: 100%; border: 1px solid #dee2e6;" />
+                            <p class="mt16 mb32 text-center" style="
+                                  font-family: 'Inter', sans-serif;
+                                  font-size: 18px;
+                                  color: #0f1e40;
+                                  line-height: 1.6;
+                                    font-weight: 500;
+                                    margin-top: 3%;
+                                ">
+                              Communicate with Turbo AI Agent in group channels or individually
+                            </p>
+                          </div>
+                        </div>
+                        <div class="mt-4 col-lg-12 d-flex flex-column align-items-center">
+                          <div class="screenshot-container" style="margin: 2rem; max-width: 1000px; width: 100%;">
+                            <img src="assets/another_application.png" class="img-fluid rounded shadow-sm"
+                              style="width: 100%; border: 1px solid #dee2e6;" />
+                            <p class="mt16 mb32 text-center" style="
+                                  font-family: 'Inter', sans-serif;
+                                  font-size: 18px;
+                          color: #0f1e40;
+                                  line-height: 1.6;
+                                    font-weight: 500;
+                                    margin-top: 3%;
+                                ">
+                              Seamlessly interact with Turbo AI Agent while using other applications
+                            </p>
+                          </div>
+                        </div>
+                      </section>
+                    </div>
+
+                    <div id="support" class="tab-pane in active show hidden" style="margin-bottom: 6%;">
+                      <h3 class="oe_slogan" style="
+                            color: #0f1e40;
+                            font-weight: 700;
+                            padding-top: 10px;
+                            text-align: center;
+                            text-transform: uppercase;
+                            opacity: 1;
+                            font-size: 26px;
+                            margin-bottom: 18px;
+                            margin-top: 18px;
+                          ">
+
+                 
+                        <section class="oe_container my-5 py-5"
+                          style="background-color: #f8f9fa; border-radius: 20px; box-shadow: 0 8px 32px rgba(0, 116, 255, 0.15), 0 2px 8px rgba(0,0,0,0.08); margin-top: 48px; margin-bottom: 48px; padding-top: 40px; padding-bottom: 20px; border: 2px solid #0074ff;">
+                          <div class="text-center" style="font-family: 'Inter', sans-serif;">
+                            <h2 style="color: #0f1e40; font-weight: 700; font-size: 24px; margin-bottom: 18px;">
+                              <span style="font-size: 1.5em;">🔒</span> UNLOCK ENTERPRISE-GRADE AI
+                            </h2>
+                            <p style="font-size: 18px; color: #0f1e40; font-weight: 500; margin-bottom: 8px;">
+                              Upgrade to our <span style="color: #0074ff; text-decoration: underline;">Premium
+                                Plan</span> starting at
+                              <span
+                                style="background-color: #ff5722; color: #fff; border-radius: 8px; padding: 2px 10px; font-size: 1em; font-weight: 700;">$99/month</span>
+                            </p>
+                            <p style="font-size: 18px; color: #0f1e40; font-weight: 500; margin-bottom: 22px;">
+                              Power your Odoo instance on a fully isolated, dedicated environment.
+                            </p>
+                            <div class="container-fluid px-4">
+                              <div class="row">
+                                <div class="col-6 mb-3">
+                                  <div
+                                    style="background: #fff; border-radius: 10px; padding: 14px 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; align-items: center;">
+                                    <span style="font-size: 1.3em; color: #43a047; margin-right: 14px;">✅</span>
+                                    <div style="text-align: left;">
+                                      <span style="font-size: 16px; color: #0f1e40; font-weight: 500; display: block;">
+                                        BRING YOUR OWN KEY (BYOK) FOR END-TO-END ENCRYPTION UNDER YOUR CONTROL
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div class="col-6 mb-3">
+                                  <div
+                                    style="background: #fff; border-radius: 10px; padding: 14px 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; align-items: center;">
+                                    <span style="font-size: 1.3em; color: #43a047; margin-right: 14px;">✅</span>
+                                    <div style="text-align: left;">
+                                      <span style="font-size: 16px; color: #0f1e40; font-weight: 500; display: block;">
+                                        Dedicated & Isolated AI Environment
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div class="col-6 mb-3">
+                                  <div
+                                    style="background: #fff; border-radius: 10px; padding: 14px 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; align-items: center;">
+                                    <span style="font-size: 1.3em; color: #43a047; margin-right: 14px;">✅</span>
+                                    <div style="text-align: left;">
+                                      <span style="font-size: 16px; color: #0f1e40; font-weight: 500; display: block;">
+                                        Custom SLAs & Priority Support
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div class="col-6 mb-3">
+                                  <div
+                                    style="background: #fff; border-radius: 10px; padding: 14px 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; align-items: center;">
+                                    <span style="font-size: 1.3em; color: #43a047; margin-right: 14px;">✅</span>
+                                    <div style="text-align: left;">
+                                      <span style="font-size: 16px; color: #0f1e40; font-weight: 500; display: block;">
+                                        Enterprise Compliance Options
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </section>
+
+
+                        Contact Us
+                      </h3>
+                      <div class="col-mg-12" style="
+                            padding: 2rem 5rem;
+                            margin: 0;
+                            background-color: lightgrey;
+                            box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.2);
+                            border-radius: 20px;
+                          ">
+                        <!-- Techspawn Logo with Trust Badges -->
+                        <div class="row justify-content-center mb-4"
+                          style="background-color: #fefefe; padding: 25px 20px; border-radius: 20px;">
+                          <div class="col-12 text-center mb-4">
+                            <img src="https://techspawn.com/wp-content/uploads/2021/10/Techspawn_New_Logo.svg"
+                              style="max-width: 250px;" alt="Techspawn Logo" />
+                          </div>
+                          <div class="col-12 text-center">
+                            <div
+                              style="display: inline-flex; gap: 15px; flex-wrap: wrap; justify-content: center; margin-top: 10px;">
+                              <div
+                                style="display: flex; align-items: center; background-color: #f8f9fa; padding: 8px 15px; border-radius: 15px;">
+                                <!-- <i class="fas fa-lock" style="font-size: 20px; color: #0074ff; margin-right: 8px;"></i> -->
+                                <span style="color: #11335b; font-weight: 600;">🔒 Secure Integration</span>
+                              </div>
+                              <div
+                                style="display: flex; align-items: center; background-color: #f8f9fa; padding: 8px 15px; border-radius: 15px;">
+
+                                <span style="color: #11335b; font-weight: 600;">🎧 Priority Support</span>
+                              </div>
+                              <div
+                                style="display: flex; align-items: center; background-color: #f8f9fa; padding: 8px 15px; border-radius: 15px;">
+                                <span style="color: #11335b; font-weight: 600;">🔃 Regular Updates</span>
+                              </div>
+                              <div
+                                style="display: flex; align-items: center; background-color: #f8f9fa; padding: 8px 15px; border-radius: 15px;">
+                                <span style="color: #11335b; font-weight: 600;">📝 Custom Development</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="row" style="background-color: #fefefe; border-radius: 20px; margin-top: 20px;">
+                          <div class="container py-3">
+                            <div class="row row-cols-2 row-cols-md-3 g-2" style="background-color: #fefefe">
+                              <div class="col d-flex align-items-center justify-content-center">
+                                <div style="padding: 10px">
+                                  <div class="d-flex align-items-center">
+                                    <a href="mailto:support@techspawn.com" style="text-decoration: none">
+                                      <img src="assets/mail.png" alt="" width="35px" style="margin-right: 8px" />
+                                    </a>
+                                    <a href="mailto:support@techspawn.com"
+                                      style="text-decoration: none; color: #714b67;">
+                                      <span style="font-size: 16px; font-weight: 600;">Mail</span>
+                                    </a>
+                                  </div>
+                                </div>
+                              </div>
+                              <div class="col d-flex align-items-center justify-content-center">
+                                <div style="padding: 10px">
+                                  <div class="d-flex align-items-center">
+                                    <a href="https://wa.me/917719993399" style="text-decoration: none">
+                                      <img src="assets/whatsapp.png" alt="" width="35px" style="margin-right: 8px" />
+                                    </a>
+                                    <a href="https://wa.me/917719993399" style="text-decoration: none; color: #714b67;">
+                                      <span style="font-size: 16px; font-weight: 600;">WhatsApp</span>
+                                    </a>
+                                  </div>
+                                </div>
+                              </div>
+                              <div class="col d-flex align-items-center justify-content-center">
+                                <div style="padding: 10px">
+                                  <div class="d-flex align-items-center">
+                                    <a href="https://www.instagram.com/techspawn/" style="text-decoration: none">
+                                      <img src="assets/instagram.png" alt="" width="35px" style="margin-right: 8px" />
+                                    </a>
+                                    <a href="https://www.instagram.com/techspawn/"
+                                      style="text-decoration: none; color: #714b67;">
+                                      <span style="font-size: 16px; font-weight: 600;">Instagram</span>
+                                    </a>
+                                  </div>
+                                </div>
+                              </div>
+                              <div class="col d-flex align-items-center justify-content-center">
+                                <div style="padding: 10px">
+                                  <div class="d-flex align-items-center">
+                                    <a href="https://x.com/techspawn" style="text-decoration: none">
+                                      <img src="assets/twitter.png" alt="" width="35px" style="margin-right: 8px" />
+                                    </a>
+                                    <a href="https://x.com/techspawn" style="text-decoration: none; color: #714b67;">
+                                      <span style="font-size: 16px; font-weight: 600;">Twitter</span>
+                                    </a>
+                                  </div>
+                                </div>
+                              </div>
+                              <div class="col d-flex align-items-center justify-content-center">
+                                <div style="padding: 10px">
+                                  <div class="d-flex align-items-center">
+                                    <a href="https://in.linkedin.com/company/techspawn" style="text-decoration: none">
+                                      <img src="assets/linked_in.png" alt="" width="35px" style="margin-right: 8px" />
+                                    </a>
+                                    <a href="https://in.linkedin.com/company/techspawn"
+                                      style="text-decoration: none; color: #714b67;">
+                                      <span style="font-size: 16px; font-weight: 600;">LinkedIn</span>
+                                    </a>
+                                  </div>
+                                </div>
+                              </div>
+                              <div class="col d-flex align-items-center justify-content-center">
+                                <div style="padding: 10px">
+                                  <div class="d-flex align-items-center">
+                                    <a href="https://www.facebook.com/techspawnsolutions" style="text-decoration: none">
+                                      <img src="assets/facebook.png" alt="" width="35px" style="margin-right: 8px" />
+                                    </a>
+                                    <a href="https://www.facebook.com/techspawnsolutions"
+                                      style="text-decoration: none; color: #714b67;">
+                                      <span style="font-size: 16px; font-weight: 600;">Facebook</span>
+                                    </a>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+
+              <!-- Optional JavaScript -->
+              <!-- jQuery first, then Popper.js, then Bootstrap JS -->
+              <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+              <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+              <script>
+                // Countdown Timer
+                function updateCountdown() {
+                  // Set the date 14 days from now
+                  const countdownDate = new Date();
+                  countdownDate.setDate(countdownDate.getDate() + 14);
+
+                  // Update the countdown every second
+                  const countdownInterval = setInterval(function () {
+                    // Get today's date and time
+                    const now = new Date().getTime();
+
+                    // Find the distance between now and the countdown date
+                    const distance = countdownDate - now;
+
+                    // Time calculations for days, hours, minutes and seconds
+                    const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+                    const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                    const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+                    // Display the result
+                    document.getElementById("days").innerHTML = days;
+                    document.getElementById("hours").innerHTML = hours;
+                    document.getElementById("minutes").innerHTML = minutes;
+                    document.getElementById("seconds").innerHTML = seconds;
+
+                    // If the countdown is finished
+                    if (distance < 0) {
+                      clearInterval(countdownInterval);
+                      document.getElementById("days").innerHTML = "0";
+                      document.getElementById("hours").innerHTML = "0";
+                      document.getElementById("minutes").innerHTML = "0";
+                      document.getElementById("seconds").innerHTML = "0";
+                    }
+                  }, 1000);
+                }
+
+                // Run when the page loads
+                window.onload = function () {
+                  updateCountdown();
+                };
+              </script>
 </body>
-</html> 
+
+</html>
