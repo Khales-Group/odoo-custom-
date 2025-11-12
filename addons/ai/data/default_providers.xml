@@ -1,0 +1,558 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        
+        <!-- Default LLM Provider Models -->
+        
+        <!-- OpenAI Models -->
+        <record id="model_openai_gpt4o" model="llm.provider.model">
+            <field name="name">GPT-4o</field>
+            <field name="model_code">gpt-4o</field>
+            <field name="provider_type">openai</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">True</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">128000</field>
+            <field name="input_cost_per_1k_tokens">0.0025</field>
+            <field name="output_cost_per_1k_tokens">0.01</field>
+            <field name="description">GPT-4o is OpenAI's most advanced model, optimized for speed and cost. It can handle text, images, and audio inputs.</field>
+        </record>
+        
+        <record id="model_openai_gpt4o_mini" model="llm.provider.model">
+            <field name="name">GPT-4o Mini</field>
+            <field name="model_code">gpt-4o-mini</field>
+            <field name="provider_type">openai</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">True</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">128000</field>
+            <field name="input_cost_per_1k_tokens">0.00015</field>
+            <field name="output_cost_per_1k_tokens">0.0006</field>
+            <field name="description">GPT-4o Mini is a faster and more cost-effective version of GPT-4o, optimized for high-volume tasks.</field>
+        </record>
+        
+        <record id="model_openai_text_embedding_ada" model="llm.provider.model">
+            <field name="name">Text Embedding Ada</field>
+            <field name="model_code">text-embedding-ada-002</field>
+            <field name="provider_type">openai</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">False</field>
+            <field name="supports_text_generation">False</field>
+            <field name="supports_embeddings">True</field>
+            <field name="supports_streaming">False</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">8191</field>
+            <field name="context_length">8191</field>
+            <field name="input_cost_per_1k_tokens">0.0001</field>
+            <field name="output_cost_per_1k_tokens">0.0</field>
+            <field name="description">Text embedding model for converting text into numerical representations.</field>
+        </record>
+        
+        <!-- Google Gemini Models -->
+        <record id="model_gemini_2_5_pro" model="llm.provider.model">
+            <field name="name">Gemini 2.5 Pro</field>
+            <field name="model_code">gemini-2.5-pro</field>
+            <field name="provider_type">gemini</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">True</field>
+            <field name="max_tokens">8192</field>
+            <field name="context_length">1000000</field>
+            <field name="input_cost_per_1k_tokens">0.0035</field>
+            <field name="output_cost_per_1k_tokens">0.0105</field>
+            <field name="description">Gemini 2.5 Pro is Google's most advanced model with extensive context window and multimodal capabilities.</field>
+        </record>
+        
+        <record id="model_gemini_2_5_flash" model="llm.provider.model">
+            <field name="name">Gemini 2.5 Flash</field>
+            <field name="model_code">gemini-2.5-flash</field>
+            <field name="provider_type">gemini</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">True</field>
+            <field name="max_tokens">8192</field>
+            <field name="context_length">1000000</field>
+            <field name="input_cost_per_1k_tokens">0.000075</field>
+            <field name="output_cost_per_1k_tokens">0.0003</field>
+            <field name="description">Gemini 2.5 Flash is optimized for speed and cost-effectiveness while maintaining high quality.</field>
+        </record>
+        
+        <record id="model_gemini_embedding" model="llm.provider.model">
+            <field name="name">Text Embedding</field>
+            <field name="model_code">embedding-001</field>
+            <field name="provider_type">gemini</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">False</field>
+            <field name="supports_text_generation">False</field>
+            <field name="supports_embeddings">True</field>
+            <field name="supports_streaming">False</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">2048</field>
+            <field name="context_length">2048</field>
+            <field name="input_cost_per_1k_tokens">0.0001</field>
+            <field name="output_cost_per_1k_tokens">0.0</field>
+            <field name="description">Google's text embedding model for converting text into numerical representations.</field>
+        </record>
+        
+        <!-- Anthropic Claude Models -->
+        <record id="model_claude_3_5_sonnet" model="llm.provider.model">
+            <field name="name">Claude 3.5 Sonnet</field>
+            <field name="model_code">claude-3-5-sonnet-20241022</field>
+            <field name="provider_type">claude</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">True</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">200000</field>
+            <field name="input_cost_per_1k_tokens">0.003</field>
+            <field name="output_cost_per_1k_tokens">0.015</field>
+            <field name="description">Claude 3.5 Sonnet is Anthropic's most capable model, excelling at complex reasoning and analysis.</field>
+        </record>
+        
+        <record id="model_claude_3_5_haiku" model="llm.provider.model">
+            <field name="name">Claude 3.5 Haiku</field>
+            <field name="model_code">claude-3-5-haiku-20241022</field>
+            <field name="provider_type">claude</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">True</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">200000</field>
+            <field name="input_cost_per_1k_tokens">0.00025</field>
+            <field name="output_cost_per_1k_tokens">0.00125</field>
+            <field name="description">Claude 3.5 Haiku is optimized for speed and cost, perfect for high-volume applications.</field>
+        </record>
+        
+        <record id="model_claude_3_opus" model="llm.provider.model">
+            <field name="name">Claude 3 Opus</field>
+            <field name="model_code">claude-3-opus-20240229</field>
+            <field name="provider_type">claude</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">True</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">200000</field>
+            <field name="input_cost_per_1k_tokens">0.015</field>
+            <field name="output_cost_per_1k_tokens">0.075</field>
+            <field name="description">Claude 3 Opus is Anthropic's most powerful model for complex tasks requiring deep reasoning.</field>
+        </record>
+        
+        <!-- Meta Llama Models -->
+        <record id="model_llama_3_1_8b" model="llm.provider.model">
+            <field name="name">Llama 3.1 8B</field>
+            <field name="model_code">llama-3.1-8b</field>
+            <field name="provider_type">llama</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">8192</field>
+            <field name="input_cost_per_1k_tokens">0.0002</field>
+            <field name="output_cost_per_1k_tokens">0.0002</field>
+            <field name="description">Llama 3.1 8B is Meta's efficient 8-billion parameter model, optimized for speed and cost-effectiveness.</field>
+        </record>
+        
+        <record id="model_llama_3_1_70b" model="llm.provider.model">
+            <field name="name">Llama 3.1 70B</field>
+            <field name="model_code">llama-3.1-70b</field>
+            <field name="provider_type">llama</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">8192</field>
+            <field name="input_cost_per_1k_tokens">0.0007</field>
+            <field name="output_cost_per_1k_tokens">0.0008</field>
+            <field name="description">Llama 3.1 70B offers excellent performance for complex reasoning tasks with a good balance of capability and cost.</field>
+        </record>
+        
+        <record id="model_llama_3_1_405b" model="llm.provider.model">
+            <field name="name">Llama 3.1 405B</field>
+            <field name="model_code">llama-3.1-405b</field>
+            <field name="provider_type">llama</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">8192</field>
+            <field name="input_cost_per_1k_tokens">0.0024</field>
+            <field name="output_cost_per_1k_tokens">0.0024</field>
+            <field name="description">Llama 3.1 405B is Meta's largest and most capable model, excelling at complex reasoning and analysis tasks.</field>
+        </record>
+        
+        <record id="model_llama_2_7b" model="llm.provider.model">
+            <field name="name">Llama 2 7B</field>
+            <field name="model_code">llama-2-7b</field>
+            <field name="provider_type">llama</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">4096</field>
+            <field name="input_cost_per_1k_tokens">0.0001</field>
+            <field name="output_cost_per_1k_tokens">0.0001</field>
+            <field name="description">Llama 2 7B is a cost-effective model suitable for basic text generation and chat tasks.</field>
+        </record>
+        
+        <record id="model_llama_2_13b" model="llm.provider.model">
+            <field name="name">Llama 2 13B</field>
+            <field name="model_code">llama-2-13b</field>
+            <field name="provider_type">llama</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">4096</field>
+            <field name="input_cost_per_1k_tokens">0.0002</field>
+            <field name="output_cost_per_1k_tokens">0.0002</field>
+            <field name="description">Llama 2 13B provides a good balance between performance and cost for medium-complexity tasks.</field>
+        </record>
+        
+        <record id="model_llama_2_70b" model="llm.provider.model">
+            <field name="name">Llama 2 70B</field>
+            <field name="model_code">llama-2-70b</field>
+            <field name="provider_type">llama</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">4096</field>
+            <field name="input_cost_per_1k_tokens">0.0007</field>
+            <field name="output_cost_per_1k_tokens">0.0008</field>
+            <field name="description">Llama 2 70B is the largest Llama 2 model, offering high-quality responses for complex tasks.</field>
+        </record>
+        
+        <record id="model_mixtral_8x7b" model="llm.provider.model">
+            <field name="name">Mixtral 8x7B</field>
+            <field name="model_code">mixtral-8x7b</field>
+            <field name="provider_type">llama</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">32768</field>
+            <field name="input_cost_per_1k_tokens">0.00014</field>
+            <field name="output_cost_per_1k_tokens">0.00042</field>
+            <field name="description">Mixtral 8x7B is a high-performance mixture-of-experts model with excellent reasoning capabilities.</field>
+        </record>
+        
+        <record id="model_codellama_34b" model="llm.provider.model">
+            <field name="name">Code Llama 34B</field>
+            <field name="model_code">codellama-34b</field>
+            <field name="provider_type">llama</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">16384</field>
+            <field name="input_cost_per_1k_tokens">0.0007</field>
+            <field name="output_cost_per_1k_tokens">0.0008</field>
+            <field name="description">Code Llama 34B is specialized for code generation and programming tasks with extended context.</field>
+        </record>
+        
+        <!-- xAI Grok Models -->
+        <record id="model_grok_beta" model="llm.provider.model">
+            <field name="name">Grok Beta</field>
+            <field name="model_code">grok-beta</field>
+            <field name="provider_type">grok</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">8192</field>
+            <field name="input_cost_per_1k_tokens">0.0001</field>
+            <field name="output_cost_per_1k_tokens">0.0001</field>
+            <field name="description">Grok Beta is xAI's initial model offering, providing solid performance for basic AI tasks.</field>
+        </record>
+        
+        <record id="model_grok_2" model="llm.provider.model">
+            <field name="name">Grok 2</field>
+            <field name="model_code">grok-2</field>
+            <field name="provider_type">grok</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">16384</field>
+            <field name="context_length">32768</field>
+            <field name="input_cost_per_1k_tokens">0.0003</field>
+            <field name="output_cost_per_1k_tokens">0.0003</field>
+            <field name="description">Grok 2 is xAI's most advanced model with extended context and improved reasoning capabilities.</field>
+        </record>
+        
+        <record id="model_grok_2_mini" model="llm.provider.model">
+            <field name="name">Grok 2 Mini</field>
+            <field name="model_code">grok-2-mini</field>
+            <field name="provider_type">grok</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">8192</field>
+            <field name="context_length">16384</field>
+            <field name="input_cost_per_1k_tokens">0.0001</field>
+            <field name="output_cost_per_1k_tokens">0.0001</field>
+            <field name="description">Grok 2 Mini is optimized for speed and cost-effectiveness while maintaining good performance.</field>
+        </record>
+        
+        <record id="model_grok_2_vision" model="llm.provider.model">
+            <field name="name">Grok 2 Vision</field>
+            <field name="model_code">grok-2-vision</field>
+            <field name="provider_type">grok</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">16384</field>
+            <field name="context_length">32768</field>
+            <field name="input_cost_per_1k_tokens">0.0004</field>
+            <field name="output_cost_per_1k_tokens">0.0004</field>
+            <field name="description">Grok 2 Vision can process both text and images, making it ideal for multimodal applications.</field>
+        </record>
+        
+        <record id="model_grok_2_vision_mini" model="llm.provider.model">
+            <field name="name">Grok 2 Vision Mini</field>
+            <field name="model_code">grok-2-vision-mini</field>
+            <field name="provider_type">grok</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">8192</field>
+            <field name="context_length">16384</field>
+            <field name="input_cost_per_1k_tokens">0.0002</field>
+            <field name="output_cost_per_1k_tokens">0.0002</field>
+            <field name="description">Grok 2 Vision Mini provides cost-effective multimodal capabilities for image and text processing.</field>
+        </record>
+        
+        <!-- DeepSeek Models -->
+        <record id="model_deepseek_chat" model="llm.provider.model">
+            <field name="name">DeepSeek Chat</field>
+            <field name="model_code">deepseek-chat</field>
+            <field name="provider_type">deepseek</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">32768</field>
+            <field name="input_cost_per_1k_tokens">0.00014</field>
+            <field name="output_cost_per_1k_tokens">0.00028</field>
+            <field name="description">DeepSeek Chat is a general purpose chat model with 32K context window, optimized for conversation and reasoning tasks.</field>
+        </record>
+        
+        <record id="model_deepseek_coder" model="llm.provider.model">
+            <field name="name">DeepSeek Coder</field>
+            <field name="model_code">deepseek-coder</field>
+            <field name="provider_type">deepseek</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">16384</field>
+            <field name="input_cost_per_1k_tokens">0.00014</field>
+            <field name="output_cost_per_1k_tokens">0.00028</field>
+            <field name="description">DeepSeek Coder is specialized for code generation and programming tasks with enhanced code understanding capabilities.</field>
+        </record>
+        
+        <record id="model_deepseek_coder_instruct" model="llm.provider.model">
+            <field name="name">DeepSeek Coder Instruct</field>
+            <field name="model_code">deepseek-coder-instruct</field>
+            <field name="provider_type">deepseek</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">16384</field>
+            <field name="input_cost_per_1k_tokens">0.00014</field>
+            <field name="output_cost_per_1k_tokens">0.00028</field>
+            <field name="description">DeepSeek Coder Instruct is an instruction-tuned version optimized for following coding instructions and generating code from natural language.</field>
+        </record>
+        
+        <record id="model_deepseek_coder_33b_instruct" model="llm.provider.model">
+            <field name="name">DeepSeek Coder 33B Instruct</field>
+            <field name="model_code">deepseek-coder-33b-instruct</field>
+            <field name="provider_type">deepseek</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">16384</field>
+            <field name="input_cost_per_1k_tokens">0.0007</field>
+            <field name="output_cost_per_1k_tokens">0.0014</field>
+            <field name="description">DeepSeek Coder 33B Instruct is a large instruction-tuned model for complex coding tasks and advanced programming scenarios.</field>
+        </record>
+        
+        <record id="model_deepseek_coder_6_7b_instruct" model="llm.provider.model">
+            <field name="name">DeepSeek Coder 6.7B Instruct</field>
+            <field name="model_code">deepseek-coder-6.7b-instruct</field>
+            <field name="provider_type">deepseek</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">16384</field>
+            <field name="input_cost_per_1k_tokens">0.00014</field>
+            <field name="output_cost_per_1k_tokens">0.00028</field>
+            <field name="description">DeepSeek Coder 6.7B Instruct is a medium-sized model optimized for code generation with good performance and cost-effectiveness.</field>
+        </record>
+        
+        <record id="model_deepseek_coder_1_3b_instruct" model="llm.provider.model">
+            <field name="name">DeepSeek Coder 1.3B Instruct</field>
+            <field name="model_code">deepseek-coder-1.3b-instruct</field>
+            <field name="provider_type">deepseek</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">16384</field>
+            <field name="input_cost_per_1k_tokens">0.00007</field>
+            <field name="output_cost_per_1k_tokens">0.00014</field>
+            <field name="description">DeepSeek Coder 1.3B Instruct is a small, fast model for basic code generation tasks with minimal resource requirements.</field>
+        </record>
+        
+        <record id="model_deepseek_llm_7b_chat" model="llm.provider.model">
+            <field name="name">DeepSeek LLM 7B Chat</field>
+            <field name="model_code">deepseek-llm-7b-chat</field>
+            <field name="provider_type">deepseek</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">32768</field>
+            <field name="input_cost_per_1k_tokens">0.00007</field>
+            <field name="output_cost_per_1k_tokens">0.00014</field>
+            <field name="description">DeepSeek LLM 7B Chat is a 7B parameter chat model optimized for general conversation and reasoning tasks.</field>
+        </record>
+        
+        <record id="model_deepseek_llm_67b_chat" model="llm.provider.model">
+            <field name="name">DeepSeek LLM 67B Chat</field>
+            <field name="model_code">deepseek-llm-67b-chat</field>
+            <field name="provider_type">deepseek</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">32768</field>
+            <field name="input_cost_per_1k_tokens">0.0007</field>
+            <field name="output_cost_per_1k_tokens">0.0014</field>
+            <field name="description">DeepSeek LLM 67B Chat is a 67B parameter chat model for complex reasoning and advanced conversation tasks.</field>
+        </record>
+        
+        <record id="model_deepseek_math_7b_instruct" model="llm.provider.model">
+            <field name="name">DeepSeek Math 7B Instruct</field>
+            <field name="model_code">deepseek-math-7b-instruct</field>
+            <field name="provider_type">deepseek</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">32768</field>
+            <field name="input_cost_per_1k_tokens">0.00007</field>
+            <field name="output_cost_per_1k_tokens">0.00014</field>
+            <field name="description">DeepSeek Math 7B Instruct is specialized for mathematical reasoning and problem solving with enhanced mathematical capabilities.</field>
+        </record>
+        
+        <record id="model_deepseek_math_67b_instruct" model="llm.provider.model">
+            <field name="name">DeepSeek Math 67B Instruct</field>
+            <field name="model_code">deepseek-math-67b-instruct</field>
+            <field name="provider_type">deepseek</field>
+            <field name="is_active">True</field>
+            <field name="supports_chat">True</field>
+            <field name="supports_text_generation">True</field>
+            <field name="supports_embeddings">False</field>
+            <field name="supports_streaming">True</field>
+            <field name="supports_function_calling">False</field>
+            <field name="max_tokens">4096</field>
+            <field name="context_length">32768</field>
+            <field name="input_cost_per_1k_tokens">0.0007</field>
+            <field name="output_cost_per_1k_tokens">0.0014</field>
+            <field name="description">DeepSeek Math 67B Instruct is a large model specialized for advanced mathematics and complex mathematical problem solving.</field>
+        </record>
+        
+    </data>
+</odoo> 

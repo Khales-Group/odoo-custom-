@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+        
+        <!-- AI Automation Groups -->
+        <record id="group_ai_user" model="res.groups">
+            <field name="name">AI User</field>
+            <field name="category_id" ref="base.module_category_hidden"/>
+            <field name="comment">Users who can use AI features but cannot configure providers or view API keys.</field>
+        </record>
+        
+        <record id="group_ai_manager" model="res.groups">
+            <field name="name">AI Manager</field>
+            <field name="category_id" ref="base.module_category_hidden"/>
+            <field name="implied_ids" eval="[(4, ref('group_ai_user'))]"/>
+            <field name="comment">Users who can manage AI providers and view logs, but cannot access API keys.</field>
+        </record>
+        
+        <record id="group_ai_admin" model="res.groups">
+            <field name="name">AI Administrator</field>
+            <field name="category_id" ref="base.module_category_hidden"/>
+            <field name="implied_ids" eval="[(4, ref('group_ai_manager'))]"/>
+            <field name="comment">Users who have full access to AI automation features including API keys.</field>
+        </record>
+        
+        <!-- Record Rules -->
+        
+        <!-- LLM Provider Rules -->
+        <record id="rule_llm_provider_ai_user" model="ir.rule">
+            <field name="name">AI Users: Read Active Providers Only</field>
+            <field name="model_id" ref="model_llm_provider"/>
+            <field name="domain_force">[('is_active', '=', True)]</field>
+            <field name="groups" eval="[(4, ref('group_ai_user'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+        
+        <record id="rule_llm_provider_ai_manager" model="ir.rule">
+            <field name="name">AI Managers: Full Access to Providers</field>
+            <field name="model_id" ref="model_llm_provider"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_ai_manager'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+        </record>
+        
+        <!-- LLM API Key Rules -->
+        <record id="rule_llm_api_key_ai_admin" model="ir.rule">
+            <field name="name">AI Administrators: Full Access to API Keys</field>
+            <field name="model_id" ref="model_llm_api_key"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_ai_admin'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+        </record>
+        
+        <!-- LLM Provider Model Rules -->
+        <record id="rule_llm_provider_model_ai_user" model="ir.rule">
+            <field name="name">AI Users: Read Active Models Only</field>
+            <field name="model_id" ref="model_llm_provider_model"/>
+            <field name="domain_force">[('is_active', '=', True)]</field>
+            <field name="groups" eval="[(4, ref('group_ai_user'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+        
+        <record id="rule_llm_provider_model_ai_manager" model="ir.rule">
+            <field name="name">AI Managers: Full Access to Models</field>
+            <field name="model_id" ref="model_llm_provider_model"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_ai_manager'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+        </record>
+        
+        <!-- LLM Request Log Rules -->
+        <record id="rule_llm_request_log_ai_user" model="ir.rule">
+            <field name="name">AI Users: Read Own Logs Only</field>
+            <field name="model_id" ref="model_llm_request_log"/>
+            <field name="domain_force">[('user_id', '=', user.id)]</field>
+            <field name="groups" eval="[(4, ref('group_ai_user'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+        
+        <record id="rule_llm_request_log_ai_manager" model="ir.rule">
+            <field name="name">AI Managers: Read All Logs</field>
+            <field name="model_id" ref="model_llm_request_log"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_ai_manager'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+        
+        <!-- Service Model Rules -->
+        <record id="rule_llm_service_ai_user" model="ir.rule">
+            <field name="name">AI Users: Access to LLM Services</field>
+            <field name="model_id" ref="model_llm_base_service"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_ai_user'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+        
+        <!-- Menu Access Rules -->
+        <record id="menu_ai_automation_ai_user" model="ir.ui.menu">
+            <field name="name">AI Automation</field>
+            <field name="parent_id" ref="base.menu_administration"/>
+            <field name="sequence">100</field>
+            <field name="groups_id" eval="[(4, ref('group_ai_user'))]"/>
+        </record>
+        
+        <record id="menu_ai_automation_ai_manager" model="ir.ui.menu">
+            <field name="name">AI Automation</field>
+            <field name="parent_id" ref="base.menu_administration"/>
+            <field name="sequence">100</field>
+            <field name="groups_id" eval="[(4, ref('group_ai_manager'))]"/>
+        </record>
+        
+        <record id="menu_ai_automation_ai_admin" model="ir.ui.menu">
+            <field name="name">AI Automation</field>
+            <field name="parent_id" ref="base.menu_administration"/>
+            <field name="sequence">100</field>
+            <field name="groups_id" eval="[(4, ref('group_ai_admin'))]"/>
+        </record>
+        
+    </data>
+</odoo> 

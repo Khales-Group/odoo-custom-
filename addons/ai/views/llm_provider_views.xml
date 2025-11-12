@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        
+        <!-- LLM Provider List View -->
+        <record id="view_llm_provider_list" model="ir.ui.view">
+            <field name="name">llm.provider.list</field>
+            <field name="model">llm.provider</field>
+            <field name="arch" type="xml">
+                <list string="LLM Providers">
+                    <field name="name"/>
+                    <field name="code"/>
+                    <field name="default_model_id"/>
+                    <field name="is_active"/>
+                    <field name="total_requests"/>
+                    <field name="success_rate" widget="percentage"/>
+                    <field name="last_request_date"/>
+                </list>
+            </field>
+        </record>
+        
+        <!-- LLM Provider Form View -->
+        <record id="view_llm_provider_form" model="ir.ui.view">
+            <field name="name">llm.provider.form</field>
+            <field name="model">llm.provider</field>
+            <field name="arch" type="xml">
+                <form string="LLM Provider">
+                    <header>
+                        <button name="test_connection" string="Test Connection" type="object" class="btn-primary"/>
+                        <field name="is_active" widget="boolean_toggle"/>
+                    </header>
+                    <sheet>
+                        <div class="oe_title">
+                            <h1>
+                                <field name="name" placeholder="Provider Name"/>
+                            </h1>
+                        </div>
+                        <group>
+                            <group>
+                                <field name="code"/>
+                                <field name="api_base_url"/>
+                                <field name="default_model_id"/>
+                                <field name="api_key_id"/>
+                            </group>
+                            <group>
+                                <field name="total_requests"/>
+                                <field name="success_rate" widget="percentage"/>
+                                <field name="last_request_date"/>
+                            </group>
+                        </group>
+                        <notebook>
+                            <page string="Configuration" name="configuration">
+                                <field name="provider_specific_config" widget="ace" options="{'mode': 'json'}"/>
+                            </page>
+                            <page string="Notes" name="notes">
+                                <field name="notes" placeholder="Additional notes about this provider configuration..."/>
+                            </page>
+                        </notebook>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+        
+        <!-- LLM Provider Search View -->
+        <record id="view_llm_provider_search" model="ir.ui.view">
+            <field name="name">llm.provider.search</field>
+            <field name="model">llm.provider</field>
+            <field name="arch" type="xml">
+                <search string="Search LLM Providers">
+                    <field name="name"/>
+                    <field name="code"/>
+                    <field name="default_model_id"/>
+                    <filter string="Active" name="active" domain="[('is_active', '=', True)]"/>
+                    <filter string="Inactive" name="inactive" domain="[('is_active', '=', False)]"/>
+                    <group expand="0" string="Group By">
+                        <filter string="Status" name="group_by_status" context="{'group_by': 'is_active'}"/>
+                        <filter string="Default Model" name="group_by_model" context="{'group_by': 'default_model_id'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+        
+        <!-- LLM Provider Action -->
+        <record id="action_llm_provider" model="ir.actions.act_window">
+            <field name="name">LLM Providers</field>
+            <field name="res_model">llm.provider</field>
+            <field name="view_mode">list,form</field>
+            <field name="context">{}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Create your first LLM provider!
+                </p>
+                <p>
+                    Configure LLM providers like OpenAI, Google Gemini, and Anthropic Claude
+                    to enable AI automation features in your Odoo system.
+                </p>
+            </field>
+        </record>
+        
+        <!-- LLM Provider Menu -->
+        <menuitem id="menu_llm_provider"
+                  name="LLM Providers"
+                  parent="menu_ai_automation_root"
+                  action="action_llm_provider"
+                  sequence="10"/>
+        
+    </data>
+</odoo> 
