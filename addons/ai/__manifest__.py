@@ -16,6 +16,7 @@
     'data': [
         'security/ai_automation_base_security.xml',
         'security/ir.model.access.csv',
+        'views/ai_automation_base_menus.xml',
         'views/llm_provider_views.xml',
         'views/llm_api_key_views.xml',
         'views/llm_provider_model_views.xml',
@@ -23,7 +24,6 @@
         'views/llm_deepseek_service_views.xml',
         'views/llm_grok_service_views.xml',
         'views/llm_request_log_views.xml',
-        'views/ai_automation_base_menus.xml',
         'data/default_providers.xml',
     ],
     'demo': [],
