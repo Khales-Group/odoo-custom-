@@ -116,6 +116,13 @@
                 </p>
             </field>
         </record>
+
+        <menuitem id="menu_ai_automation_llama_service"
+                  name="Meta Llama Services"
+                  parent="ai.menu_ai_automation_configuration"
+                  sequence="40"
+                  action="action_llm_llama_service"
+                  groups="ai.group_ai_manager"/>
         
     </data>
 </odoo> 

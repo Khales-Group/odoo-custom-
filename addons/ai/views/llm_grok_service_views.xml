@@ -106,5 +106,12 @@
             </field>
         </record>
 
+        <menuitem id="menu_ai_automation_grok_service"
+                  name="xAI Grok Services"
+                  parent="ai.menu_ai_automation_configuration"
+                  sequence="50"
+                  action="action_llm_grok_service"
+                  groups="ai.group_ai_manager"/>
+
     </data>
 </odoo> 

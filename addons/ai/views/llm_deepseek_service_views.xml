@@ -121,6 +121,13 @@
                 </p>
             </field>
         </record>
+
+        <menuitem id="menu_ai_automation_deepseek_service"
+                  name="DeepSeek Services"
+                  parent="ai.menu_ai_automation_configuration"
+                  sequence="45"
+                  action="action_llm_deepseek_service"
+                  groups="ai.group_ai_manager"/>
         
     </data>
 </odoo> 
