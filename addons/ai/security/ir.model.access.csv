@@ -1,3 +1,2 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-odoo_turbo_ai_agent.access_chatgpt_model,access_chatgpt_model,odoo_turbo_ai_agent.model_chatgpt_model,base.group_user,1,1,1,1
-odoo_turbo_ai_agent.access_chatgpt_odoodb,access_chatgpt_odoodb,odoo_turbo_ai_agent.model_chatgpt_odoodb,base.group_user,1,1,1,1
+ai.access_chatgpt_model,access_chatgpt_model,ai.model_chatgpt_model,base.group_user,1,1,1,1
