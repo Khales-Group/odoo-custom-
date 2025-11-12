@@ -111,7 +111,7 @@
         <!-- LLM Provider Model Menu -->
         <menuitem id="menu_llm_provider_model"
                   name="Models"
-                  parent="menu_ai_automation_root"
+                  parent="ai.menu_ai_automation_root"
                   action="action_llm_provider_model"
                   sequence="30"/>
         

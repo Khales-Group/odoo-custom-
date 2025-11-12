@@ -100,7 +100,7 @@
         <!-- LLM Provider Menu -->
         <menuitem id="menu_llm_provider"
                   name="LLM Providers"
-                  parent="menu_ai_automation_root"
+                  parent="ai.menu_ai_automation_root"
                   action="action_llm_provider"
                   sequence="10"/>
         

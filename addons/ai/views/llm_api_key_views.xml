@@ -107,7 +107,7 @@
         <!-- LLM API Key Menu -->
         <menuitem id="menu_llm_api_key"
                   name="API Keys"
-                  parent="menu_ai_automation_root"
+                  parent="ai.menu_ai_automation_root"
                   action="action_llm_api_key"
                   sequence="20"/>
         

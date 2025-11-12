@@ -117,7 +117,7 @@
         <!-- LLM Request Log Menu -->
         <menuitem id="menu_llm_request_log"
                   name="Request Logs"
-                  parent="menu_ai_automation_root"
+                  parent="ai.menu_ai_automation_root"
                   action="action_llm_request_log"
                   sequence="40"/>
         
