@@ -491,11 +491,10 @@ class KhApprovalRequest(models.Model):
                 partner_ids=[rec.requester_id.partner_id.id],
             )
 
-            next_line_to_approve = rec.approval_line_ids.filtered(lambda l: l.state == "waiting")[:1]
-            if next_line_to_approve:
-                next_line_to_approve.sudo().write({'state': 'pending'})
-                rec._notify_first_pending()
-            else:
+            # Check if all required steps are now approved
+            all_approved = all(l.state == 'approved' for l in rec.approval_line_ids if l.required)
+
+            if all_approved:
                 # Final approval: log state change in chatter
                 old_state = rec.state
                 rec.sudo().write({"state": "approved"})
@@ -536,6 +535,13 @@ class KhApprovalRequest(models.Model):
                             summary=_("Request Approved: %s") % rec.title,
                             note=_("Your request %s has been approved. Please mark as paid.") % (rec.name),
                         )
+            else:
+                # Not all approved yet, move to the next step
+                next_line_to_approve = rec.approval_line_ids.filtered(lambda l: l.state == "waiting")[:1]
+                if next_line_to_approve:
+                    next_line_to_approve.sudo().write({'state': 'pending'})
+                    rec._notify_first_pending()
+
         return True
 
     def action_reject_request(self):
