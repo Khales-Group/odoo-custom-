@@ -505,7 +505,7 @@ class KhApprovalRequest(models.Model):
 
             # Check if all lines at the current sequence level are approved.
             current_sequence = line.sequence
-            other_pending_lines_at_level = self.env['kh.approval.line'].search_count([
+            other_pending_lines_at_level = self.env['kh.approval.line'].sudo().search_count([
                 ('request_id', '=', rec.id),
                 ('sequence', '=', current_sequence),
                 ('required', '=', True),
@@ -514,7 +514,7 @@ class KhApprovalRequest(models.Model):
 
             if other_pending_lines_at_level == 0:
                 # This level is complete. Find the next level.
-                next_level_lines = self.env['kh.approval.line'].search([
+                next_level_lines = self.env['kh.approval.line'].sudo().search([
                     ('request_id', '=', rec.id),
                     ('sequence', '>', current_sequence),
                 ], order='sequence', limit=1)
@@ -522,7 +522,7 @@ class KhApprovalRequest(models.Model):
                 if next_level_lines:
                     # There is a next level. Set all lines at that level to 'pending'.
                     next_sequence = next_level_lines.sequence
-                    lines_to_make_pending = self.env['kh.approval.line'].search([
+                    lines_to_make_pending = self.env['kh.approval.line'].sudo().search([
                         ('request_id', '=', rec.id),
                         ('sequence', '=', next_sequence),
                     ])
@@ -535,6 +535,10 @@ class KhApprovalRequest(models.Model):
                         ('required', '=', True)
                     ])
                     
+                    _logger.debug(f"Final verification for request {rec.name} (ID: {rec.id}). "
+                                  f"Required lines found: {len(all_required_lines)}. "
+                                  f"States: {[f'{line.name} (ID: {line.id}, State: {line.state})' for line in all_required_lines]}")
+
                     if all(line.state == 'approved' for line in all_required_lines):
                         # All required lines are approved. The request is fully approved.
                         old_state = rec.state
