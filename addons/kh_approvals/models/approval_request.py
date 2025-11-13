@@ -473,16 +473,17 @@ class KhApprovalRequest(models.Model):
             if rec.state != "in_review":
                 continue
 
-            next_line = self.env["kh.approval.line"].search(
+            line = self.env["kh.approval.line"].search(
                 [
                     ("request_id", "=", rec.id),
                     ("state", "=", "pending"),
+                    ("approver_id", "=", self.env.uid),
                 ],
-                order="id",
+                order="sequence, id",
                 limit=1,
             )
             if not line:
-                raise UserError(_("You are not a current approver for this request."))
+                raise UserError(_("You are not a current approver for this request, or you have already approved."))
 
             activity_to_close = rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid)[:1]
             if activity_to_close:
