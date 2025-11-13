@@ -6,7 +6,8 @@
     "author": "Khales Team",
     "website": "https://khales.ae",
     "category": "Operations/Approvals",
-    "depends": ["base", "mail", "hr", "hr_payroll"],
+    "depends": ["base", "mail", "hr", "hr_payroll", "account"],
+    "external_dependencies": {"python": ["requests"]},
     "data": [
         # --- security first ---
         "security/kh_approvals_security.xml", # This file was missing, I've added it.
