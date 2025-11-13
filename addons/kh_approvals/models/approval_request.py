@@ -360,44 +360,60 @@ class KhApprovalRequest(models.Model):
     # -------------------------------------------------------------------------
     def _build_approval_lines(self):
         """
-        (Re)generate approval steps based on the chosen rule (single rule).
+        (Re)generate approval steps based on the chosen rule (single rule) or
+        approval type.
         Uses sudo() so normal users (read-only on lines) can submit.
         """
         for rec in self:
             # Clear any existing generated steps
             rec.approval_line_ids.sudo().unlink()
-
-            if not rec.rule_id:
-                raise UserError(_("Please choose an Approval Rule first."))
-
-            rule = rec.rule_id
-
-            # Company/department guardrails
-            if rule.company_id and rule.company_id != rec.company_id:
-                raise UserError(_("Rule belongs to another company."))
-            if rule.department_id and rec.department_id and rule.department_id != rec.department_id:
-                raise UserError(_("Rule belongs to another department."))
-
-            # Amount threshold on rule (optional)
-            if rule.min_amount and rec.amount and rec.amount < rule.min_amount:
-                raise UserError(_("Amount is below this rule's minimum."))
-
             vals_list = []
-            steps = rule.step_ids.sorted(key=lambda s: (s.sequence, s.id))
-            for step in steps:
-                if not step.approver_id:
-                    continue
-                vals_list.append({
-                    "request_id": rec.id,
-                    "name": step.name or step.approver_id.name,
-                    "approver_id": step.approver_id.id,
-                    "required": True,
-                    "state": "waiting",
-                    "company_id": rec.company_id.id,
-                })
+
+            if rec.approval_type == 'standard':
+                if not rec.rule_id:
+                    raise UserError(_("Please choose an Approval Rule first."))
+
+                rule = rec.rule_id
+
+                # Company/department guardrails
+                if rule.company_id and rule.company_id != rec.company_id:
+                    raise UserError(_("Rule belongs to another company."))
+                if rule.department_id and rec.department_id and rule.department_id != rec.department_id:
+                    raise UserError(_("Rule belongs to another department."))
+
+                # Amount threshold on rule (optional)
+                if rule.min_amount and rec.amount and rec.amount < rec.min_amount:
+                    raise UserError(_("Amount is below this rule's minimum."))
+
+                steps = rule.step_ids.sorted(key=lambda s: (s.sequence, s.id))
+                for step in steps:
+                    if not step.approver_id:
+                        continue
+                    vals_list.append({
+                        "request_id": rec.id,
+                        "name": step.name or step.approver_id.name,
+                        "approver_id": step.approver_id.id,
+                        "required": True,
+                        "state": "waiting",
+                        "company_id": rec.company_id.id,
+                    })
+
+            elif rec.approval_type == 'payslip':
+                # TODO: Make payslip approvers configurable
+                # For now, we use a hardcoded list of approvers.
+                approvers = self.env['res.users'].browse([2]) # Administrator
+                for approver in approvers:
+                    vals_list.append({
+                        "request_id": rec.id,
+                        "name": f"Approval by {approver.name}",
+                        "approver_id": approver.id,
+                        "required": True,
+                        "state": "waiting",
+                        "company_id": rec.company_id.id,
+                    })
 
             if not vals_list:
-                raise UserError(_("This rule has no approvers defined."))
+                raise UserError(_("No approvers found for this request."))
 
             if vals_list:
                 vals_list[0]['state'] = 'pending'
@@ -492,7 +508,8 @@ class KhApprovalRequest(models.Model):
             )
 
             # Check if all required steps are now approved
-            all_approved = all(l.state == 'approved' for l in rec.approval_line_ids if l.required)
+            required_lines = rec.approval_line_ids.filtered(lambda l: l.required)
+            all_approved = required_lines and all(l.state == 'approved' for l in required_lines)
 
             if all_approved:
                 # Final approval: log state change in chatter
