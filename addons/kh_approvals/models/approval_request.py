@@ -382,22 +382,27 @@ class KhApprovalRequest(models.Model):
             if rule.min_amount and rec.amount and rec.amount < rule.min_amount:
                 raise UserError(_("Amount is below this rule's minimum."))
 
-            vals = []
-            for step in rule.step_ids.sorted(key=lambda s: (s.sequence, s.id)):
+            vals_list = []
+            steps = rule.step_ids.sorted(key=lambda s: (s.sequence, s.id))
+            for step in steps:
                 if not step.approver_id:
                     continue
-                vals.append({
+                vals_list.append({
                     "request_id": rec.id,
                     "name": step.name or step.approver_id.name,
                     "approver_id": step.approver_id.id,
                     "required": True,
-                    "state": "pending",
+                    "state": "waiting",
                     "company_id": rec.company_id.id,
                 })
 
-            if not vals:
+            if not vals_list:
                 raise UserError(_("This rule has no approvers defined."))
-            self.env["kh.approval.line"].sudo().create(vals)
+
+            if vals_list:
+                vals_list[0]['state'] = 'pending'
+
+            self.env["kh.approval.line"].sudo().create(vals_list)
     # -------------------------------------------------------------------------
     # Actions (buttons)
     # -------------------------------------------------------------------------
@@ -486,8 +491,9 @@ class KhApprovalRequest(models.Model):
                 partner_ids=[rec.requester_id.partner_id.id],
             )
 
-            next_line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
-            if next_line:
+            next_line_to_approve = rec.approval_line_ids.filtered(lambda l: l.state == "waiting")[:1]
+            if next_line_to_approve:
+                next_line_to_approve.sudo().write({'state': 'pending'})
                 rec._notify_first_pending()
             else:
                 # Final approval: log state change in chatter
@@ -641,12 +647,13 @@ class KhApprovalLine(models.Model):
     required = fields.Boolean(default=True)
     state = fields.Selection(
         [
+            ("waiting", "Waiting"),
             ("pending", "Pending"),
             ("approved", "Approved"),
             ("rejected", "Rejected"),
             ("withdrawn", "Withdrawn"),  # (not used now, but kept for history)
         ],
-        default="pending",
+        default="waiting",
         required=True,
     )
     note = fields.Char()
