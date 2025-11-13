@@ -501,23 +501,28 @@ class KhApprovalRequest(models.Model):
 
             # Check if all lines at the current sequence level are approved.
             current_sequence = line.sequence
-            current_level_lines = rec.approval_line_ids.filtered(
-                lambda l: l.sequence == current_sequence and l.required
-            )
-            
-            if all(l.state == 'approved' for l in current_level_lines):
+            other_pending_lines_at_level = self.env['kh.approval.line'].search_count([
+                ('request_id', '=', rec.id),
+                ('sequence', '=', current_sequence),
+                ('required', '=', True),
+                ('state', '!=', 'approved'),
+            ])
+
+            if other_pending_lines_at_level == 0:
                 # This level is complete. Find the next level.
-                all_lines = rec.approval_line_ids.sorted('sequence')
-                next_sequence = -1
-                for l in all_lines:
-                    if l.sequence > current_sequence:
-                        next_sequence = l.sequence
-                        break
-                
-                if next_sequence != -1:
+                next_level_lines = self.env['kh.approval.line'].search([
+                    ('request_id', '=', rec.id),
+                    ('sequence', '>', current_sequence),
+                ], order='sequence', limit=1)
+
+                if next_level_lines:
                     # There is a next level. Set all lines at that level to 'pending'.
-                    next_level_lines = rec.approval_line_ids.filtered(lambda l: l.sequence == next_sequence)
-                    next_level_lines.sudo().write({'state': 'pending'})
+                    next_sequence = next_level_lines.sequence
+                    lines_to_make_pending = self.env['kh.approval.line'].search([
+                        ('request_id', '=', rec.id),
+                        ('sequence', '=', next_sequence),
+                    ])
+                    lines_to_make_pending.sudo().write({'state': 'pending'})
                     rec._notify_pending_approvers()
                 else:
                     # This was the last level. The request is fully approved.
