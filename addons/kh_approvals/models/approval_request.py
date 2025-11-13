@@ -473,88 +473,55 @@ class KhApprovalRequest(models.Model):
             if rec.state != "in_review":
                 continue
 
-            line_to_approve = rec.approval_line_ids.filtered(
-                lambda l: l.state == "pending" and l.approver_id.id == self.env.uid
-            )[:1]
-            if not line_to_approve:
+            next_line = self.env["kh.approval.line"].search(
+                [
+                    ("request_id", "=", rec.id),
+                    ("state", "=", "pending"),
+                ],
+                order="id",
+                limit=1,
+            )
+            if not line:
                 raise UserError(_("You are not a current approver for this request."))
 
-            # Close any open activities for the approver
             activity_to_close = rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid)[:1]
             if activity_to_close:
                 activity_to_close.with_user(rec.requester_id).unlink()
 
-            # Approve the line
-            line_to_approve.sudo().write({"state": "approved"})
+            line.sudo().write({"state": "approved"})
             
-            # Post a note about the approval
+            # Invalidate the cache to ensure the next check gets the fresh data
+            rec._invalidate_cache(['approval_line_ids'])
+
             rec._post_note(
                 _("Approved by <b>%s</b>.") % self.env.user.name,
                 partner_ids=[rec.requester_id.partner_id.id],
             )
 
-            # === Robust check for approval status ===
-            # Explicitly re-fetch all lines for this request from the database
-            # to avoid any potential ORM caching issues.
-            all_lines_from_db = self.env['kh.approval.line'].search([('request_id', '=', rec.id)])
-
-            current_sequence = line_to_approve.sequence
-            
-            # Get all lines that are part of the current approval level
-            current_level_lines = all_lines_from_db.filtered(
+            # Check if all lines at the current sequence level are approved.
+            current_sequence = line.sequence
+            current_level_lines = rec.approval_line_ids.filtered(
                 lambda l: l.sequence == current_sequence and l.required
             )
             
-            # Check if all lines at this level are now approved
-            if all(line.state == 'approved' for line in current_level_lines):
+            if all(l.state == 'approved' for l in current_level_lines):
                 # This level is complete. Find the next level.
+                all_lines = rec.approval_line_ids.sorted('sequence')
                 next_sequence = -1
-                sorted_lines = all_lines_from_db.sorted('sequence')
-                for line in sorted_lines:
-                    if line.sequence > current_sequence:
-                        next_sequence = line.sequence
+                for l in all_lines:
+                    if l.sequence > current_sequence:
+                        next_sequence = l.sequence
                         break
                 
                 if next_sequence != -1:
                     # There is a next level. Set all lines at that level to 'pending'.
-                    next_level_lines = all_lines_from_db.filtered(lambda l: l.sequence == next_sequence)
+                    next_level_lines = rec.approval_line_ids.filtered(lambda l: l.sequence == next_sequence)
                     next_level_lines.sudo().write({'state': 'pending'})
                     rec._notify_pending_approvers()
                 else:
                     # This was the last level. The request is fully approved.
                     old_state = rec.state
                     rec.sudo().write({"state": "approved"})
-                    rec.message_post(
-                        body=_("Request approved."),
-                        tracking_value_ids=[(0, 0, {
-                            'field_id': self.env['ir.model.fields']._get(self._name, 'state').id,
-                            'old_value_char': dict(self._fields['state'].selection).get(old_state),
-                            'new_value_char': dict(self._fields['state'].selection).get('approved'),
-                        })],
-                        message_type="notification",
-                        subtype_xmlid="mail.mt_comment",
-                        partner_ids=[rec.requester_id.partner_id.id]
-                    )
-                    rec._notify_partner(
-                        rec.requester_id.partner_id,
-                        _("✅ <b>Approved</b>: <a href='%(link)s'>%(name)s: %(title)s</a>") % {"link": rec._deeplink(), "name": rec.name, "title": rec.title},
-                        subject=f"Approved: {rec.name}",
-                    )
-                    if rec.approval_type == "payslip":
-                        rec.payslip_ids.write({"approval_state": "approved"})
-                    if rec.amount > 0:
-                        user_to_notify_and_follow = self.env['res.users'].browse(363)
-                        if user_to_notify_and_follow.exists():
-                            rec.with_user(rec.requester_id.id).with_company(rec.company_id).message_subscribe(
-                                partner_ids=[user_to_notify_and_follow.partner_id.id]
-                            )
-                            rec.with_user(rec.requester_id.id).with_company(rec.company_id).activity_schedule(
-                                'mail.mail_activity_data_todo',
-                                user_id=user_to_notify_and_follow.id,
-                                summary=_("Request Approved: %s") % rec.title,
-                                note=_("Your request %s has been approved. Please mark as paid.") % (rec.name),
-                            )
-        return True
                     rec.message_post(
                         body=_("Request approved."),
                         tracking_value_ids=[(0, 0, {
