@@ -303,58 +303,36 @@ class KhApprovalRequest(models.Model):
         ]
         return bool(Message.search_count(domain))
 
-    def _notify_first_pending(self):
+    def _notify_pending_approvers(self):
         """
-        Ensure ONE To-Do for the current pending approver.
-        Default behavior: rely on the Activity as the single Chrome/In-Box notification.
-        Optional chatter ping if System Parameter kh.approval.notify_mode = 'message'.
-        Throttled to avoid duplicates if method runs twice.
+        Ensure ONE To-Do for each current pending approver.
         """
         todo_type = self.env.ref("mail.mail_activity_data_todo", raise_if_not_found=False)
-        icp = self.env['ir.config_parameter'].sudo()
-        notify_mode = icp.get_param('kh.approval.notify_mode', 'activity')  # 'activity' | 'message'
-
+        
         for rec in self:
-            line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
-            if not line or not line.approver_id:
-                continue
+            pending_lines = rec.approval_line_ids.filtered(lambda l: l.state == "pending")
+            for line in pending_lines:
+                if not line.approver_id:
+                    continue
 
-            # 0) Throttle
-            if rec._recently_notified(line.approver_id.partner_id, minutes=10):
-                continue
+                # Throttle
+                if rec._recently_notified(line.approver_id.partner_id, minutes=10):
+                    continue
 
-            # 1) Ensure exactly one open To-Do
-            existing = rec.activity_ids
-            if todo_type:
-                existing = existing.filtered(
-                    lambda a: a.user_id.id == line.approver_id.id and a.activity_type_id.id == todo_type.id
+                # Ensure exactly one open To-Do
+                existing = rec.activity_ids.filtered(
+                    lambda a: a.user_id.id == line.approver_id.id and \
+                              (not todo_type or a.activity_type_id.id == todo_type.id)
                 )
-            else:
-                existing = existing.filtered(lambda a: a.user_id.id == line.approver_id.id)
-            if not existing[:1]:
-                # Switch to the requester's user to ensure they are the creator of the activity.
-                # This allows the requester to cancel it later if they revise the request.
-                request_as_requester = rec.with_user(rec.requester_id).with_company(rec.company_id)
-                with rec.env.cr.savepoint():
-                    request_as_requester.activity_schedule(
-                        "mail.mail_activity_data_todo",
-                        user_id=line.approver_id.id,
-                        summary=_("Approval needed: %s") % request_as_requester.title,
-                        note=_("Please review approval request %s: %s") % (request_as_requester.name, request_as_requester.title),
-                    )
-            # 2) Optional chatter ping (OFF by default)
-            if notify_mode == 'message':
-                html = _(
-                    "🔔 <b>Approval needed</b> for: <a href='%(link)s'>%(name)s</a><br/>Requester: %(req)s"
-                ) % {"link": rec._deeplink(), "name": rec.name, "req": rec.requester_id.name}
-                with rec.env.cr.savepoint():
-                    rec.message_notify(
-                        partner_ids=[line.approver_id.partner_id.id],
-                        body=html,
-                        subject=f"{rec.name}: {rec.title}",
-                        subtype_xmlid="mail.mt_comment",
-                        email_layout_xmlid="mail.mail_notification_light",
-                    )
+                if not existing:
+                    request_as_requester = rec.with_user(rec.requester_id).with_company(rec.company_id)
+                    with rec.env.cr.savepoint():
+                        request_as_requester.activity_schedule(
+                            "mail.mail_activity_data_todo",
+                            user_id=line.approver_id.id,
+                            summary=_("Approval needed: %s") % request_as_requester.title,
+                            note=_("Please review approval request %s: %s") % (request_as_requester.name, request_as_requester.title),
+                        )
     # -------------------------------------------------------------------------
     # Steps generation
     # -------------------------------------------------------------------------
@@ -396,6 +374,7 @@ class KhApprovalRequest(models.Model):
                         "required": True,
                         "state": "waiting",
                         "company_id": rec.company_id.id,
+                        "sequence": step.sequence,
                     })
 
             elif rec.approval_type == 'payslip':
@@ -410,13 +389,17 @@ class KhApprovalRequest(models.Model):
                         "required": True,
                         "state": "waiting",
                         "company_id": rec.company_id.id,
+                        "sequence": 10,
                     })
 
             if not vals_list:
                 raise UserError(_("No approvers found for this request."))
 
             if vals_list:
-                vals_list[0]['state'] = 'pending'
+                min_sequence = min(v['sequence'] for v in vals_list)
+                for v in vals_list:
+                    if v['sequence'] == min_sequence:
+                        v['state'] = 'pending'
 
             self.env["kh.approval.line"].sudo().create(vals_list)
     # -------------------------------------------------------------------------
@@ -439,7 +422,7 @@ class KhApprovalRequest(models.Model):
                 _("Request submitted for approval."),
                 partner_ids=[rec.requester_id.partner_id.id],  # Ping requester only
             )
-            rec._notify_first_pending()
+            rec._notify_pending_approvers()
         return True
 
     def action_revise_request(self):
@@ -490,12 +473,12 @@ class KhApprovalRequest(models.Model):
             if rec.state != "in_review":
                 continue
 
-            line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
-            if not line or line.approver_id.id != self.env.uid:
-                raise UserError(_("You are not the current approver."))
+            line = rec.approval_line_ids.filtered(
+                lambda l: l.state == "pending" and l.approver_id.id == self.env.uid
+            )[:1]
+            if not line:
+                raise UserError(_("You are not a current approver for this request."))
 
-            # Find the open activity for the current user (the approver) and, as the
-            # request owner (creator), unlink it to avoid permission errors.
             activity_to_close = rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid)[:1]
             if activity_to_close:
                 activity_to_close.with_user(rec.requester_id).unlink()
@@ -507,58 +490,63 @@ class KhApprovalRequest(models.Model):
                 partner_ids=[rec.requester_id.partner_id.id],
             )
 
-            # Check if all required steps are now approved
-            required_lines = rec.approval_line_ids.filtered(lambda l: l.required)
-            all_approved = required_lines and all(l.state == 'approved' for l in required_lines)
+            # Check if all lines at the current sequence level are approved.
+            current_sequence = line.sequence
+            current_level_lines = rec.approval_line_ids.filtered(
+                lambda l: l.sequence == current_sequence and l.required
+            )
+            
+            if all(l.state == 'approved' for l in current_level_lines):
+                # This level is complete. Find the next level.
+                all_lines = rec.approval_line_ids.sorted('sequence')
+                next_sequence = -1
+                for l in all_lines:
+                    if l.sequence > current_sequence:
+                        next_sequence = l.sequence
+                        break
+                
+                if next_sequence != -1:
+                    # There is a next level. Set all lines at that level to 'pending'.
+                    next_level_lines = rec.approval_line_ids.filtered(lambda l: l.sequence == next_sequence)
+                    next_level_lines.sudo().write({'state': 'pending'})
+                    rec._notify_pending_approvers()
+                else:
+                    # This was the last level. The request is fully approved.
+                    old_state = rec.state
+                    rec.sudo().write({"state": "approved"})
+                    rec.message_post(
+                        body=_("Request approved."),
+                        tracking_value_ids=[(0, 0, {
+                            'field_id': self.env['ir.model.fields']._get(self._name, 'state').id,
+                            'old_value_char': dict(self._fields['state'].selection).get(old_state),
+                            'new_value_char': dict(self._fields['state'].selection).get('approved'),
+                        })],
+                        message_type="notification",
+                        subtype_xmlid="mail.mt_comment",
+                        partner_ids=[rec.requester_id.partner_id.id]
+                    )
 
-            if all_approved:
-                # Final approval: log state change in chatter
-                old_state = rec.state
-                rec.sudo().write({"state": "approved"})
-                rec.message_post(
-                    body=_("Request approved."),
-                    tracking_value_ids=[(0, 0, {
-                        'field_id': self.env['ir.model.fields']._get(self._name, 'state').id,
-                        'old_value_char': dict(self._fields['state'].selection).get(old_state),
-                        'new_value_char': dict(self._fields['state'].selection).get('approved'),
-                    })],
-                    message_type="notification",
-                    subtype_xmlid="mail.mt_comment",
-                    partner_ids=[rec.requester_id.partner_id.id]
-                )
+                    rec._notify_partner(
+                        rec.requester_id.partner_id,
+                        _("✅ <b>Approved</b>: <a href='%(link)s'>%(name)s: %(title)s</a>") % {"link": rec._deeplink(), "name": rec.name, "title": rec.title},
+                        subject=f"Approved: {rec.name}",
+                    )
 
-                rec._notify_partner(
-                    rec.requester_id.partner_id,
-                    _("✅ <b>Approved</b>: <a href='%(link)s'>%(name)s: %(title)s</a>") % {"link": rec._deeplink(), "name": rec.name, "title": rec.title},
-                    subject=f"Approved: {rec.name}",
-                )
-
-                if rec.approval_type == "payslip":
-                    rec.payslip_ids.write({"approval_state": "approved"})
-                # If there is an amount, add user 152 as a follower and create activity for them,
-                # with the request owner as the creator of the activity.
-                if rec.amount > 0:
-                    user_to_notify_and_follow = self.env['res.users'].browse(363)
-                    if user_to_notify_and_follow.exists():
-                        # The requester adds user 152 as a follower
-                        rec.with_user(rec.requester_id.id).with_company(rec.company_id).message_subscribe(
-                            partner_ids=[user_to_notify_and_follow.partner_id.id]
-                        )
-
-                        # The requester creates an activity for user 152
-                        rec.with_user(rec.requester_id.id).with_company(rec.company_id).activity_schedule(
-                            'mail.mail_activity_data_todo',
-                            user_id=user_to_notify_and_follow.id,
-                            summary=_("Request Approved: %s") % rec.title,
-                            note=_("Your request %s has been approved. Please mark as paid.") % (rec.name),
-                        )
-            else:
-                # Not all approved yet, move to the next step
-                next_line_to_approve = rec.approval_line_ids.filtered(lambda l: l.state == "waiting")[:1]
-                if next_line_to_approve:
-                    next_line_to_approve.sudo().write({'state': 'pending'})
-                    rec._notify_first_pending()
-
+                    if rec.approval_type == "payslip":
+                        rec.payslip_ids.write({"approval_state": "approved"})
+                    
+                    if rec.amount > 0:
+                        user_to_notify_and_follow = self.env['res.users'].browse(363)
+                        if user_to_notify_and_follow.exists():
+                            rec.with_user(rec.requester_id.id).with_company(rec.company_id).message_subscribe(
+                                partner_ids=[user_to_notify_and_follow.partner_id.id]
+                            )
+                            rec.with_user(rec.requester_id.id).with_company(rec.company_id).activity_schedule(
+                                'mail.mail_activity_data_todo',
+                                user_id=user_to_notify_and_follow.id,
+                                summary=_("Request Approved: %s") % rec.title,
+                                note=_("Your request %s has been approved. Please mark as paid.") % (rec.name),
+                            )
         return True
 
     def action_reject_request(self):
@@ -658,10 +646,11 @@ class KhApprovalRule(models.Model):
 class KhApprovalLine(models.Model):
     _name = "kh.approval.line"
     _description = "Approval Step"
-    _order = "id"
+    _order = "sequence, id"
     _check_company_auto = True
 
     request_id = fields.Many2one("kh.approval.request", required=True, ondelete="cascade")
+    sequence = fields.Integer(default=10, help="Lower is earlier.")
     company_id = fields.Many2one(
         "res.company", related="request_id.company_id", store=True, index=True
     )
