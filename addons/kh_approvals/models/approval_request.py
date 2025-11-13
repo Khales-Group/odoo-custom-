@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
+import logging
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, AccessError
+
+_logger = logging.getLogger(__name__)
+
 
 # ============================================================================
 # Approval Request
@@ -525,42 +529,62 @@ class KhApprovalRequest(models.Model):
                     lines_to_make_pending.sudo().write({'state': 'pending'})
                     rec._notify_pending_approvers()
                 else:
-                    # This was the last level. The request is fully approved.
-                    old_state = rec.state
-                    rec.sudo().write({"state": "approved"})
-                    rec.message_post(
-                        body=_("Request approved."),
-                        tracking_value_ids=[(0, 0, {
-                            'field_id': self.env['ir.model.fields']._get(self._name, 'state').id,
-                            'old_value_char': dict(self._fields['state'].selection).get(old_state),
-                            'new_value_char': dict(self._fields['state'].selection).get('approved'),
-                        })],
-                        message_type="notification",
-                        subtype_xmlid="mail.mt_comment",
-                        partner_ids=[rec.requester_id.partner_id.id]
-                    )
-
-                    rec._notify_partner(
-                        rec.requester_id.partner_id,
-                        _("✅ <b>Approved</b>: <a href='%(link)s'>%(name)s: %(title)s</a>") % {"link": rec._deeplink(), "name": rec.name, "title": rec.title},
-                        subject=f"Approved: {rec.name}",
-                    )
-
-                    if rec.approval_type == "payslip":
-                        rec.payslip_ids.write({"approval_state": "approved"})
+                    # This was the last level. Do a final check to be sure.
+                    all_required_lines = self.env['kh.approval.line'].search([
+                        ('request_id', '=', rec.id),
+                        ('required', '=', True)
+                    ])
                     
-                    if rec.amount > 0:
-                        user_to_notify_and_follow = self.env['res.users'].browse(363)
-                        if user_to_notify_and_follow.exists():
-                            rec.with_user(rec.requester_id.id).with_company(rec.company_id).message_subscribe(
-                                partner_ids=[user_to_notify_and_follow.partner_id.id]
-                            )
-                            rec.with_user(rec.requester_id.id).with_company(rec.company_id).activity_schedule(
-                                'mail.mail_activity_data_todo',
-                                user_id=user_to_notify_and_follow.id,
-                                summary=_("Request Approved: %s") % rec.title,
-                                note=_("Your request %s has been approved. Please mark as paid.") % (rec.name),
-                            )
+                    if all(line.state == 'approved' for line in all_required_lines):
+                        # All required lines are approved. The request is fully approved.
+                        old_state = rec.state
+                        rec.sudo().write({"state": "approved"})
+                        rec.message_post(
+                            body=_("Request approved."),
+                            tracking_value_ids=[(0, 0, {
+                                'field_id': self.env['ir.model.fields']._get(self._name, 'state').id,
+                                'old_value_char': dict(self._fields['state'].selection).get(old_state),
+                                'new_value_char': dict(self._fields['state'].selection).get('approved'),
+                            })],
+                            message_type="notification",
+                            subtype_xmlid="mail.mt_comment",
+                            partner_ids=[rec.requester_id.partner_id.id]
+                        )
+
+                        rec._notify_partner(
+                            rec.requester_id.partner_id,
+                            _("✅ <b>Approved</b>: <a href='%(link)s'>%(name)s: %(title)s</a>") % {"link": rec._deeplink(), "name": rec.name, "title": rec.title},
+                            subject=f"Approved: {rec.name}",
+                        )
+
+                        if rec.approval_type == "payslip":
+                            rec.payslip_ids.write({"approval_state": "approved"})
+                        
+                        if rec.amount > 0:
+                            user_to_notify_and_follow = self.env['res.users'].browse(363)
+                            if user_to_notify_and_follow.exists():
+                                rec.with_user(rec.requester_id.id).with_company(rec.company_id).message_subscribe(
+                                    partner_ids=[user_to_notify_and_follow.partner_id.id]
+                                )
+                                rec.with_user(rec.requester_id.id).with_company(rec.company_id).activity_schedule(
+                                    'mail.mail_activity_data_todo',
+                                    user_id=user_to_notify_and_follow.id,
+                                    summary=_("Request Approved: %s") % rec.title,
+                                    note=_("Your request %s has been approved. Please mark as paid.") % (rec.name),
+                                )
+                    else:
+                        # Failsafe: The sequential logic determined this was the last step,
+                        # but not all required lines are approved. This indicates a potential
+                        # issue with the approval rule setup (e.g., sequence gaps) or a bug.
+                        _logger.warning(
+                            "Request %s reached final approval step prematurely. "
+                            "Not all required lines are approved. Aborting approval.",
+                            rec.name
+                        )
+                        rec._post_note(
+                            _("Approval process stalled due to a configuration issue. "
+                              "Please contact an administrator. (Error: Final validation failed)")
+                        )
         return True
 
     def action_reject_request(self):
