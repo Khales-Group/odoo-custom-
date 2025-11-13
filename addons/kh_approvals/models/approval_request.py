@@ -484,6 +484,9 @@ class KhApprovalRequest(models.Model):
                 activity_to_close.with_user(rec.requester_id).unlink()
 
             line.sudo().write({"state": "approved"})
+            
+            # Invalidate the cache to ensure the next check gets the fresh data
+            rec.invalidate_cache(['approval_line_ids'])
 
             rec._post_note(
                 _("Approved by <b>%s</b>.") % self.env.user.name,
