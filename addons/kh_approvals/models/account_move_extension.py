@@ -31,7 +31,7 @@ class AccountMove(models.Model):
                 continue
 
             # get API key from ir.config_parameter (DO NOT hardcode keys)
-            gemini_key = self.env['ir.config_parameter'].sudo().get_param('your_module.gemini_api_key')
+            gemini_key = self.env['ir.config_parameter'].sudo().get_param('kh_approvals.gemini_api_key')
             if not gemini_key:
                 _logger.warning("Gemini API key not configured. Falling back to super().")
                 try:

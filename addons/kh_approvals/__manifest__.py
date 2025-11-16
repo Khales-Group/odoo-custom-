@@ -7,7 +7,7 @@
     "website": "https://khales.ae",
     "category": "Operations/Approvals",
     "depends": ["base", "mail", "hr", "hr_payroll", "account", "project","account_invoice_extract"],
-    "external_dependencies": {"python": ["requests"]},
+    "external_dependencies": {"python": ["requests", "google.generativeai"]},
     "data": [
         # --- security first ---
         "security/kh_approvals_security.xml", # This file was missing, I've added it.
