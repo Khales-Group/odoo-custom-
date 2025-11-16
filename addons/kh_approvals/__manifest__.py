@@ -6,7 +6,7 @@
     "author": "Khales Team",
     "website": "https://khales.ae",
     "category": "Operations/Approvals",
-    "depends": ["base", "mail", "hr", "hr_payroll", "account", "project"],
+    "depends": ["base", "mail", "hr", "hr_payroll", "account", "project","account_invoice_extract"],
     "external_dependencies": {"python": ["requests"]},
     "data": [
         # --- security first ---
