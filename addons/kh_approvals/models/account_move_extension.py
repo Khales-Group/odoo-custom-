@@ -55,6 +55,7 @@ class AccountMove(models.Model):
     def _extract_ocr_data(self):
         for move in self:
             try:
+                _logger.info("Starting Gemini OCR extraction for move %s", move.id)
                 attachment = move.attachment_ids.filtered(lambda a: a.type == 'binary')[:1]
                 if not attachment:
                     _logger.debug("No binary attachment for move %s", move.id)
