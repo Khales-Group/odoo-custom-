@@ -310,33 +310,50 @@ class KhApprovalRequest(models.Model):
     def _notify_pending_approvers(self):
         """
         Ensure ONE To-Do for each current pending approver.
+        Uses sudo to create activities across companies.
         """
         todo_type = self.env.ref("mail.mail_activity_data_todo", raise_if_not_found=False)
-        
+
         for rec in self:
-            pending_lines = rec.approval_line_ids.filtered(lambda l: l.state == "pending")
+            # Use sudo() to read pending lines, bypassing record rules for visibility.
+            pending_lines = rec.sudo().approval_line_ids.filtered(lambda l: l.state == "pending")
+
             for line in pending_lines:
-                if not line.approver_id:
+                approver = line.approver_id
+                if not approver:
                     continue
 
-                # Throttle
-                if rec._recently_notified(line.approver_id.partner_id, minutes=10):
+                # Throttle to avoid spamming notifications
+                if rec._recently_notified(approver.partner_id, minutes=10):
                     continue
 
-                # Ensure exactly one open To-Do
-                existing = rec.activity_ids.filtered(
-                    lambda a: a.user_id.id == line.approver_id.id and \
+                # Check for an existing open To-Do for this approver on this request
+                existing_activity = rec.sudo().activity_ids.filtered(
+                    lambda a: a.user_id.id == approver.id and \
                               (not todo_type or a.activity_type_id.id == todo_type.id)
                 )
-                if not existing:
-                    # Schedule the todo as sudo() and with the request company so the activity is created even if the approver's current company differs.
+                if existing_activity:
+                    continue
+
+                # Create the activity in the approver's company context if possible,
+                # falling back to the request's company. This ensures visibility.
+                company_id = approver.company_id.id or rec.company_id.id
+
+                try:
                     with rec.env.cr.savepoint():
-                        rec.sudo().with_company(rec.company_id.id).activity_schedule(
+                        # Use sudo() to create the activity, as the current user (e.g., scheduler)
+                        # may not have permission to create activities for other users.
+                        rec.sudo().with_company(company_id).activity_schedule(
                             "mail.mail_activity_data_todo",
-                            user_id=line.approver_id.id,
+                            user_id=approver.id,
                             summary=_("Approval needed: %s") % rec.title,
                             note=_("Please review approval request %s: %s") % (rec.name or rec.title, rec.title),
                         )
+                except Exception as e:
+                    _logger.error(
+                        "Failed to create approval activity for user %s (ID: %s) on request %s (ID: %s): %s",
+                        approver.name, approver.id, rec.name, rec.id, e
+                    )
     # -------------------------------------------------------------------------
     # Steps generation
     # -------------------------------------------------------------------------
@@ -489,9 +506,10 @@ class KhApprovalRequest(models.Model):
             if not line:
                 raise UserError(_("You are not a current approver for this request, or you have already approved."))
 
-            activity_to_close = rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid)[:1]
+            # Close the approver's To-Do activity using sudo to bypass potential permission issues.
+            activity_to_close = rec.sudo().activity_ids.filtered(lambda a: a.user_id.id == self.env.uid)[:1]
             if activity_to_close:
-                activity_to_close.with_user(rec.requester_id).unlink()
+                activity_to_close.sudo().unlink()
 
             line.sudo().write({"state": "approved"})
             
