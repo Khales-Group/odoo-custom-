@@ -491,6 +491,9 @@ class KhApprovalRequest(models.Model):
     def action_approve_request(self):
         """Current approver approves their step; finish or notify next approver."""
         for rec in self:
+            # Re-run everything inside the correct company
+            self = self.with_company(rec.company_id)
+
             if rec.state != "in_review":
                 continue
 
