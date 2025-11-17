@@ -489,15 +489,22 @@ class KhApprovalRequest(models.Model):
         # Feature disabled at your request
         raise UserError(_("This option has been disabled by your administrator."))
     def action_approve_request(self):
-        """Current approver approves their step; finish or notify next approver."""
-        for rec in self:
-            # Re-run everything inside the correct company
-            self = self.with_company(rec.company_id)
+        """Approve the current pending line for the current user.
 
+        Strategy:
+        - find the pending line with sudo()
+        - ensure the current user is the approver (or manager/su)
+        - perform state writes / message actions as sudo() to avoid multi-company AccessErrors
+        """
+        MailActivity = self.env['mail.activity']
+        Line = self.env['kh.approval.line']
+
+        for rec in self:
             if rec.state != "in_review":
                 continue
 
-            line = self.env["kh.approval.line"].sudo().search(
+            # Find the pending line using sudo() (record rules / company restrictions can hide it otherwise)
+            line = Line.sudo().search(
                 [
                     ("request_id", "=", rec.id),
                     ("state", "=", "pending"),
@@ -509,62 +516,76 @@ class KhApprovalRequest(models.Model):
             if not line:
                 raise UserError(_("You are not a current approver for this request, or you have already approved."))
 
-            # Close the approver's To-Do activity using sudo to bypass potential permission issues.
-            activity_to_close = rec.sudo().activity_ids.filtered(lambda a: a.user_id.id == self.env.uid)[:1]
-            if activity_to_close:
-                activity_to_close.sudo().unlink()
+            # Extra security: ensure the found line actually belongs to the same request
+            # and the approver is the current user (we already filtered by approver_id above).
+            # Allow managers/su to bypass if desired:
+            if line.approver_id.id != self.env.uid and not (
+                self.env.is_superuser() or
+                self.env.user.has_group('kh_approvals.group_kh_approvals_manager')
+            ):
+                raise UserError(_("You are not authorized to approve this line."))
 
-            line.sudo().write({"state": "approved"})
-            
-            # Invalidate the cache to ensure the next check gets the fresh data
-            rec._invalidate_cache(['approval_line_ids'])
+            # Perform the destructive/IO operations as sudo() to avoid company-related AccessErrors.
+            rec_sudo = rec.sudo()
+            line_sudo = line.sudo()
 
-            rec._post_note(
+            # Close the approver's To-Do activity if it exists.
+            try:
+                acts = MailActivity.sudo().search([
+                    ('res_model', '=', rec._name),
+                    ('res_id', '=', rec.id),
+                    ('user_id', '=', self.env.uid),
+                    ('state', '!=', 'done'),
+                ])
+                if acts:
+                    acts.sudo().unlink()
+            except Exception:
+                _logger.exception("Failed to remove activity for request %s and user %s", rec.name, self.env.uid)
+
+            # Mark the line approved
+            line_sudo.write({"state": "approved"})
+
+            # Refresh caches
+            rec_sudo._invalidate_cache(['approval_line_ids'])
+
+            # Post a quiet note (using sudo record so mail posting doesn't fail due to companies)
+            rec_sudo._post_note(
                 _("Approved by <b>%s</b>.") % self.env.user.name,
                 partner_ids=[rec.requester_id.partner_id.id],
             )
 
-            # Check if all lines at the current sequence level are approved.
-            current_sequence = line.sequence
-            other_pending_lines_at_level = self.env['kh.approval.line'].sudo().search_count([
+            # Check if all lines at this sequence have been approved
+            current_sequence = line_sudo.sequence
+            other_pending_count = Line.sudo().search_count([
                 ('request_id', '=', rec.id),
                 ('sequence', '=', current_sequence),
                 ('required', '=', True),
                 ('state', '!=', 'approved'),
             ])
 
-            if other_pending_lines_at_level == 0:
-                # This level is complete. Find the next level.
-                next_level_lines = self.env['kh.approval.line'].sudo().search([
+            if other_pending_count == 0:
+                # Move to next sequence (if any)
+                next_level = Line.sudo().search([
                     ('request_id', '=', rec.id),
                     ('sequence', '>', current_sequence),
                 ], order='sequence', limit=1)
-
-                if next_level_lines:
-                    # There is a next level. Set all lines at that level to 'pending'.
-                    next_sequence = next_level_lines.sequence
-                    lines_to_make_pending = self.env['kh.approval.line'].sudo().search([
+                if next_level:
+                    next_seq = next_level.sequence
+                    lines_to_pending = Line.sudo().search([
                         ('request_id', '=', rec.id),
-                        ('sequence', '=', next_sequence),
+                        ('sequence', '=', next_seq),
                     ])
-                    lines_to_make_pending.sudo().write({'state': 'pending'})
-                    rec._notify_pending_approvers()
+                    if lines_to_pending:
+                        lines_to_pending.sudo().write({'state': 'pending'})
+                        # notify next approvers (call sudo() version)
+                        rec_sudo._notify_pending_approvers()
                 else:
-                    # This was the last level. Do a final check to be sure.
-                    all_required_lines = self.env['kh.approval.line'].sudo().search([
-                        ('request_id', '=', rec.id),
-                        ('required', '=', True)
-                    ])
-                    
-                    _logger.debug(f"Final verification for request {rec.name} (ID: {rec.id}). "
-                                  f"Required lines found: {len(all_required_lines)}. "
-                                  f"States: {[f'{line.name} (ID: {line.id}, State: {line.state})' for line in all_required_lines]}")
-
-                    if all(line.state == 'approved' for line in all_required_lines):
-                        # All required lines are approved. The request is fully approved.
+                    # Finalize full request approval if all required lines are approved
+                    all_required = Line.sudo().search([('request_id', '=', rec.id), ('required', '=', True)])
+                    if all(line.state == 'approved' for line in all_required):
                         old_state = rec.state
-                        rec.sudo().write({"state": "approved"})
-                        rec.message_post(
+                        rec_sudo.write({"state": "approved"})
+                        rec_sudo.message_post(
                             body=_("Request approved."),
                             tracking_value_ids=[(0, 0, {
                                 'field_id': self.env['ir.model.fields']._get(self._name, 'state').id,
@@ -576,40 +597,36 @@ class KhApprovalRequest(models.Model):
                             partner_ids=[rec.requester_id.partner_id.id]
                         )
 
-                        rec._notify_partner(
+                        rec_sudo._notify_partner(
                             rec.requester_id.partner_id,
-                            _("✅ <b>Approved</b>: <a href='%(link)s'>%(name)s: %(title)s</a>") % {"link": rec._deeplink(), "name": rec.name, "title": rec.title},
+                            _("✅ <b>Approved</b>: <a href='%(link)s'>%(name)s: %(title)s</a>") % {
+                                "link": rec._deeplink(), "name": rec.name, "title": rec.title
+                            },
                             subject=f"Approved: {rec.name}",
                         )
 
+                        # Payslip / post-approval activities as before (use sudo where appropriate)
                         if rec.approval_type == "payslip":
-                            rec.payslip_ids.write({"approval_state": "approved"})
-                        
+                            rec_sudo.payslip_ids.sudo().write({"approval_state": "approved"})
+
                         if rec.amount > 0:
                             user_to_notify_and_follow = self.env['res.users'].browse(363)
                             if user_to_notify_and_follow.exists():
-                                rec.with_user(rec.requester_id.id).with_company(rec.company_id).message_subscribe(
+                                rec_sudo.with_user(rec.requester_id.id).with_company(rec.company_id).message_subscribe(
                                     partner_ids=[user_to_notify_and_follow.partner_id.id]
                                 )
-                                rec.with_user(rec.requester_id.id).with_company(rec.company_id).activity_schedule(
+                                rec_sudo.with_user(rec.requester_id.id).with_company(rec.company_id).activity_schedule(
                                     'mail.mail_activity_data_todo',
                                     user_id=user_to_notify_and_follow.id,
                                     summary=_("Request Approved: %s") % rec.title,
                                     note=_("Your request %s has been approved. Please mark as paid.") % (rec.name),
                                 )
                     else:
-                        # Failsafe: The sequential logic determined this was the last step,
-                        # but not all required lines are approved. This indicates a potential
-                        # issue with the approval rule setup (e.g., sequence gaps) or a bug.
                         _logger.warning(
-                            "Request %s reached final approval step prematurely. "
-                            "Not all required lines are approved. Aborting approval.",
+                            "Request %s reached final approval step prematurely. Not all required lines are approved.",
                             rec.name
                         )
-                        rec._post_note(
-                            _("Approval process stalled due to a configuration issue. "
-                              "Please contact an administrator. (Error: Final validation failed)")
-                        )
+                        rec_sudo._post_note(_("Approval process stalled due to a configuration issue. Please contact an administrator."))
         return True
 
     def action_reject_request(self):
