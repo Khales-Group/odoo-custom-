@@ -78,7 +78,7 @@ class AccountMove(models.Model):
                         continue
                     images = [Image.open(io.BytesIO(data))]
 
-                api_key = self.env['ir.config_parameter'].sudo().get_param('kh_approvals.gemini_api_key') or os.environ.get('GEMINI_API_KEY')
+                api_key = self.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
                 if not api_key:
                     _logger.warning("No Gemini API key configured; skipping Gemini extraction")
                     continue
