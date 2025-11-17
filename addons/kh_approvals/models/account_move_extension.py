@@ -1,136 +1,120 @@
-# -*- coding: utf-8 -*-
-from odoo import models, api, fields, _
-import base64
-import json
+# top-level imports
+import base64, io, json, os
+from odoo import models, api, _
+from odoo.exceptions import UserError
 import logging
 
 _logger = logging.getLogger(__name__)
 
+try:
+    from google import genai
+except ImportError:
+    _logger.warning("google-genai library not found. Please install it using 'pip install google-genai'")
+    genai = None
+
+try:
+    from PIL import Image
+except ImportError:
+    _logger.warning("Pillow library not found. Please install it using 'pip install Pillow'")
+    Image = None
+
+try:
+    from pdf2image import convert_from_bytes
+except ImportError:
+    _logger.warning("pdf2image library not found. Please install it using 'pip install pdf2image'")
+    convert_from_bytes = None
+
+
 class AccountMove(models.Model):
-    _inherit = "account.move"
+    _inherit = 'account.move'
+
+    def _call_gemini_extract(self, image_bytes, api_key):
+        """Call Gemini to extract a JSON with fields. Returns dict or None."""
+        if not genai or not Image:
+            return None
+        try:
+            genai.configure(api_key=api_key)
+            prompt = (
+                "You are a reliable invoice parser. Extract these fields and return **only valid JSON**: "
+                "supplier_name, invoice_number, invoice_date (YYYY-MM-DD if possible), due_date, lines (list of {description, qty, unit_price, subtotal}), subtotal, tax, total. "
+                "If a field is not present set it to null. Parse numbers as pure numbers (no currency symbols)."
+            )
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            img = Image.open(io.BytesIO(image_bytes))
+            response = model.generate_content([prompt, img])
+
+            text = response.text
+            if '```json' in text:
+                text = text[text.find('```json') + 7:text.rfind('```')]
+            parsed = json.loads(text)
+            return parsed
+        except Exception as e:
+            _logger.exception("Gemini extraction failed: %s", e)
+            return None
 
     def _extract_ocr_data(self):
-        """Override Odoo OCR pipeline to use Gemini. Falls back to super() if anything missing."""
         for move in self:
-            # take first binary attachment (same behaviour as default OCR)
-            attachment = move.attachment_ids.filtered(lambda a: a.type == 'binary')[:1]
-            if not attachment:
-                # nothing to do, let super handle (or just continue)
-                continue
-            attachment = attachment[0]
-
             try:
-                file_bytes = base64.b64decode(attachment.datas or b'')
-            except Exception:
-                _logger.exception("Failed to decode attachment %s for move %s", attachment.id, move.id)
-                # fallback: let Odoo's default OCR try (if present)
-                try:
-                    super(AccountMove, move)._extract_ocr_data()
-                except Exception:
-                    pass
-                continue
-
-            # get API key from ir.config_parameter (DO NOT hardcode keys)
-            gemini_key = self.env['ir.config_parameter'].sudo().get_param('kh_approvals.gemini_api_key')
-            if not gemini_key:
-                _logger.warning("Gemini API key not configured. Falling back to super().")
-                try:
-                    super(AccountMove, move)._extract_ocr_data()
-                except Exception:
-                    pass
-                continue
-
-            # Build prompt - keep it strict and request JSON only
-            prompt = """
-You are an invoice OCR assistant. Given file content, return STRICT JSON only with this structure:
-{
-  "vendor": "Vendor name",
-  "invoice_date": "YYYY-MM-DD",
-  "due_date": "YYYY-MM-DD",
-  "total": 0.0,
-  "vat": 0.0,
-  "lines": [
-    {"description": "", "qty": 1, "unit_price": 0.0}
-  ]
-}
-If a field is missing, return null for strings or 0 for numbers.
-"""
-
-            # Call Gemini (using google.generativeai library if available)
-            try:
-                # Try the official python client if installed
-                import google.generativeai as genai
-                genai.configure(api_key=gemini_key)
-
-                encoded = base64.b64encode(file_bytes).decode()
-                mime = attachment.mimetype or 'application/pdf'
-                model = genai.GenerativeModel("gemini-1.5-flash")
-                result = model.generate_content([
-                    {"mime_type": mime, "data": encoded},
-                    prompt
-                ])
-
-                text = result.text
-                parsed = json.loads(text)
-
-            except Exception as exc:
-                _logger.exception("Gemini OCR failed for attachment %s (move %s): %s", attachment.id, move.id, exc)
-                # On failure, fallback to super so default OCR still may run
-                try:
-                    super(AccountMove, move)._extract_ocr_data()
-                except Exception:
-                    pass
-                continue
-
-            # Apply parsed data into the invoice safely
-            try:
-                move.sudo()._fill_invoice_from_ai(parsed)
-            except Exception:
-                _logger.exception("Failed to write AI data to move %s", move.id)
-                # don't raise, continue with other moves
-                continue
-
-    def _fill_invoice_from_ai(self, data):
-        """Map the parsed Gemini JSON into Odoo fields."""
-        for move in self:
-            partner_id = False
-            vendor = data.get('vendor') if isinstance(data, dict) else None
-            if vendor:
-                partner = self.env['res.partner'].sudo().search([('name', 'ilike', vendor)], limit=1)
-                if partner:
-                    partner_id = partner.id
+                attachment = move.attachment_ids.filtered(lambda a: a.type == 'binary')[:1]
+                if not attachment:
+                    _logger.debug("No binary attachment for move %s", move.id)
+                    continue
+                data_b64 = attachment.datas or getattr(attachment, 'db_datas', None)
+                if not data_b64:
+                    continue
+                data = base64.b64decode(data_b64)
+                images = []
+                if (attachment.mimetype and 'pdf' in (attachment.mimetype or '')) or (attachment.name or '').lower().endswith('.pdf'):
+                    if not convert_from_bytes:
+                        _logger.warning("pdf2image is not installed, cannot extract from PDF.")
+                        continue
+                    try:
+                        images = convert_from_bytes(data, dpi=200)
+                    except Exception as e:
+                        _logger.exception("PDF to images conversion failed: %s", e)
+                        continue
                 else:
-                    # Optionally: create partner
-                    # partner = self.env['res.partner'].sudo().create({'name': vendor})
-                    # partner_id = partner.id
-                    pass
+                    if not Image:
+                        continue
+                    images = [Image.open(io.BytesIO(data))]
 
-            invoice_date = data.get('invoice_date')
-            due_date = data.get('due_date')
-            total = data.get('total') or 0.0
+                api_key = self.env['ir.config_parameter'].sudo().get_param('kh_approvals.gemini_api_key') or os.environ.get('GEMINI_API_KEY')
+                if not api_key:
+                    _logger.warning("No Gemini API key configured; skipping Gemini extraction")
+                    continue
 
-            # Lines mapping
-            lines = []
-            for ln in data.get('lines', []) or []:
-                desc = ln.get('description') or ''
-                qty = ln.get('qty') or 1
-                unit_price = ln.get('unit_price') or 0.0
-                lines.append((0, 0, {
-                    'name': desc,
-                    'quantity': qty,
-                    'price_unit': unit_price,
-                }))
+                if images:
+                    img_byte_arr = io.BytesIO()
+                    images[0].save(img_byte_arr, format='PNG')
+                    img_bytes = img_byte_arr.getvalue()
+                    parsed = self._call_gemini_extract(img_bytes, api_key)
+                    if parsed:
+                        vals = {}
+                        if parsed.get('supplier_name'):
+                            partner = self.env['res.partner'].search([('name', 'ilike', parsed['supplier_name'])], limit=1)
+                            if partner:
+                                vals['partner_id'] = partner.id
+                        if parsed.get('invoice_date'):
+                            vals['invoice_date'] = parsed['invoice_date']
+                        if parsed.get('due_date'):
+                            vals['invoice_date_due'] = parsed['due_date']
+                        if parsed.get('invoice_number') and (not move.name or move.name == '/'):
+                            vals['name'] = parsed['invoice_number']
+                        
+                        if parsed.get('lines'):
+                            # This will overwrite existing lines, which is generally what you want when importing from OCR
+                            move.invoice_line_ids = [(5, 0, 0)] 
+                            lines_to_create = []
+                            for ln in parsed['lines']:
+                                lines_to_create.append({
+                                    'name': ln.get('description') or 'Line',
+                                    'quantity': ln.get('qty') or 1.0,
+                                    'price_unit': ln.get('unit_price') or ln.get('subtotal') or 0.0,
+                                })
+                            vals['invoice_line_ids'] = [(0, 0, line) for line in lines_to_create]
 
-            vals = {}
-            if partner_id:
-                vals['partner_id'] = partner_id
-            if invoice_date:
-                vals['invoice_date'] = invoice_date
-            if due_date:
-                vals['invoice_date_due'] = due_date
-            if lines:
-                vals['invoice_line_ids'] = lines
+                        if vals:
+                            move.sudo().write(vals)
 
-            # Write as sudo to avoid access/record rule issues
-            if vals:
-                move.sudo().write(vals)
+            except Exception as e:
+                _logger.exception("Gemini invoice extraction error for move %s: %s", move.id, e)
