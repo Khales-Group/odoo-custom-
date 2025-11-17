@@ -13,8 +13,8 @@ class MailActivity(models.Model):
         return {m.strip() for m in param.split(',') if m.strip()}
 
     def _kh_guard_enabled(self):
-        # Guard disabled by default. To enable, implement logic here or toggle an ir.config_parameter.
-        return False
+        # ENABLE the guard so the permissions actually work
+        return True
 
     def _kh_check_permission(self, action):
         """
@@ -49,13 +49,12 @@ class MailActivity(models.Model):
     # --- ORM Overrides ---
     def action_done(self):
         self._kh_check_permission('done')
-        # Use context to signal that the subsequent unlink is part of a 'done' action.
         return super(MailActivity, self.with_context(activity_mark_as_done=True)).action_done()
 
     def action_feedback(self, feedback=False, attachment_ids=None):
         self._kh_check_permission('done')
-        # Use context for feedback as well, as it can also trigger an unlink.
-        return super(MailActivity, self.with_context(activity_mark_as_done=True)).action_feedback(feedback=feedback, attachment_ids=attachment_ids)
+        return super(MailActivity, self.with_context(activity_mark_as_done=True)).action_feedback(
+            feedback=feedback, attachment_ids=attachment_ids)
 
     def write(self, vals):
         if self:
@@ -63,11 +62,8 @@ class MailActivity(models.Model):
         return super().write(vals)
 
     def unlink(self):
-        # If the unlink is happening as part of marking an activity as done,
-        # the permission check has already been performed in action_done().
         if self.env.context.get('activity_mark_as_done'):
             return super().unlink()
         
-        # Otherwise, this is a direct cancel/delete action, so check unlink permission.
         self._kh_check_permission('unlink')
         return super().unlink()
