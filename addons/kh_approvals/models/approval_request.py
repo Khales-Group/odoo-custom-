@@ -329,13 +329,13 @@ class KhApprovalRequest(models.Model):
                               (not todo_type or a.activity_type_id.id == todo_type.id)
                 )
                 if not existing:
-                    request_as_requester = rec.with_user(rec.requester_id).with_company(rec.company_id)
+                    # Schedule the todo as sudo() and with the request company so the activity is created even if the approver's current company differs.
                     with rec.env.cr.savepoint():
-                        request_as_requester.activity_schedule(
+                        rec.sudo().with_company(rec.company_id.id).activity_schedule(
                             "mail.mail_activity_data_todo",
                             user_id=line.approver_id.id,
-                            summary=_("Approval needed: %s") % request_as_requester.title,
-                            note=_("Please review approval request %s: %s") % (request_as_requester.name, request_as_requester.title),
+                            summary=_("Approval needed: %s") % rec.title,
+                            note=_("Please review approval request %s: %s") % (rec.name or rec.title, rec.title),
                         )
     # -------------------------------------------------------------------------
     # Steps generation
@@ -477,7 +477,7 @@ class KhApprovalRequest(models.Model):
             if rec.state != "in_review":
                 continue
 
-            line = self.env["kh.approval.line"].search(
+            line = self.env["kh.approval.line"].sudo().search(
                 [
                     ("request_id", "=", rec.id),
                     ("state", "=", "pending"),
@@ -530,7 +530,7 @@ class KhApprovalRequest(models.Model):
                     rec._notify_pending_approvers()
                 else:
                     # This was the last level. Do a final check to be sure.
-                    all_required_lines = self.env['kh.approval.line'].search([
+                    all_required_lines = self.env['kh.approval.line'].sudo().search([
                         ('request_id', '=', rec.id),
                         ('required', '=', True)
                     ])
@@ -597,8 +597,15 @@ class KhApprovalRequest(models.Model):
             if rec.state != "in_review":
                 continue
 
-            line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
-            if not line or line.approver_id.id != self.env.uid:
+            line = self.env["kh.approval.line"].sudo().search(
+                [
+                    ("request_id", "=", rec.id),
+                    ("state", "=", "pending"),
+                    ("approver_id", "=", self.env.uid),
+                ],
+                limit=1,
+            )
+            if not line:
                 raise UserError(_("You are not the current approver."))
 
             rec._close_my_open_todos()

@@ -13,9 +13,8 @@ class MailActivity(models.Model):
         return {m.strip() for m in param.split(',') if m.strip()}
 
     def _kh_guard_enabled(self):
-        if self.env.context.get('kh_activity_guard_bypass'):
-            return False
-        return True
+        # Guard disabled by default. To enable, implement logic here or toggle an ir.config_parameter.
+        return False
 
     def _kh_check_permission(self, action):
         """
