@@ -27,7 +27,7 @@ class MailActivity(models.Model):
             return
 
         user = self.env.user
-        if self.env.is_superuser() or user.has_group('kh_approvals.group_kh_approvals_manager'):
+        if self.env.is_superuser():
             return
 
         excluded = self._kh_guard_excluded_models()
