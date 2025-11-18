@@ -399,18 +399,26 @@ class KhApprovalRequest(models.Model):
                     })
 
             elif rec.approval_type == 'payslip':
-                # TODO: Make payslip approvers configurable
-                # For now, we use a hardcoded list of approvers.
-                approvers = self.env['res.users'].browse([2]) # Administrator
-                for approver in approvers:
+                rule = self.env['kh.approval.rule'].search([
+                    ('company_id', '=', rec.company_id.id),
+                    ('department_id', '=', False),
+                ], limit=1)
+
+                if not rule:
+                    raise UserError(_("No approval rule found for payslip approvals in this company. Please create a rule with no department assigned."))
+
+                steps = rule.step_ids.sorted(key=lambda s: (s.sequence, s.id))
+                for step in steps:
+                    if not step.approver_id:
+                        continue
                     vals_list.append({
                         "request_id": rec.id,
-                        "name": f"Approval by {approver.name}",
-                        "approver_id": approver.id,
+                        "name": step.name or step.approver_id.name,
+                        "approver_id": step.approver_id.id,
                         "required": True,
                         "state": "waiting",
                         "company_id": rec.company_id.id,
-                        "sequence": 10,
+                        "sequence": step.sequence,
                     })
 
             if not vals_list:
