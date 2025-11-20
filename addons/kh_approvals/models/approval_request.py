@@ -523,7 +523,7 @@ class KhApprovalRequest(models.Model):
 
         # == your approval logic continues ==
         line = self.pending_line_id
-        if line and line.user_id.id == user.id:
+        if line and line.approver_id.id == user.id:
             line.write({
                 'state': 'approved',
                 'approved_on': fields.Datetime.now(),
