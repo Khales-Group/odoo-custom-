@@ -538,17 +538,37 @@ class KhApprovalRequest(models.Model):
             line_sudo = line.sudo()
 
             # Close the approver's To-Do activity if it exists.
+            # NOTE: mail.activity.state is non-stored -> cannot be used in a search domain.
             try:
-                acts = MailActivity.sudo().search([
-                    ('res_model', '=', rec._name),
-                    ('res_id', '=', rec.id),
-                    ('user_id', '=', self.env.uid),
-                    ('state', '!=', 'done'),
-                ])
-                if acts:
-                    acts.sudo().unlink()
+                # If you explicitly do NOT want to touch mail.activity when the request
+                # has only one approver, skip the search:
+                approvers = rec.approval_line_ids.mapped('approver_id')
+                if len(approvers) == 1:
+                    # skip activity closing for single-approver requests
+                    pass
+                else:
+                    # search by stored fields only (res_model, res_id, user_id)
+                    acts = MailActivity.sudo().search([
+                        ('res_model', '=', rec._name),
+                        ('res_id', '=', rec.id),
+                        ('user_id', '=', self.env.uid),
+                    ])
+                    if acts:
+                        # filter out done activities in Python (state is computable on the records)
+                        acts_to_close = acts.filtered(lambda a: a.state != 'done')
+                        if acts_to_close:
+                            # Option A (recommended): mark activities as done
+                            for act in acts_to_close:
+                                try:
+                                    # use sudo() to avoid access errors, and pass feedback so it becomes done
+                                    act.sudo().action_feedback(feedback=_("Approved"))
+                                except Exception:
+                                    _logger.exception("Failed to mark mail.activity done via action_feedback")
+
+                            # Option B (alternative): unlink them, telling the guard it's an activity_mark_as_done
+                            # acts_to_close.with_context(activity_mark_as_done=True).sudo().unlink()
             except Exception:
-                _logger.exception("Failed to remove activity for request %s and user %s", rec.name, self.env.uid)
+                _logger.exception("Failed to remove or close activities")
 
             # Mark the line approved
             line_sudo.write({"state": "approved"})
