@@ -28,6 +28,14 @@ class HrPayslipExtension(models.Model):
     )
 
     def action_request_approval(self):
+        department_id = False
+        kh_department_id = False
+        if self:
+            department = self[0].employee_id.department_id
+            if department:
+                kh_department = self.env['kh.approvals.department'].search([('name', '=', department.name)], limit=1)
+                if kh_department:
+                    kh_department_id = kh_department.id
         # Create a new approval request
         approval_request = self.env["kh.approval.request"].create({
             "title": "Payslip Approval Request",
@@ -35,6 +43,7 @@ class HrPayslipExtension(models.Model):
             "payslip_ids": [(6, 0, self.ids)],
             "approval_type": "payslip",
             "rule_id": False,  # We are not using rules for this type of approval
+            "department_id": kh_department_id,
         })
 
         # Set the approval state of the payslips

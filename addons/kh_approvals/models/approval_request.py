@@ -442,13 +442,22 @@ class KhApprovalRequest(models.Model):
                     })
 
             elif rec.approval_type == 'payslip':
-                rule = self.env['kh.approval.rule'].search([
-                    ('company_id', '=', rec.company_id.id),
-                    ('department_id', '=', False),
-                ], limit=1)
+                rule = False
+                if rec.department_id:
+                    rule = self.env['kh.approval.rule'].search([
+                        ('company_id', '=', rec.company_id.id),
+                        ('department_id', '=', rec.department_id.id),
+                    ], limit=1)
 
                 if not rule:
-                    raise UserError(_("No approval rule found for payslip approvals in this company. Please create a rule with no department assigned."))
+                    # Fallback to no department
+                    rule = self.env['kh.approval.rule'].search([
+                        ('company_id', '=', rec.company_id.id),
+                        ('department_id', '=', False),
+                    ], limit=1)
+
+                if not rule:
+                    raise UserError(_("No approval rule found for payslip approvals in this company. Please create a rule for the relevant department or a general rule with no department assigned."))
 
                 steps = rule.step_ids.sorted(key=lambda s: (s.sequence, s.id))
                 for step in steps:
