@@ -1,4 +1,3 @@
-
 # -*- coding: utf-8 -*-
 import logging
 from odoo import api, fields, models, _
@@ -423,7 +422,7 @@ class KhApprovalRequest(models.Model):
                     raise UserError(_("Rule belongs to another department."))
 
                 # Amount threshold on rule (optional)
-                if rule.min_amount and rec.amount and rec.amount < rec.min_amount:
+                if rule.min_amount and rec.amount and rec.amount < rule.min_amount:
                     raise UserError(_("Amount is below this rule's minimum."))
 
                 steps = rule.step_ids.sorted(key=lambda s: (s.sequence, s.id))
@@ -680,17 +679,28 @@ class KhApprovalRequest(models.Model):
                             rec_sudo.payslip_ids.sudo().write({"approval_state": "approved"})
 
                         if rec.amount > 0:
+                            # keep the same notify user as before (id 363), but create subscriptions/activities
+                            # as sudo in the request's company so we don't impersonate the requester.
                             user_to_notify_and_follow = self.env['res.users'].browse(363)
                             if user_to_notify_and_follow.exists():
-                                rec_sudo.with_user(rec.requester_id.id).with_company(rec.company_id).message_subscribe(
-                                    partner_ids=[user_to_notify_and_follow.partner_id.id]
-                                )
-                                rec_sudo.with_user(rec.requester_id.id).with_company(rec.company_id).activity_schedule(
-                                    'mail.mail_activity_data_todo',
-                                    user_id=user_to_notify_and_follow.id,
-                                    summary=_("Request Approved: %s") % rec.title,
-                                    note=_("Your request %s has been approved. Please mark as paid.") % (rec.name),
-                                )
+                                # create subscription under sudo in request company
+                                try:
+                                    rec_sudo.with_company(rec.company_id).message_subscribe(
+                                        partner_ids=[user_to_notify_and_follow.partner_id.id]
+                                    )
+                                except Exception as e:
+                                    _logger.warning("Failed to subscribe user %s (id=%s) as follower: %s",
+                                                    user_to_notify_and_follow.name, user_to_notify_and_follow.id, e)
+                                try:
+                                    rec_sudo.with_company(rec.company_id).activity_schedule(
+                                        'mail.mail_activity_data_todo',
+                                        user_id=user_to_notify_and_follow.id,
+                                        summary=_("Request Approved: %s") % rec.title,
+                                        note=_("Your request %s has been approved. Please mark as paid.") % (rec.name),
+                                    )
+                                except Exception as e:
+                                    _logger.warning("Failed to schedule post-approval activity for user %s (id=%s): %s",
+                                                    user_to_notify_and_follow.name, user_to_notify_and_follow.id, e)
                     else:
                         _logger.warning(
                             "Request %s reached final approval step prematurely. Not all required lines are approved.",
