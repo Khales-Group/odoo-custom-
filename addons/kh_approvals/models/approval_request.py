@@ -715,7 +715,6 @@ class KhApprovalRequest(models.Model):
             )
             if not line:
                 raise UserError(_("You are not the current approver."))
-
             rec._close_my_open_todos()
             line.sudo().write({"state": "rejected"})
 
