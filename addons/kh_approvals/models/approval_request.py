@@ -156,6 +156,7 @@ class KhApprovalRequest(models.Model):
                 )
             else:
                 rec.steps_overview_html = "<i>No approval steps.</i>"
+
     def _critical_fields(self):
         """Fields that, if changed, should trigger a new approval cycle."""
         return {'title', 'amount', 'currency_id', 'company_id', 'department_id', 'rule_id'}
@@ -168,7 +169,7 @@ class KhApprovalRequest(models.Model):
         """Assign company, department (from rule if empty), and company-scoped name/sequence."""
         for vals in vals_list:
             vals.setdefault("company_id", self.env.company.id)
- 
+
             # If name is default "New", assign a sequence number
             if vals.get("name", _("New")) == _("New"):
                 seq = self.env["ir.sequence"].with_context(
@@ -395,6 +396,7 @@ class KhApprovalRequest(models.Model):
                         "Failed to create approval activity for user %s (ID: %s) on request %s (ID: %s): %s",
                         approver.name, approver.id, rec.name, rec.id, e
                     )
+
     # -------------------------------------------------------------------------
     # Steps generation
     # -------------------------------------------------------------------------
@@ -472,6 +474,7 @@ class KhApprovalRequest(models.Model):
                         v['state'] = 'pending'
 
             self.env["kh.approval.line"].sudo().create(vals_list)
+
     # -------------------------------------------------------------------------
     # Actions (buttons)
     # -------------------------------------------------------------------------
@@ -520,7 +523,7 @@ class KhApprovalRequest(models.Model):
                 'revision': rec.revision + 1,
                 'last_revised_by': self.env.user.id,
                 'last_revised_on': fields.Datetime.now(),
-                'submitted_on': False, # Clear submission date on revise
+                'submitted_on': False,  # Clear submission date on revise
             })
 
             rec._post_note(
@@ -534,222 +537,275 @@ class KhApprovalRequest(models.Model):
                     partner_ids=prev_approver_partners.ids,
                 )
         return True
+
     def action_withdraw_request(self):
         # Feature disabled at your request
         raise UserError(_("This option has been disabled by your administrator."))
+
     def action_approve_request(self):
         """Approve the current pending line for the current user.
 
-        Strategy:
-        - find the pending line with sudo()
-        - ensure the current user is the approver (or manager/su)
-        - perform state writes / message actions as sudo() to avoid multi-company AccessErrors
+        Semi-sudo strategy:
+        - Use sudo() for IO/activities and writes so company/ACL do not raise errors.
+        - But enforce minimal validation: the acting user must be the approver for the pending line
+          unless they are a manager or superuser — in those privileged cases, we allow fallback selection.
+        - Add verbose logging so we can trace invalid approver situations.
+        - Mark the acting user's activities as done (if any).
         """
-        MailActivity = self.env['mail.activity']
-        Line = self.env['kh.approval.line']
+        MailActivity = self.env['mail.activity'].sudo()
+        Line = self.env['kh.approval.line'].sudo()
+        Request = self.sudo()
 
-        for rec in self:
+        for rec in Request:
             if rec.state != "in_review":
+                _logger.info("Skip approve: request %s (id=%s) not in 'in_review' (state=%s).", rec.name, rec.id, rec.state)
                 continue
 
-            # Find the pending line using sudo() (record rules / company restrictions can hide it otherwise)
-            line = Line.sudo().search(
-                [
-                    ("request_id", "=", rec.id),
-                    ("state", "=", "pending"),
-                    ("approver_id", "=", self.env.uid),
-                ],
-                order="sequence, id",
-                limit=1,
-            )
-            if not line:
-                raise UserError(_("You are not a current approver for this request, or you have already approved."))
+            action_user = self.env.uid
 
-            # Extra security: ensure the found line actually belongs to the same request
-            # and the approver is the current user (we already filtered by approver_id above).
-            # Allow managers/su to bypass if desired:
-            if line.approver_id.id != self.env.uid and not (
-                self.env.is_superuser() or
-                self.env.user.has_group('kh_approvals.group_kh_approvals_manager')
-            ):
-                raise UserError(_("You are not authorized to approve this line."))
-
-            # Perform the destructive/IO operations as sudo() to avoid company-related AccessErrors.
-            rec_sudo = rec.sudo()
-            line_sudo = line.sudo()
-
-            # Close the approver's To-Do activity if it exists.
-            # NOTE: mail.activity.state is non-stored -> cannot be used in a search domain.
-            try:
-                # If you explicitly do NOT want to touch mail.activity when the request
-                # has only one approver, skip the search:
-                approvers = rec.approval_line_ids.mapped('approver_id')
-                if len(approvers) == 1:
-                    # skip activity closing for single-approver requests
-                    pass
-                else:
-                    # search by stored fields only (res_model, res_id, user_id)
-                    acts = MailActivity.sudo().search([
-                        ('res_model', '=', rec._name),
-                        ('res_id', '=', rec.id),
-                        ('user_id', '=', self.env.uid),
-                    ])
-                    if acts:
-                        # filter out done activities in Python (state is computable on the records)
-                        acts_to_close = acts.filtered(lambda a: a.state != 'done')
-                        if acts_to_close:
-                            # Option A (recommended): mark activities as done
-                            for act in acts_to_close:
-                                try:
-                                    # use sudo() to avoid access errors, and pass feedback so it becomes done
-                                    act.sudo().action_feedback(feedback=_("Approved"))
-                                except Exception:
-                                    _logger.exception("Failed to mark mail.activity done via action_feedback")
-
-                            # Option B (alternative): unlink them, telling the guard it's an activity_mark_as_done
-                            # acts_to_close.with_context(activity_mark_as_done=True).sudo().unlink()
-            except Exception:
-                _logger.exception("Failed to remove or close activities")
-
-            # Mark the line approved
-            line_sudo.write({"state": "approved"})
-
-            # Refresh caches
-            rec_sudo._invalidate_cache(['approval_line_ids'])
-
-            # Post a quiet note (using sudo record so mail posting doesn't fail due to companies)
-            rec_sudo._post_note(
-                _("Approved by <b>%s</b>.") % self.env.user.name,
-                partner_ids=[rec.requester_id.partner_id.id],
-            )
-
-            # Check if all lines at this sequence have been approved
-            current_sequence = line_sudo.sequence
-            other_pending_count = Line.sudo().search_count([
+            # Try to find a pending line explicitly for the action user
+            line = Line.search([
                 ('request_id', '=', rec.id),
-                ('sequence', '=', current_sequence),
-                ('required', '=', True),
-                ('state', '!=', 'approved'),
-            ])
+                ('state', '=', 'pending'),
+                ('approver_id', '=', action_user),
+            ], order='sequence, id', limit=1)
 
-            if other_pending_count == 0:
-                # Move to next sequence (if any)
-                next_level = Line.sudo().search([
-                    ('request_id', '=', rec.id),
-                    ('sequence', '>', current_sequence),
-                ], order='sequence', limit=1)
-                if next_level:
-                    next_seq = next_level.sequence
-                    lines_to_pending = Line.sudo().search([
-                        ('request_id', '=', rec.id),
-                        ('sequence', '=', next_seq),
-                    ])
-                    if lines_to_pending:
-                        lines_to_pending.sudo().write({'state': 'pending'})
-                        # notify next approvers (call sudo() version)
-                        rec_sudo._notify_pending_approvers()
+            if not line:
+                # Log detailed debug info: existing pending approvers
+                pending = Line.search([('request_id', '=', rec.id), ('state', '=', 'pending')])
+                pending_approvers = [(l.id, l.approver_id.id if l.approver_id else None) for l in pending]
+                _logger.warning(
+                    "No pending line matched user %s for request %s (id=%s). Pending lines: %s",
+                    action_user, rec.name, rec.id, pending_approvers
+                )
+
+                # Allow managers/su to pick the first pending line as fallback
+                is_privileged = (self.env.is_superuser() or self.env.user.has_group('kh_approvals.group_kh_approvals_manager'))
+                if is_privileged and pending:
+                    line = pending.sorted('sequence, id')[0]
+                    _logger.info("Privileged user %s will approve fallback line id=%s for request %s (id=%s).",
+                                 action_user, line.id, rec.name, rec.id)
                 else:
-                    # Finalize full request approval if all required lines are approved
-                    all_required = Line.sudo().search([('request_id', '=', rec.id), ('required', '=', True)])
-                    if all(line.state == 'approved' for line in all_required):
-                        old_state = rec.state
-                        rec_sudo.write({"state": "approved"})
-                        rec_sudo.message_post(
-                            body=_("Request approved."),
-                            tracking_value_ids=[(0, 0, {
-                                'field_id': self.env['ir.model.fields']._get(self._name, 'state').id,
-                                'old_value_char': dict(self._fields['state'].selection).get(old_state),
-                                'new_value_char': dict(self._fields['state'].selection).get('approved'),
-                            })],
-                            message_type="notification",
-                            subtype_xmlid="mail.mt_comment",
-                            partner_ids=[rec.requester_id.partner_id.id]
-                        )
+                    # Not privileged and no line matching: deny with helpful log & message
+                    _logger.error(
+                        "User %s is not a pending approver for request %s (id=%s) and is not privileged. Abort approve.",
+                        action_user, rec.name, rec.id
+                    )
+                    raise UserError(_("You are not a current approver for this request, or you have already approved."))
 
-                        rec_sudo._notify_partner(
-                            rec.requester_id.partner_id,
-                            _("✅ <b>Approved</b>: <a href='%(link)s'>%(name)s: %(title)s</a>") % {
-                                "link": rec._deeplink(), "name": rec.name, "title": rec.title
-                            },
-                            subject=f"Approved: {rec.name}",
-                        )
+            # From here, 'line' is the target approval line (as sudo record)
+            try:
+                _logger.info("User %s approving line id=%s (approver=%s) on request %s (id=%s).",
+                             action_user, line.id, getattr(line, 'approver_id', False) and line.approver_id.id or None, rec.name, rec.id)
 
-                        # Payslip / post-approval activities as before (use sudo where appropriate)
-                        if rec.approval_type == "payslip":
-                            rec_sudo.payslip_ids.sudo().write({"approval_state": "approved"})
-
-                        if rec.amount > 0:
-                            # keep the same notify user as before (id 363), but create subscriptions/activities
-                            # as sudo in the request's company so we don't impersonate the requester.
-                            user_to_notify_and_follow = self.env['res.users'].browse(363)
-                            if user_to_notify_and_follow.exists():
-                                # create subscription under sudo in request company
+                # Mark any activities for the action_user as done (safe, uses sudo)
+                try:
+                    acts = MailActivity.search([('res_model', '=', rec._name), ('res_id', '=', rec.id), ('user_id', '=', action_user)])
+                    if acts:
+                        for a in acts:
+                            try:
+                                a.with_context(activity_mark_as_done=True).sudo().action_feedback(feedback=_("Approved"))
+                            except Exception:
                                 try:
-                                    rec_sudo.with_company(rec.company_id).message_subscribe(
-                                        partner_ids=[user_to_notify_and_follow.partner_id.id]
-                                    )
+                                    a.with_context(activity_mark_as_done=True).sudo().action_done()
                                 except Exception as e:
-                                    _logger.warning("Failed to subscribe user %s (id=%s) as follower: %s",
-                                                    user_to_notify_and_follow.name, user_to_notify_and_follow.id, e)
-                                try:
-                                    rec_sudo.with_company(rec.company_id).activity_schedule(
-                                        'mail.mail_activity_data_todo',
-                                        user_id=user_to_notify_and_follow.id,
-                                        summary=_("Request Approved: %s") % rec.title,
-                                        note=_("Your request %s has been approved. Please mark as paid.") % (rec.name),
-                                    )
-                                except Exception as e:
-                                    _logger.warning("Failed to schedule post-approval activity for user %s (id=%s): %s",
-                                                    user_to_notify_and_follow.name, user_to_notify_and_follow.id, e)
+                                    _logger.exception("Failed to mark activity id=%s done while approving request %s: %s", getattr(a,'id',False), rec.name, e)
+                except Exception as e:
+                    _logger.exception("Failed while trying to close activities for user %s on request %s: %s", action_user, rec.name, e)
+
+                # Approve the line and persist (line is already a sudo record)
+                line.write({'state': 'approved'})
+
+                # Refresh cache on request
+                rec._invalidate_cache(['approval_line_ids'])
+
+                # Post a quiet sudo note (safe)
+                try:
+                    rec._post_note(_("Approved by <b>%s</b>.") % self.env.user.name, partner_ids=[rec.requester_id.partner_id.id])
+                except Exception as e:
+                    _logger.exception("Failed to post approval note for request %s: %s", rec.name, e)
+
+                # Progress sequences or finalize approval
+                current_sequence = line.sequence
+                other_pending_count = Line.search_count([
+                    ('request_id', '=', rec.id),
+                    ('sequence', '=', current_sequence),
+                    ('required', '=', True),
+                    ('state', '!=', 'approved'),
+                ])
+                if other_pending_count == 0:
+                    # Move to next sequence or finalize
+                    next_level = Line.search([('request_id', '=', rec.id), ('sequence', '>', current_sequence)], order='sequence', limit=1)
+                    if next_level:
+                        next_seq = next_level.sequence
+                        lines_to_pending = Line.search([('request_id', '=', rec.id), ('sequence', '=', next_seq)])
+                        if lines_to_pending:
+                            lines_to_pending.write({'state': 'pending'})
+                            # notify next approvers
+                            try:
+                                rec._notify_pending_approvers()
+                            except Exception as e:
+                                _logger.exception("Failed to notify next approvers for request %s: %s", rec.name, e)
                     else:
-                        _logger.warning(
-                            "Request %s reached final approval step prematurely. Not all required lines are approved.",
-                            rec.name
-                        )
-                        rec_sudo._post_note(_("Approval process stalled due to a configuration issue. Please contact an administrator."))
+                        # Finalize
+                        all_required = Line.search([('request_id', '=', rec.id), ('required', '=', True)])
+                        if all(line_rec.state == 'approved' for line_rec in all_required):
+                            old_state = rec.state
+                            try:
+                                rec.write({'state': 'approved'})
+                                rec.message_post(
+                                    body=_("Request approved."),
+                                    tracking_value_ids=[(0, 0, {
+                                        'field_id': self.env['ir.model.fields']._get(self._name, 'state').id,
+                                        'old_value_char': dict(self._fields['state'].selection).get(old_state),
+                                        'new_value_char': dict(self._fields['state'].selection).get('approved'),
+                                    })],
+                                    message_type="notification",
+                                    subtype_xmlid="mail.mt_comment",
+                                    partner_ids=[rec.requester_id.partner_id.id]
+                                )
+                            except Exception as e:
+                                _logger.exception("Failed to finalize approval state for request %s: %s", rec.name, e)
+
+                            try:
+                                rec._notify_partner(
+                                    rec.requester_id.partner_id,
+                                    _("✅ <b>Approved</b>: <a href='%(link)s'>%(name)s: %(title)s</a>") % {
+                                        "link": rec._deeplink(), "name": rec.name, "title": rec.title
+                                    },
+                                    subject=f"Approved: {rec.name}",
+                                )
+                            except Exception as e:
+                                _logger.exception("Failed to send approval partner notification for request %s: %s", rec.name, e)
+
+                            # Post-approval actions
+                            try:
+                                if rec.approval_type == "payslip":
+                                    rec.payslip_ids.sudo().write({"approval_state": "approved"})
+                            except Exception:
+                                _logger.exception("Failed to mark payslips approved for request %s", rec.name)
+
+                            if rec.amount and rec.amount > 0:
+                                user_to_notify_and_follow = self.env['res.users'].browse(363)
+                                if user_to_notify_and_follow.exists():
+                                    try:
+                                        rec.with_company(rec.company_id).message_subscribe(partner_ids=[user_to_notify_and_follow.partner_id.id])
+                                    except Exception as e:
+                                        _logger.warning("Subscribe failed for user %s on request %s: %s", user_to_notify_and_follow.id, rec.name, e)
+                                    try:
+                                        rec.with_company(rec.company_id).activity_schedule(
+                                            'mail.mail_activity_data_todo',
+                                            user_id=user_to_notify_and_follow.id,
+                                            summary=_("Request Approved: %s") % rec.title,
+                                            note=_("Your request %s has been approved. Please mark as paid.") % (rec.name),
+                                        )
+                                    except Exception as e:
+                                        _logger.warning("Scheduling post-approval activity failed for user %s on request %s: %s", user_to_notify_and_follow.id, rec.name, e)
+
+            except Exception as e:
+                _logger.exception("Unhandled exception while approving request %s (id=%s): %s", rec.name, rec.id, e)
         return True
 
     def action_reject_request(self):
-        """Current approver rejects; request becomes Rejected and requester is pinged."""
-        for rec in self:
+        """Current approver rejects; request becomes Rejected and requester is pinged.
+
+        Semi-sudo strategy similar to approve:
+        - Use sudo for IO/actions to avoid company/ACL issues
+        - Minimal validation: only permit reject if user is the approver or is manager/su (privileged)
+        - Mark the approver's activities done
+        - Log extensively on fallback/invalid cases
+        """
+        MailActivity = self.env['mail.activity'].sudo()
+        Line = self.env['kh.approval.line'].sudo()
+        Request = self.sudo()
+
+        for rec in Request:
             if rec.state != "in_review":
+                _logger.info("Skip reject: request %s (id=%s) not in 'in_review' (state=%s).", rec.name, rec.id, rec.state)
                 continue
 
-            line = self.env["kh.approval.line"].sudo().search(
-                [
-                    ("request_id", "=", rec.id),
-                    ("state", "=", "pending"),
-                    ("approver_id", "=", self.env.uid),
-                ],
-                limit=1,
-            )
+            action_user = self.env.uid
+
+            # Find the pending line for this user
+            line = Line.search([
+                ('request_id', '=', rec.id),
+                ('state', '=', 'pending'),
+                ('approver_id', '=', action_user),
+            ], order='sequence, id', limit=1)
+
             if not line:
-                raise UserError(_("You are not the current approver."))
-            rec._close_my_open_todos()
-            line.sudo().write({"state": "rejected"})
+                pending = Line.search([('request_id', '=', rec.id), ('state', '=', 'pending')])
+                pending_approvers = [(l.id, l.approver_id.id if l.approver_id else None) for l in pending]
+                _logger.warning("No pending line matched user %s for request %s (id=%s) during reject. Pending lines: %s",
+                                action_user, rec.name, rec.id, pending_approvers)
 
-            # Log state change in chatter
-            old_state = rec.state
-            rec.sudo().write({"state": "rejected"})
-            rec.message_post(
-                body=_("❌ Rejected by <b>%s</b>.") % self.env.user.name,
-                tracking_value_ids=[(0, 0, {
-                    'field_id': self.env['ir.model.fields']._get(self._name, 'state').id,
-                    'old_value_char': dict(self._fields['state'].selection).get(old_state),
-                    'new_value_char': dict(self._fields['state'].selection).get('rejected'),
-                })],
-                message_type="notification",
-                subtype_xmlid="mail.mt_comment",
-                partner_ids=[rec.requester_id.partner_id.id]
-            )
+                is_privileged = (self.env.is_superuser() or self.env.user.has_group('kh_approvals.group_kh_approvals_manager'))
+                if is_privileged and pending:
+                    line = pending.sorted('sequence, id')[0]
+                    _logger.info("Privileged user %s will reject fallback line id=%s for request %s (id=%s).",
+                                 action_user, line.id, rec.name, rec.id)
+                else:
+                    _logger.error("User %s is not a pending approver for request %s (id=%s) and is not privileged. Abort reject.",
+                                  action_user, rec.name, rec.id)
+                    raise UserError(_("You are not the current approver."))
 
-            rec._notify_partner(
-                rec.requester_id.partner_id,
-                _("❌ <b>Rejected</b>: <a href='%(link)s'>%(name)s: %(title)s</a>") % {"link": rec._deeplink(), "name": rec.name, "title": rec.title},
-                subject=f"Rejected: {rec.name}",
-            )
-            if rec.approval_type == "payslip":
-                rec.payslip_ids.write({"approval_state": "rejected"})
+            try:
+                _logger.info("User %s rejecting line id=%s (approver=%s) on request %s (id=%s).",
+                             action_user, line.id, getattr(line, 'approver_id', False) and line.approver_id.id or None, rec.name, rec.id)
+
+                # Mark any activities for the action_user as done (safe)
+                try:
+                    acts = MailActivity.search([('res_model', '=', rec._name), ('res_id', '=', rec.id), ('user_id', '=', action_user)])
+                    if acts:
+                        for a in acts:
+                            try:
+                                a.with_context(activity_mark_as_done=True).sudo().action_feedback(feedback=_("Rejected"))
+                            except Exception:
+                                try:
+                                    a.with_context(activity_mark_as_done=True).sudo().action_done()
+                                except Exception as e:
+                                    _logger.exception("Failed to mark activity id=%s done while rejecting request %s: %s", getattr(a,'id',False), rec.name, e)
+                except Exception as e:
+                    _logger.exception("Failed while trying to close activities for user %s on request %s: %s", action_user, rec.name, e)
+
+                # Mark the line rejected and mark request as rejected
+                line.write({'state': 'rejected'})
+
+                old_state = rec.state
+                rec.write({'state': 'rejected'})
+                try:
+                    rec.message_post(
+                        body=_("❌ Rejected by <b>%s</b>.") % self.env.user.name,
+                        tracking_value_ids=[(0, 0, {
+                            'field_id': self.env['ir.model.fields']._get(self._name, 'state').id,
+                            'old_value_char': dict(self._fields['state'].selection).get(old_state),
+                            'new_value_char': dict(self._fields['state'].selection).get('rejected'),
+                        })],
+                        message_type="notification",
+                        subtype_xmlid="mail.mt_comment",
+                        partner_ids=[rec.requester_id.partner_id.id]
+                    )
+                except Exception as e:
+                    _logger.exception("Failed to post reject message for request %s: %s", rec.name, e)
+
+                try:
+                    rec._notify_partner(
+                        rec.requester_id.partner_id,
+                        _("❌ <b>Rejected</b>: <a href='%(link)s'>%(name)s: %(title)s</a>") % {"link": rec._deeplink(), "name": rec.name, "title": rec.title},
+                        subject=f"Rejected: {rec.name}",
+                    )
+                except Exception as e:
+                    _logger.exception("Failed to send reject partner notification for request %s: %s", rec.name, e)
+
+                # For payslip type, update payslips
+                try:
+                    if rec.approval_type == "payslip":
+                        rec.payslip_ids.sudo().write({"approval_state": "rejected"})
+                except Exception:
+                    _logger.exception("Failed to mark payslips rejected for request %s", rec.name)
+
+            except Exception as e:
+                _logger.exception("Unhandled exception while rejecting request %s (id=%s): %s", rec.name, rec.id, e)
         return True
 
     def action_opt_out_as_approver(self):
@@ -757,26 +813,31 @@ class KhApprovalRequest(models.Model):
         raise UserError(_("This option has been disabled by your administrator."))
 
     def action_mark_as_paid(self):
-        """Marks the request as paid and closes the associated activity."""
-        for rec in self:
-            if rec.state != 'approved':
-                raise UserError(_("Only approved requests can be marked as paid."))
-            if rec.payment_state == 'paid':
-                raise UserError(_("This request has already been marked as paid."))
-            if not rec.amount > 0:
-                raise UserError(_("This action is only for requests with a payment amount."))
+        """Accountant marks the request as paid (even if not an approver)."""
+        for rec in self.sudo():
+            if rec.payment_state == "paid":
+                raise UserError(_("This request is already marked as paid."))
 
-            # Close the open "To-Do" activity for the current user (the accountant).
-            rec._close_my_open_todos()
+            # Change payment state
+            rec.write({
+                'payment_state': 'paid',
+            })
 
-            rec.write({'payment_state': 'paid'})
+            # Close accountant's activity
+            accountant_acts = rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid)
+            for act in accountant_acts:
+                try:
+                    act.with_context(activity_mark_as_done=True).sudo().action_done()
+                except:
+                    act.with_context(activity_mark_as_done=True).sudo().unlink()
 
-            # Post a note in the chatter
-            rec._post_note(
-                _("Request marked as <b>Paid</b> by %s.") % self.env.user.name,
-                partner_ids=rec.message_follower_ids.mapped("partner_id").ids,
+            # Log message
+            rec.message_post(
+                body=_("💰 Marked as &lt;b&gt;Paid&lt;/b&gt; by &lt;b&gt;%s&lt;/b&gt;.") % self.env.user.name
             )
+
         return True
+
 
 
 # ============================================================================
