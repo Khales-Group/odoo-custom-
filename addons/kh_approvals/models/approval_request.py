@@ -118,13 +118,6 @@ class KhApprovalRequest(models.Model):
         "kh.approval.line", "request_id", string="Approval Steps", copy=False
     )
 
-    product_line_ids = fields.One2many(
-        "kh.approval.request.line",
-        "request_id",
-        string="Products",
-        copy=True,
-    )
-
     # Always-visible, read-only HTML snapshot of all steps (built with sudo)
     steps_overview_html = fields.Html(
         string="Approval Steps (All Approvers)",

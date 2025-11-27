@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<odoo>
-  <data>
-    <!-- Neutralized: this view was causing parse errors and is no longer used.
-         The module manifest no longer references this file. -->
-  </data>
-</odoo>
