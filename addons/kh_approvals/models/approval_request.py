@@ -119,7 +119,7 @@ class KhApprovalRequest(models.Model):
     )
 
     product_line_ids = fields.One2many(
-        "kh.approval.request.product",
+        "kh.approval.request.line",
         "request_id",
         string="Products",
         copy=True,

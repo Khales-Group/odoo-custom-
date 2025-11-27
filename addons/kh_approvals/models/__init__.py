@@ -7,4 +7,4 @@ from . import payslip_extension
 # from . import account_move_extension
 # from . import account_journal
 from . import approval_rule_product
-from . import approval_request_product
+from . import approval_request_line
