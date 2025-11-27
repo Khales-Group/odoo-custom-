@@ -1,15 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <data>
-        <record id="view_kh_approval_request_search" model="ir.ui.view">
-            <field name="name">kh.approval.request.search</field>
-            <field name="model">kh.approval.request</field>
-            <field name="arch" type="xml">
-                <search>
-                    <field name="approval_rule_id"/>
-                    <!-- quick filter for Petty Cash -->
-                    <filter name="petty_cash" string="Petty Cash" domain="[('approval_rule_id.name','=','Petty Cash')]"/>
-                </search>
-            </field>
-        </record>
-    </data>
+  <data>
+    <record id="view_kh_approval_request_search" model="ir.ui.view">
+      <field name="name">kh.approval.request.search</field>
+      <field name="model">kh.approval.request</field>
+      <field name="arch" type="xml">
+        <search>
+          <field name="approval_rule_id"/>
+          <!-- quick filter for Petty Cash -->
+          <filter name="petty_cash" string="Petty Cash" domain="[(\'approval_rule_id.name\',\'=\',\'Petty Cash\')]"/>
+        </search>
+      </field>
+    </record>
+  </data>
 </odoo>

@@ -106,7 +106,7 @@ class KhApprovalRequest(models.Model):
     last_revised_on = fields.Datetime(readonly=True)
     submitted_on = fields.Datetime(string="Submitted On", readonly=True, tracking=True)
 
-    approval_rule_id = fields.Many2one(
+    rule_id = fields.Many2one(
         "kh.approval.rule",
         string="Approval Rule",
         domain="[ ('department_id','=',department_id)]",
@@ -159,7 +159,7 @@ class KhApprovalRequest(models.Model):
 
     def _critical_fields(self):
         """Fields that, if changed, should trigger a new approval cycle."""
-        return {'title', 'amount', 'currency_id', 'company_id', 'department_id', 'approval_rule_id'}
+        return {'title', 'amount', 'currency_id', 'company_id', 'department_id', 'rule_id'}
 
     # -------------------------------------------------------------------------
     # ORM overrides
@@ -177,8 +177,8 @@ class KhApprovalRequest(models.Model):
                 ).next_by_code("kh.approval.request")
                 vals["name"] = seq or _("New")
             # auto-pick department from chosen rule if left empty
-            if vals.get("approval_rule_id") and not vals.get("department_id"):
-                rule = self.env["kh.approval.rule"].browse(vals["approval_rule_id"])
+            if vals.get("rule_id") and not vals.get("department_id"):
+                rule = self.env["kh.approval.rule"].browse(vals["rule_id"])
                 vals["department_id"] = rule.department_id.id
         return super().create(vals_list)
 
@@ -412,10 +412,10 @@ class KhApprovalRequest(models.Model):
             vals_list = []
 
             if rec.approval_type == 'standard':
-                if not rec.approval_rule_id:
+                if not rec.rule_id:
                     raise UserError(_("Please choose an Approval Rule first."))
 
-                rule = rec.approval_rule_id
+                rule = rec.rule_id
 
                 # Company/department guardrails
                 if rule.company_id and rule.company_id != rec.company_id:
@@ -849,7 +849,31 @@ class KhApprovalRequest(models.Model):
 
 
 
+# ============================================================================
+# Approval Rule (+ Step sequence)
+# ============================================================================
+class KhApprovalRule(models.Model):
+    _name = "kh.approval.rule"
+    _description = "Approval Rule"
+    _check_company_auto = True
 
+    name = fields.Char(required=True)
+    active = fields.Boolean(default=True)
+
+    company_id = fields.Many2one("res.company", string="Company")
+    department_id = fields.Many2one("kh.approvals.department", string="Department")
+
+    min_amount = fields.Monetary(currency_field="currency_id")
+    currency_id = fields.Many2one(
+        "res.currency",
+        default=lambda self: self.env.company.currency_id.id,
+        required=True,
+    )
+
+    # Ordered approver sequence
+    step_ids = fields.One2many(
+        "kh.approval.rule.step", "rule_id", string="Steps", copy=True
+    )
 
 
 # ============================================================================
