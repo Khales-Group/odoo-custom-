@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <data>
+
+    <record id="view_kh_approval_request_form_products" model="ir.ui.view">
+      <field name="name">kh.approval.request.form.products</field>
+      <field name="model">kh.approval.request</field>
+      <field name="inherit_id" ref="kh_approvals.view_kh_approval_request_form"/>
+      <field name="arch" type="xml">
+
+        <!-- Add new TAB -->
+        <xpath expr="//notebook" position="inside">
+
+          <page string="Products"
+                attrs="{'invisible': [('approval_rule_id.name', '!=', 'Petty Cash')]}">
+
+            <field name="product_line_ids">
+              <tree editable="bottom">
+                <field name="product_name"/>
+                <field name="product_qty"/>
+                <field name="product_unit"/>
+                <field name="product_price"/>
+                <field name="product_subtotal" readonly="1"/>
+              </tree>
+            </field>
+
+          </page>
+
+        </xpath>
+
+      </field>
+    </record>
+
+  </data>
+</odoo>
