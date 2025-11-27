@@ -55,6 +55,20 @@
       </field>
     </record>
 
+    <!-- Petty Cash Lines Tree View -->
+    <record id="view_kh_approval_petty_cash_line_tree" model="ir.ui.view">
+      <field name="name">kh.approval.petty.cash.line.tree</field>
+      <field name="model">kh.approval.petty.cash.line</field>
+      <field name="arch" type="xml">
+        <tree string="Petty Cash Items" editable="bottom">
+          <field name="name"/>
+          <field name="qty"/>
+          <field name="unit_price"/>
+          <field name="unit"/>
+        </tree>
+      </field>
+    </record>
+
     <!-- Form (Odoo 17+: use 'invisible' not 'attrs') -->
     <record id="view_kh_approval_request_form_base" model="ir.ui.view">
       <field name="name">kh.approval.request.form</field>
@@ -142,14 +156,7 @@
               </page>
 
               <page string="Petty Cash Items" name="petty_cash_items" invisible="not is_petty_cash">
-                <field name="petty_cash_line_ids" nolabel="1">
-                  <tree string="Petty Cash Items" editable="bottom">
-                    <field name="name"/>
-                    <field name="qty"/>
-                    <field name="unit_price"/>
-                    <field name="unit"/>
-                  </tree>
-                </field>
+                <field name="petty_cash_line_ids" nolabel="1"/>
               </page>
             </notebook>
           </sheet>
