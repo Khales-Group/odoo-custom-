@@ -60,12 +60,12 @@
       <field name="name">kh.approval.petty.cash.line.tree</field>
       <field name="model">kh.approval.petty.cash.line</field>
       <field name="arch" type="xml">
-        <tree string="Petty Cash Items" editable="bottom">
+        <list string="Petty Cash Items" editable="bottom">
           <field name="name"/>
           <field name="qty"/>
           <field name="unit_price"/>
           <field name="unit"/>
-        </tree>
+        </list>
       </field>
     </record>
 
