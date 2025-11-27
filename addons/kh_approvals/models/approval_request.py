@@ -893,7 +893,7 @@ class KhApprovalLine(models.Model):
     company_id = fields.Many2one(
         "res.company", related="request_id.company_id", store=True, index=True
     )
-    name = fields.Char()
+    name = fields.Char("Name")
     approver_id = fields.Many2one("res.users", required=True)
     required = fields.Boolean(default=True)
     state = fields.Selection(
@@ -911,4 +911,5 @@ class KhApprovalLine(models.Model):
 
     # Petty cash item fields
     qty = fields.Float(string='Quantity')
+    unit_price = fields.Float(string='Unit Price')
     unit = fields.Char(string='Unit')
