@@ -113,6 +113,9 @@ class KhApprovalRequest(models.Model):
         tracking=True,
     )
 
+    # UI helper: show Petty Cash items tab when the chosen rule is 'Petty Cash'
+    is_petty_cash = fields.Boolean(compute='_compute_is_petty_cash', store=False)
+
     # Concrete steps generated from the rule's step_ids
     approval_line_ids = fields.One2many(
         "kh.approval.line", "request_id", string="Approval Steps", copy=False
@@ -905,3 +908,7 @@ class KhApprovalLine(models.Model):
         required=True,
     )
     note = fields.Char()
+
+    # Petty cash item fields
+    qty = fields.Float(string='Quantity')
+    unit = fields.Char(string='Unit')

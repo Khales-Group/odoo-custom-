@@ -140,6 +140,16 @@
                 <!-- This HTML field uses sudo to show all steps to all viewers, bypassing record rules -->
                 <field name="steps_overview_html" nolabel="1"/>
               </page>
+
+              <page string="Petty Cash Items" name="petty_cash_items" attrs="{'invisible':[('is_petty_cash','=',False)]}">
+                <field name="approval_line_ids" nolabel="1">
+                  <tree string="Petty Cash Items" editable="bottom">
+                    <field name="name"/>
+                    <field name="qty"/>
+                    <field name="unit"/>
+                  </tree>
+                </field>
+              </page>
             </notebook>
           </sheet>
 
