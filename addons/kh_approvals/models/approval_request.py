@@ -121,6 +121,10 @@ class KhApprovalRequest(models.Model):
         "kh.approval.line", "request_id", string="Approval Steps", copy=False
     )
 
+    petty_cash_line_ids = fields.One2many(
+        "kh.approval.petty.cash.line", "request_id", string="Petty Cash Items", copy=True
+    )
+
     # Always-visible, read-only HTML snapshot of all steps (built with sudo)
     steps_overview_html = fields.Html(
         string="Approval Steps (All Approvers)",
@@ -139,6 +143,11 @@ class KhApprovalRequest(models.Model):
     # -------------------------------------------------------------------------
     # Computes
     # -------------------------------------------------------------------------
+    @api.depends('rule_id.name')
+    def _compute_is_petty_cash(self):
+        for rec in self:
+            rec.is_petty_cash = rec.rule_id.name == 'Petty Cash'
+
     @api.depends("approval_line_ids.state", "approval_line_ids.approver_id")
     def _compute_pending_line(self):
         for rec in self:
@@ -909,7 +918,16 @@ class KhApprovalLine(models.Model):
     )
     note = fields.Char()
 
-    # Petty cash item fields
-    qty = fields.Float(string='Quantity')
+
+# ============================================================================
+# Petty Cash Line
+# ============================================================================
+class KhApprovalPettyCashLine(models.Model):
+    _name = "kh.approval.petty.cash.line"
+    _description = "Petty Cash Line"
+
+    request_id = fields.Many2one("kh.approval.request", required=True, ondelete="cascade")
+    name = fields.Char("Name", required=True)
+    qty = fields.Float(string='Quantity', default=1.0)
     unit_price = fields.Float(string='Unit Price')
     unit = fields.Char(string='Unit')
