@@ -1,4 +1,6 @@
 from . import approval_request
+from . import approval_rule
+from . import approval_rule_extension
 from . import department
 from . import rule_step
 from . import mail_activity_guard

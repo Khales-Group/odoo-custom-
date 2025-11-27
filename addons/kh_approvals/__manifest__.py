@@ -22,6 +22,7 @@
         "views/qweb_templates.xml",
         "views/department_views.xml",
         "views/approval_request_tree_view.xml",
+        "views/approval_request_search_view.xml",
         "views/hr_employee_views_extension.xml",
         "views/payslip_views.xml",
 

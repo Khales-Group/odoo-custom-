@@ -8,6 +8,8 @@
                 <list string="Approval Requests">
                     <field name="name"/>
                     <field name="title"/>
+                    <!-- show approval rule and make it sortable -->
+                    <field name="approval_rule_id" string="Approval Rule" sortable="true"/>
                     <field name="state"/>
                     <field name="submitted_on"/>
                 </list>
