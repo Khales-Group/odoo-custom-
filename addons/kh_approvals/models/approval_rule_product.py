@@ -36,3 +36,4 @@ class KhApprovalRuleExt(models.Model):
         "product.product",
         string="Products",
     )
+    code = fields.Char(string="Code")
