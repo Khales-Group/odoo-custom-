@@ -19,6 +19,7 @@
         # --- views ---
         "views/approval_request_views.xml",
         "views/approval_rule_views.xml",
+        "views/approval_rule_products_view.xml",
         "views/qweb_templates.xml",
         "views/department_views.xml",
         "views/approval_request_tree_view.xml",

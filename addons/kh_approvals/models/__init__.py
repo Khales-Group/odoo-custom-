@@ -6,3 +6,4 @@ from . import hr_employee_extension
 from . import payslip_extension
 # from . import account_move_extension
 # from . import account_journal
+from . import approval_rule_product
