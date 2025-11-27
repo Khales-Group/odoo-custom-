@@ -32,3 +32,7 @@ class KhApprovalRuleExt(models.Model):
     product_line_ids = fields.One2many(
         "kh.approval.rule.product", "rule_id", string="Products", copy=True
     )
+    product_ids = fields.Many2many(
+        "product.product",
+        string="Products",
+    )

@@ -7,21 +7,15 @@
       <!-- Make sure this ref matches your module's approval rule form view id -->
       <field name="inherit_id" ref="kh_approvals.view_kh_approval_rule_form"/>
       <field name="arch" type="xml">
-        <xpath expr="//notebook" position="inside">
-          <page string="Products" attrs="{'invisible': [('name','!=','Petty Cash')]}">
-            <group>
-              <field name="product_line_ids">
-                <tree editable="bottom">
-                  <field name="product_name"/>
-                  <field name="product_qty"/>
-                  <field name="product_unit"/>
-                  <field name="product_price"/>
-                  <field name="product_subtotal" readonly="1"/>
-                </tree>
-              </field>
-            </group>
-          </page>
-        </xpath>
+        <xpath expr="//sheet/group" position="inside">
+
+                    <!-- REMOVE THE WRONG FIELD -->
+                    <!-- <field name='product_name'/> -->
+
+                    <!-- ADD THE PRODUCT M2M FIELD (THIS IS CORRECT) -->
+                    <field name="product_ids" widget="many2many_tags"/>
+
+                </xpath>
       </field>
     </record>
   </data>
