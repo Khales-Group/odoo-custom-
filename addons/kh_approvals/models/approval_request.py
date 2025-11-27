@@ -875,11 +875,6 @@ class KhApprovalRule(models.Model):
         "kh.approval.rule.step", "rule_id", string="Steps", copy=True
     )
 
-    # Product lines for specific rule types (e.g., Petty Cash)
-    product_line_ids = fields.One2many(
-        "kh.approval.rule.product", "rule_id", string="Products", copy=True
-    )
-
 
 # ============================================================================
 # Approval Line (generated)
