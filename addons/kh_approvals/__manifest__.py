@@ -14,7 +14,6 @@
         "security/ir.model.access.csv",
         "security/kh_approvals_manager_access.xml",
         "security/kh_approvals_rules.xml",
-        # --- data ---
         "data/sequence.xml",
         # --- views ---
         "views/approval_request_views.xml",
