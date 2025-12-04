@@ -707,7 +707,7 @@ class KhApprovalRequest(models.Model):
                                 _logger.exception("Failed to mark payslips approved for request %s", rec.name)
 
                             if rec.amount and rec.amount > 0:
-                                user_to_notify_and_follow = self.env['res.users'].browse(363)
+                                user_to_notify_and_follow = self.env['res.users'].browse(350)
                                 if user_to_notify_and_follow.exists():
                                     try:
                                         rec.with_company(rec.company_id).message_subscribe(partner_ids=[user_to_notify_and_follow.partner_id.id])
