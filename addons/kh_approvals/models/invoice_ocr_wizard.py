@@ -61,7 +61,7 @@ class InvoiceOCRWizard(models.TransientModel):
         b64 = base64.b64encode(file_bytes).decode()
 
         url = (
-            "https://generativelanguage.googleapis.com/v1/"
+            "https://generativelanguage.googleapis.com/v1beta/"
             f"{GEMINI_MODEL}:generateContent"
             f"?key={GEMINI_API_KEY}"
         )
