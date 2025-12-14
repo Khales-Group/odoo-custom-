@@ -61,8 +61,8 @@ class InvoiceOCRWizard(models.TransientModel):
         b64 = base64.b64encode(file_bytes).decode()
 
         url = (
-            "https://generativelanguage.googleapis.com/v1beta/"
-            f"{GEMINI_MODEL}:generateContent"
+            "https://generativelanguage.googleapis.com/v1/"
+            "models/gemini-1.5-pro:generateContent"
             f"?key={GEMINI_API_KEY}"
         )
 
@@ -79,7 +79,7 @@ class InvoiceOCRWizard(models.TransientModel):
                     {
                         "text": (
                             "You are a financial invoice extraction engine.\n"
-                            "Return STRICT JSON ONLY. No markdown.\n"
+                            "Return STRICT JSON ONLY.\n"
                             "Use null if missing.\n\n"
                             "{"
                             "\"supplier_name\": string | null,"
@@ -113,15 +113,8 @@ class InvoiceOCRWizard(models.TransientModel):
 
         data = res.json()
 
-        try:
-            text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        except Exception:
-            raise UserError("Gemini returned unexpected response")
-
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            raise UserError(f"Invalid JSON returned:\n{text[:500]}")
+        text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        return json.loads(text)
 
     # ------------------------------------------------------------
     # Apply parsed data to invoice (Odoo 18 safe)
