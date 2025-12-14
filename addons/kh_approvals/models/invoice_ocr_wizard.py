@@ -140,6 +140,15 @@ class InvoiceOCRWizard(models.TransientModel):
             _logger.error("Gemini OCR returned empty text")
             raise UserError("Gemini OCR returned empty result")
 
+        # Remove markdown formatting if present
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1]  # remove first line (```json or ```)
+        if text.endswith("```"):
+            text = text.rsplit("\n", 1)[0]  # remove last line (```)
+
+        # Strip whitespace again after markdown removal
+        text = text.strip()
+
         # Try to parse as JSON
         try:
             parsed = json.loads(text)
