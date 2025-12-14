@@ -4,12 +4,17 @@
     <field name="model">account.move</field>
     <field name="inherit_id" ref="account.view_move_form"/>
     <field name="arch" type="xml">
-      <header position="inside">
-        <button name="action_open_gemini_ocr"
-                type="object"
-                string="OCR"
-                class="btn-primary"/>
-      </header>
+
+      <xpath expr="//header" position="inside">
+        <button
+          name="action_open_gemini_ocr"
+          type="object"
+          string="OCR"
+          class="btn-primary"
+          attrs="{'invisible': [('state','!=','draft')]}"
+        />
+      </xpath>
+
     </field>
   </record>
 </odoo>

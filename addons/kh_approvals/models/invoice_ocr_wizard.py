@@ -112,7 +112,9 @@ class InvoiceOCRWizard(models.TransientModel):
                 move.currency_id = currency.id
 
         # Clear lines
-        move.line_ids = [(5, 0, 0)]
+        invoice_lines = move.invoice_line_ids
+        invoice_lines.unlink()
+
 
         # Account fallback
         account = self.env["account.account"].search(
