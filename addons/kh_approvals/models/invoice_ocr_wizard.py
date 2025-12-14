@@ -12,8 +12,10 @@ GEMINI_API_KEY = "AIzaSyByJEePnY633napEEYMkTyE3CPfnikkm1Y"
 
 GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/"
-    "models/gemini-1.5-pro:generateContent"
+    "models/gemini-1.5-flash:generateContent"
 )
+_logger.error("Gemini status=%s body=%s", response.status_code, response.text)
+
 
 
 class InvoiceOCRWizard(models.TransientModel):
