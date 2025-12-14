@@ -1,0 +1,21 @@
+<odoo>
+  <record id="invoice_ocr_wizard_form" model="ir.ui.view">
+    <field name="name">invoice.ocr.wizard.form</field>
+    <field name="model">invoice.ocr.wizard</field>
+    <field name="arch" type="xml">
+      <form string="Invoice OCR">
+        <group>
+          <field name="file" filename="filename"/>
+          <field name="filename"/>
+        </group>
+        <footer>
+          <button string="Process"
+                  type="object"
+                  name="action_process"
+                  class="btn-primary"/>
+          <button string="Cancel" special="cancel"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+</odoo>
