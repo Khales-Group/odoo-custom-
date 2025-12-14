@@ -63,28 +63,20 @@ class InvoiceOCRWizard(models.TransientModel):
     # ------------------------------------------------------------
     def _call_gemini(self, file_bytes, mime):
         prompt = (
-            "You are an invoice OCR engine.\n"
-            "Extract invoice data and return STRICT JSON ONLY.\n\n"
+            "Extract invoice data and return STRICT JSON ONLY.\n"
             "Schema:\n"
-            "{\n"
-            '  "supplier_name": "string",\n'
-            '  "invoice_number": "string",\n'
-            '  "invoice_date": "YYYY-MM-DD",\n'
-            '  "due_date": "YYYY-MM-DD",\n'
-            '  "currency": "AED",\n'
-            '  "lines": [\n'
-            "    {\n"
-            '      "description": "string",\n'
-            '      "quantity": number,\n'
-            '      "unit_price": number\n'
-            "    }\n"
-            "  ],\n"
-            '  "total": number\n'
-            "}\n\n"
-            "Rules:\n"
-            "- NO markdown\n"
-            "- NO explanation\n"
-            "- ONLY valid JSON\n"
+            "{"
+            '"supplier_name": "string",'
+            '"invoice_number": "string",'
+            '"invoice_date": "YYYY-MM-DD",'
+            '"due_date": "YYYY-MM-DD",'
+            '"currency": "AED",'
+            '"lines": ['
+            '{"description": "string", "quantity": number, "unit_price": number}'
+            '],'
+            '"total": number'
+            "}\n"
+            "ONLY JSON. NO TEXT."
         )
 
         payload = {
@@ -92,36 +84,34 @@ class InvoiceOCRWizard(models.TransientModel):
                 {
                     "role": "user",
                     "parts": [
-                        {"text": prompt},
                         {
-                            "inline_data": {
-                                "mime_type": mime,
+                            "inlineData": {
+                                "mimeType": mime,
                                 "data": base64.b64encode(file_bytes).decode()
                             }
+                        },
+                        {
+                            "text": prompt
                         }
                     ]
                 }
             ]
         }
 
-        headers = {
-            "Content-Type": "application/json",
-            "x-goog-api-key": GEMINI_API_KEY,
-        }
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/"
+            "models/gemini-1.5-flash:generateContent"
+            f"?key={GEMINI_API_KEY}"
+        )
 
         response = requests.post(
-            GEMINI_URL,
-            headers=headers,
+            url,
             json=payload,
             timeout=120
         )
 
         if response.status_code != 200:
-            _logger.error(
-                "Gemini HTTP %s: %s",
-                response.status_code,
-                response.text
-            )
+            _logger.error("Gemini error %s: %s", response.status_code, response.text)
             raise UserError("Gemini OCR failed (HTTP error)")
 
         result = response.json()
@@ -129,12 +119,8 @@ class InvoiceOCRWizard(models.TransientModel):
         try:
             text = result["candidates"][0]["content"]["parts"][0]["text"]
             return json.loads(text)
-        except Exception as e:
-            _logger.error(
-                "Gemini response parse failed: %s\nFull response:\n%s",
-                e,
-                json.dumps(result, indent=2)
-            )
+        except Exception:
+            _logger.error("Invalid Gemini response:\n%s", json.dumps(result, indent=2))
             raise UserError("Gemini OCR failed (invalid JSON)")
 
     # ------------------------------------------------------------
