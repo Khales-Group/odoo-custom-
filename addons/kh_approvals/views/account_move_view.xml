@@ -11,7 +11,7 @@
           type="object"
           string="OCR"
           class="btn-primary"
-          attrs="{'invisible': [('state','!=','draft')]}"
+          modifiers="{'invisible': [['state', '!=', 'draft']]}"
         />
       </xpath>
 
