@@ -9,7 +9,11 @@ _logger = logging.getLogger(__name__)
 
 # ⚠️ For production: move this to ir.config_parameter
 GEMINI_API_KEY = "AIzaSyByJEePnY633napEEYMkTyE3CPfnikkm1Y"
-GEMINI_MODEL = "models/gemini-1.5-pro"
+
+GEMINI_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/"
+    "models/gemini-1.5-flash:generateContent"
+)
 
 
 class InvoiceOCRWizard(models.TransientModel):
@@ -60,9 +64,33 @@ class InvoiceOCRWizard(models.TransientModel):
     def _call_gemini(self, file_bytes, mime):
         b64 = base64.b64encode(file_bytes).decode()
 
+        # 1) LIST AVAILABLE MODELS
+        list_url = (
+            "https://generativelanguage.googleapis.com/v1beta/models"
+            f"?key={GEMINI_API_KEY}"
+        )
+        r = requests.get(list_url, timeout=30)
+        if r.status_code != 200:
+            _logger.error("Gemini list models failed: %s", r.text)
+            raise UserError("Gemini: cannot list models")
+
+        models = r.json().get("models", [])
+        model_name = None
+
+        # 2) PICK FIRST MODEL THAT SUPPORTS generateContent
+        for m in models:
+            if "generateContent" in m.get("supportedGenerationMethods", []):
+                model_name = m["name"]
+                _logger.info("Selected Gemini model: %s", model_name)
+                break
+
+        if not model_name:
+            raise UserError("Gemini: no usable model found")
+
+        # 3) CALL SELECTED MODEL
         url = (
-            "https://generativelanguage.googleapis.com/v1/"
-            "models/gemini-1.5-pro:generateContent"
+            "https://generativelanguage.googleapis.com/v1beta/"
+            f"{model_name}:generateContent"
             f"?key={GEMINI_API_KEY}"
         )
 
@@ -78,43 +106,57 @@ class InvoiceOCRWizard(models.TransientModel):
                     },
                     {
                         "text": (
-                            "You are a financial invoice extraction engine.\n"
-                            "Return STRICT JSON ONLY.\n"
-                            "Use null if missing.\n\n"
-                            "{"
-                            "\"supplier_name\": string | null,"
-                            "\"invoice_number\": string | null,"
-                            "\"invoice_date\": \"YYYY-MM-DD\" | null,"
-                            "\"due_date\": \"YYYY-MM-DD\" | null,"
-                            "\"currency\": string | null,"
-                            "\"lines\": [{"
-                                "\"description\": string,"
-                                "\"quantity\": number,"
-                                "\"unit_price\": number"
-                            "}],"
-                            "\"total\": number | null"
-                            "}"
+                            "You are an OCR parser. Read the attached invoice and extract the following fields as STRICT JSON ONLY:\n"
+                            '{"supplier_name": "string", "invoice_number": "string", "invoice_date": "YYYY-MM-DD", "due_date": "YYYY-MM-DD", '
+                            '"currency": "string", "lines":[{"description":"string","quantity":number,"unit_price":number}], "total": number}'
                         )
                     }
                 ]
-            }],
-            "generationConfig": {
-                "temperature": 0.0,
-                "topP": 0.1,
-                "maxOutputTokens": 2048
-            }
+            }]
         }
 
+        _logger.info("Sending request to Gemini model: %s", model_name)
         res = requests.post(url, json=payload, timeout=120)
 
+        _logger.info("Gemini OCR Response Status: %s", res.status_code)
+        _logger.info("Gemini OCR Response Body: %s", res.text[:2000])  # Log first 2000 chars
+
         if res.status_code != 200:
-            _logger.error("Gemini error %s: %s", res.status_code, res.text)
-            raise UserError(f"Gemini OCR failed: {res.text[:500]}")
+            _logger.error("Gemini HTTP error %s: %s", res.status_code, res.text)
+            raise UserError("Gemini OCR failed (HTTP error)")
 
         data = res.json()
+        _logger.info("Parsed Gemini response JSON: %s", json.dumps(data, indent=2)[:2000])
 
-        text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        return json.loads(text)
+        # Extract text from response
+        try:
+            text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        except (KeyError, IndexError) as e:
+            _logger.error("Failed to extract text from Gemini response: %s", e)
+            raise UserError("Gemini OCR: Invalid response structure")
+
+        # Validate text is not empty
+        if not text:
+            _logger.error("Gemini OCR returned empty text")
+            raise UserError("Gemini OCR returned empty result")
+
+        # Remove markdown formatting if present
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1]  # remove first line (```json or ```)
+        if text.endswith("```"):
+            text = text.rsplit("\n", 1)[0]  # remove last line (```)
+
+        # Strip whitespace again after markdown removal
+        text = text.strip()
+
+        # Try to parse as JSON
+        try:
+            parsed = json.loads(text)
+            _logger.info("Successfully parsed OCR JSON from Gemini")
+            return parsed
+        except json.JSONDecodeError as e:
+            _logger.error("Gemini returned invalid JSON:\nText: %s\nError: %s", text, e)
+            raise UserError(f"Gemini OCR returned invalid JSON: {text[:500]}")
 
     # ------------------------------------------------------------
     # Apply parsed data to invoice (Odoo 18 safe)
