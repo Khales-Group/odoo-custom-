@@ -23,7 +23,7 @@
         "views/approval_request_tree_view.xml",
         "views/hr_employee_views_extension.xml",
         "views/payslip_views.xml",      
-        'views/account_move_inherit_view.xml',
+        'views/account_move_view.xml',
         'views/invoice_ocr_wizard_view.xml',
 
         # --- ACTIONS + MENUS LAST (they may reference the views above) ---
