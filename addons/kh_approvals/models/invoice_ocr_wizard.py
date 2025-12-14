@@ -62,220 +62,72 @@ class InvoiceOCRWizard(models.TransientModel):
     # Gemini call (FIXED)
     # ------------------------------------------------------------
     def _call_gemini(self, file_bytes, mime):
-        """
-        Robust Gemini caller:
-        - tries several model endpoints known to support file input
-        - tries two payload shapes (text-first and file-first)
-        - logs responses and returns parsed JSON on success
-        - raises a UserError with concise diagnostics on total failure
-        """
-        # small helper to truncate long texts for logs
-        def short(s, n=1000):
-            if not isinstance(s, str):
-                s = str(s)
-            return (s[:n] + '...') if len(s) > n else s
-
-        # Models to try (order matters)
-        models = [
-            "gemini-1.5-flash",
-            "gemini-1.0-pro-vision",
-            "gemini-1.5-pro",  # sometimes present, sometimes not
-        ]
-
-        # Two payload shapes: text-first and file-first.
-        prompt = (
-            "You are an invoice OCR engine.\n"
-            "Extract invoice data and return STRICT JSON ONLY.\n\n"
-            "Schema:\n"
-            '{\n'
-            '  "supplier_name": "string",\n'
-            '  "invoice_number": "string",\n'
-            '  "invoice_date": "YYYY-MM-DD",\n'
-            '  "due_date": "YYYY-MM-DD",\n'
-            '  "currency": "string",\n'
-            '  "lines": [ { "description": "string", "quantity": number, "unit_price": number } ],\n'
-            '  "total": number\n'
-            '}\n\n'
-            "Rules:\n- RETURN ONLY JSON, no commentary, no markdown.\n"
-        )
-
-        # candidate payload constructors (two variations)
-        def payload_text_first(mime, b64):
-            return {
-                "contents": [
-                    {
-                        "role": "user",
-                        "parts": [
-                            {"text": prompt},
-                            {
-                                "inlineData": {"mimeType": mime, "data": b64}
-                            }
-                        ]
-                    }
-                ]
-            }
-
-        def payload_file_first(mime, b64):
-            return {
-                "contents": [
-                    {
-                        "role": "user",
-                        "parts": [
-                            {
-                                "inlineData": {"mimeType": mime, "data": b64}
-                            },
-                            {"text": prompt}
-                        ]
-                    }
-                ]
-            }
-
         b64 = base64.b64encode(file_bytes).decode()
 
-        # store diagnostic per attempt
-        attempts = []
+        # 1) LIST AVAILABLE MODELS
+        list_url = (
+            "https://generativelanguage.googleapis.com/v1beta/models"
+            f"?key={GEMINI_API_KEY}"
+        )
+        r = requests.get(list_url, timeout=30)
+        if r.status_code != 200:
+            raise UserError("Gemini: cannot list models")
 
-        for model in models:
-            url_base = (
-                "https://generativelanguage.googleapis.com/v1beta/"
-                f"models/{model}:generateContent"
-            )
-            # MUST pass key as query param for API-key auth
-            url = f"{url_base}?key={GEMINI_API_KEY}"
+        models = r.json().get("models", [])
+        model_name = None
 
-            for payload_fn in (payload_text_first, payload_file_first):
-                payload = payload_fn(mime, b64)
-                try:
-                    response = requests.post(url, json=payload, timeout=120)
-                except Exception as e:
-                    # network-level error
-                    _logger.error("Gemini request exception for model %s: %s", model, e)
-                    attempts.append({
-                        "model": model,
-                        "status": "exception",
-                        "detail": short(str(e), 2000)
-                    })
-                    continue
+        # 2) PICK FIRST MODEL THAT SUPPORTS generateContent
+        for m in models:
+            if "generateContent" in m.get("supportedGenerationMethods", []):
+                model_name = m["name"]
+                break
 
-                status = response.status_code
-                body = None
-                try:
-                    body = response.text
-                except Exception:
-                    body = "<unreadable body>"
+        if not model_name:
+            raise UserError("Gemini: no usable model found")
 
-                _logger.error(
-                    "Gemini attempt model=%s status=%s body=%s",
-                    model, status, short(body, 2000)
-                )
+        # 3) CALL SELECTED MODEL
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/"
+            f"{model_name}:generateContent"
+            f"?key={GEMINI_API_KEY}"
+        )
 
-                attempts.append({
-                    "model": model,
-                    "status": status,
-                    "body": short(body, 2000)
-                })
+        payload = {
+            "contents": [{
+                "role": "user",
+                "parts": [
+                    {
+                        "inlineData": {
+                            "mimeType": mime,
+                            "data": b64
+                        }
+                    },
+                    {
+                        "text": (
+                            "Extract invoice data and return STRICT JSON ONLY.\n"
+                            "{"
+                            '"supplier_name": "string",'
+                            '"invoice_number": "string",'
+                            '"invoice_date": "YYYY-MM-DD",'
+                            '"due_date": "YYYY-MM-DD",'
+                            '"currency": "string",'
+                            '"lines":[{"description":"string","quantity":number,"unit_price":number}],'
+                            '"total": number'
+                            "}"
+                        )
+                    }
+                ]
+            }]
+        }
 
-                # If HTTP error, try next
-                if status != 200:
-                    # continue to next attempt
-                    continue
+        res = requests.post(url, json=payload, timeout=120)
 
-                # parse JSON result and extract content
-                try:
-                    result = response.json()
-                except Exception as e:
-                    _logger.error("Gemini: failed to parse JSON response for model %s: %s", model, e)
-                    attempts.append({
-                        "model": model,
-                        "status": "invalid_json",
-                        "detail": short(str(e), 2000)
-                    })
-                    continue
+        if res.status_code != 200:
+            raise UserError("Gemini OCR failed (HTTP error)")
 
-                # try to find the textual JSON candidate
-                try:
-                    # typical path: candidates[0].content.parts[0].text
-                    cand = result.get("candidates") or []
-                    if cand and isinstance(cand, list):
-                        # iterate candidates to find a valid text part
-                        for c in cand:
-                            content = c.get("content", {})
-                            parts = content.get("parts", []) if isinstance(content, dict) else []
-                            for p in parts:
-                                # prefer 'text' part which should contain our JSON
-                                if p.get("text"):
-                                    text = p.get("text")
-                                    text_stripped = text.strip()
-                                    # try parse
-                                    try:
-                                        parsed = json.loads(text_stripped)
-                                        _logger.info("Gemini parsed JSON successfully using model %s", model)
-                                        return parsed
-                                    except Exception as e:
-                                        # if not JSON, log and continue search
-                                        _logger.error("Gemini candidate text not valid JSON: %s", e)
-                                        attempts.append({
-                                            "model": model,
-                                            "status": "invalid_json_candidate",
-                                            "candidate_preview": short(text_stripped, 2000),
-                                            "parse_error": short(str(e), 2000)
-                                        })
-                                        # continue to next part/candidate
-                    # fallback: sometimes content may be under 'output' keys - try to find any text value
-                    def find_text_values(obj):
-                        texts = []
-                        if isinstance(obj, dict):
-                            for k, v in obj.items():
-                                if isinstance(v, str):
-                                    texts.append(v)
-                                else:
-                                    texts.extend(find_text_values(v))
-                        elif isinstance(obj, list):
-                            for item in obj:
-                                texts.extend(find_text_values(item))
-                        return texts
-
-                    for txt in find_text_values(result)[:10]:
-                        try:
-                            parsed = json.loads(txt.strip())
-                            _logger.info("Gemini parsed JSON from fallback text using model %s", model)
-                            return parsed
-                        except Exception:
-                            continue
-
-                    # If we get here, 200 but no valid JSON candidate
-                    attempts.append({
-                        "model": model,
-                        "status": "200_but_no_json",
-                        "response_preview": short(json.dumps(result), 2000)
-                    })
-                    # try next model/shape
-                except Exception as e:
-                    _logger.error("Unexpected processing error for model %s: %s", model, e)
-                    attempts.append({
-                        "model": model,
-                        "status": "processing_exception",
-                        "detail": short(str(e), 2000)
-                    })
-                    continue
-
-        # If we tried everything and none succeeded, raise a helpful UserError with diagnostics
-        msg_lines = [
-            "Gemini OCR failed (HTTP error / no valid JSON). Diagnostic summary of attempts (most recent first):"
-        ]
-        # show last 6 attempts
-        for a in attempts[-6:][::-1]:
-            line = f"- model={a.get('model')} status={a.get('status')}"
-            if 'body' in a:
-                line += f" body_preview={a.get('body')}"
-            if 'candidate_preview' in a:
-                line += f" candidate_preview={a.get('candidate_preview')}"
-            msg_lines.append(line)
-        msg_lines.append("Check: API key validity, Generative Language API enabled, API key restrictions (remove HTTP referrer restrictions), and project billing.")
-        msg = "\n".join(msg_lines)
-        _logger.error(msg)
-        # Provide shorter user-facing message while showing the top cause
-        raise UserError(_("Gemini OCR failed. See server logs for details."))
+        data = res.json()
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        return json.loads(text)
 
     # ------------------------------------------------------------
     # Apply parsed data to invoice (Odoo 18 safe)
