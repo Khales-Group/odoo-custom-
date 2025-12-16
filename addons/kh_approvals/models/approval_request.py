@@ -831,7 +831,7 @@ class KhApprovalRequest(models.Model):
 
     def action_opt_out_as_approver(self):
         # Feature disabled at your request
-        raise UserError(_("This option has been disabled by your administrator."))
+        raise UserError(_("This option has been disabled by your admin."))
 
     def action_mark_as_paid(self):
         """Accountant marks the request as paid (even if not an approver)."""
