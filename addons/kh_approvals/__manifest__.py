@@ -16,6 +16,8 @@
         "security/kh_approvals_rules.xml",
         "data/sequence.xml",
         # --- views ---
+        "views/project_email_views.xml", # Load the new model views first
+        "views/project_views.xml",      # Then load the project extension
         "views/approval_request_views.xml",
         "views/approval_rule_views.xml",
         "views/qweb_templates.xml",
@@ -24,9 +26,7 @@
         "views/hr_employee_views_extension.xml",
         "views/payslip_views.xml",              # --- ACTIONS + MENUS LAST (they may reference the views above) ---
         "views/menu.xml",
-    
-        "views/project_views.xml",
-        "views/project_email_views.xml",],
+    ],
     "assets": {
         "web.assets_backend": [
             "kh_approvals/static/src/css/approvals_backend.css",
