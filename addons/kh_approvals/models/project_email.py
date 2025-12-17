@@ -28,3 +28,12 @@ class ProjectEmail(models.Model):
         readonly=True,
         sanitize=True
     )
+
+    attachment_ids = fields.Many2many(
+        "ir.attachment",
+        "project_email_attachment_rel",
+        "email_id",
+        "attachment_id",
+        string="Attachments",
+        readonly=True
+    )
