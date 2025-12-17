@@ -1,5 +1,6 @@
-from odoo import models, fields
+# addons/kh_approvals/models/project_extension.py
 
+from odoo import models, fields, api
 
 class Project(models.Model):
     _inherit = "project.project"
@@ -19,3 +20,28 @@ class Project(models.Model):
         "project_id",
         string="Emails"
     )
+    
+    # 1. Field to store the count (e.g., "5")
+    email_count = fields.Integer(compute='_compute_email_count', string="Email Count")
+
+    @api.depends('email_ids')
+    def _compute_email_count(self):
+        for record in self:
+            record.email_count = len(record.email_ids)
+
+    # 2. Action to open the view when button is clicked
+    def action_open_project_emails(self):
+        self.ensure_one()
+        return {
+            'name': 'Project Emails',
+            'type': 'ir.actions.act_window',
+            'res_model': 'project.email',
+            'view_mode': 'list,form', # Use 'list' for Odoo 18
+            'domain': [('project_id', '=', self.id)],
+            'context': {'default_project_id': self.id},
+            'help': """
+                <p class="o_view_nocontent_smiling_face">
+                    No emails found.
+                </p>
+            """
+        }

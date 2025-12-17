@@ -1,98 +1,39 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <data>
-        <!-- ============================= -->
-        <!-- Project Form Extension -->
-        <!-- ============================= -->
-        <record id="view_project_form_inherit_email_tab" model="ir.ui.view">
-            <field name="name">project.form.inherit.email.tab</field>
+        <record id="view_project_form_inherit_email_smart_button" model="ir.ui.view">
+            <field name="name">project.form.inherit.email.smart.button</field>
             <field name="model">project.project</field>
             <field name="inherit_id" ref="project.edit_project"/>
             <field name="arch" type="xml">
+
+                <!-- 1. Add the SMART BUTTON at the top -->
+                <xpath expr="//div[@name='button_box']" position="inside">
+                    <button class="oe_stat_button" 
+                            type="object" 
+                            name="action_open_project_emails" 
+                            icon="fa-envelope">
+                        <div class="o_field_widget o_stat_info">
+                            <span class="o_stat_value">
+                                <field name="email_count"/>
+                            </span>
+                            <span class="o_stat_text">Emails</span>
+                        </div>
+                    </button>
+                </xpath>
+
+                <!-- 2. (Optional) Keep the Tab at the bottom or Remove it? 
+                     If you want to REMOVE the bottom tab, delete the xpath that adds the page.
+                     If you want to KEEP both, leave your previous xpath here. 
+                     
+                     For now, I will assume you want to REMOVE the bottom tab and just use the button.
+                -->
                 
-                <!-- 1. Add Email Fields to Settings Tab -->
-                <xpath expr="//page[@name='settings']//group[1]" position="after">
-                    <group string="Communication">
+                <!-- 3. Add the Header Fields (Contact Emails) -->
+                <xpath expr="//sheet/group" position="inside">
+                     <group string="Contact Emails">
                         <field name="contractor_email"/>
                         <field name="client_email"/>
-                    </group>
-                </xpath>
-
-                <!-- 2. Add New Emails Tab -->
-                <xpath expr="//notebook" position="inside">
-                    <page string="Emails (Custom)" name="custom_project_emails">
-                        <!-- Mode list,form ensures we can define the popup look here -->
-                        <field name="email_ids" mode="list,form">
-                            
-                            <!-- 1. THE LIST VIEW -->
-                            <!-- 'editable' removed so clicking opens the Form -->
-                            <list string="Emails" 
-                                  create="false" 
-                                  edit="false" 
-                                  delete="false" 
-                                  decoration-info="True"> <!-- Blue text for links -->
-                                <field name="date"/>
-                                <field name="email_from"/>
-                                <field name="subject"/>
-                                <!-- Paperclip icon if attachments exist -->
-                                <field name="attachment_ids" widget="many2many_tags" optional="show"/>
-                            </list>
-
-                            <!-- 2. THE FORM VIEW (The Popup) -->
-                            <form string="Email Content" create="false" edit="false">
-                                <sheet>
-                                    <!-- Header: Subject -->
-                                    <div class="oe_title" style="margin-bottom: 20px;">
-                                        <label for="subject" class="oe_edit_only"/>
-                                        <h1 style="font-size: 24px;">
-                                            <field name="subject" readonly="1"/>
-                                        </h1>
-                                    </div>
-
-                                    <!-- Metadata: From / To / Date -->
-                                    <group>
-                                        <group>
-                                            <field name="email_from" readonly="1" style="font-weight: bold;"/>
-                                            <field name="email_to" readonly="1"/>
-                                        </group>
-                                        <group>
-                                            <field name="date" readonly="1"/>
-                                        </group>
-                                    </group>
-
-                                    <!-- ATTACHMENTS SECTION -->
-                                    <!-- This widget shows files as icons (PDF, IMG, etc.) -->
-                                    <separator string="Attachments"/>
-                                    <group>
-                                        <field name="attachment_ids" 
-                                               widget="many2many_binary" 
-                                               nolabel="1" 
-                                               readonly="1"/>
-                                    </group>
-
-                                    <!-- EMAIL BODY SECTION -->
-                                    <separator string="Message"/>
-                                    <div style="border-top: 1px solid #e0e0e0; padding-top: 15px;">
-                                        <!-- widget="html" renders the actual design of the email -->
-                                        <field name="body_html" 
-                                               widget="html" 
-                                               options="{'style-inline': true}" 
-                                               readonly="1" 
-                                               nolabel="1"/>
-                                    </div>
-                                </sheet>
-                            </form>
-                            
-                        </field>
-                    </page>
-                </xpath>
-
-                <!-- Add email fields to the top group (Header) instead of settings tab 
-                     to verify they exist -->
-                <xpath expr="//sheet/group" position="inside">
-                    <group string="Contact Emails">
-                         <field name="contractor_email"/>
-                         <field name="client_email"/>
                     </group>
                 </xpath>
 
