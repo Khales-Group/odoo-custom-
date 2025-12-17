@@ -21,12 +21,12 @@
                 <!-- 2. Add New Emails Tab -->
                 <xpath expr="//notebook" position="inside">
                     <page string="Emails (Custom)" name="custom_project_emails">
-                        <field name="email_ids" mode="tree,form">
-                            <tree string="Emails" editable="bottom">
+                        <field name="email_ids" mode="list,form">
+                            <list string="Emails" editable="bottom">
                                 <field name="date"/>
                                 <field name="subject"/>
                                 <field name="email_from"/>
-                            </tree>
+                            </list>
                         </field>
                     </page>
                 </xpath>

@@ -3,18 +3,19 @@
     <data>
 
         <!-- ============================= -->
-        <!-- Project Email Tree View -->
+        <!-- Project Email List View (Renamed from Tree) -->
         <!-- ============================= -->
         <record id="project_email_tree" model="ir.ui.view">
-            <field name="name">project.email.tree</field>
+            <field name="name">project.email.list</field>
             <field name="model">project.email</field>
             <field name="arch" type="xml">
-                <tree string="Project Emails">
+                <!-- ERROR FIX: Change <tree> to <list> -->
+                <list string="Project Emails">
                     <field name="date"/>
                     <field name="email_from"/>
                     <field name="subject"/>
                     <field name="preview"/>
-                </tree>
+                </list>
             </field>
         </record>
 
