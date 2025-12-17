@@ -8,6 +8,4 @@ access_kh_request_manager,access_kh_request_manager,model_kh_approval_request,kh
 access_kh_line_manager,access_kh_line_manager,model_kh_approval_line,kh_approvals.group_kh_approvals_manager,1,1,1,1
 access_kh_request_accountant,access_kh_request_accountant,model_kh_approval_request,kh_approvals.group_kh_approvals_accountant,1,1,0,0
 access_kh_petty_cash_line,kh.approval.petty.cash.line,model_kh_approval_petty_cash_line,base.group_user,1,1,1,1
-access_project_email_user,project.email user,model_project_email,base.group_user,1,0,0,0
-access_project_email_manager,project.email manager,model_project_email,base.group_system,1,1,1,1
-access_project_email,project.email,model_project_email,base.group_user,1,1,1,1
+access_project_email_full,project.email.full,model_project_email,base.group_user,1,1,1,1

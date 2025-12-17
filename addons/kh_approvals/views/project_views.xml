@@ -19,11 +19,25 @@
                 </xpath>
 
                 <!-- 2. Add New Emails Tab -->
-                <xpath expr="//page[@name='settings']" position="before">
-                    <page string="Emails" name="project_emails_tab">
-                        <!-- Linked directly to the View ID you created in project_email_views.xml -->
-                        <field name="email_ids" context="{'tree_view_ref': 'kh_approvals.project_email_tree', 'form_view_ref': 'kh_approvals.project_email_form'}"/>
+                <xpath expr="//notebook" position="inside">
+                    <page string="Emails (Custom)" name="custom_project_emails">
+                        <field name="email_ids" mode="tree,form">
+                            <tree string="Emails" editable="bottom">
+                                <field name="date"/>
+                                <field name="subject"/>
+                                <field name="email_from"/>
+                            </tree>
+                        </field>
                     </page>
+                </xpath>
+
+                <!-- Add email fields to the top group (Header) instead of settings tab 
+                     to verify they exist -->
+                <xpath expr="//sheet/group" position="inside">
+                    <group string="Contact Emails">
+                         <field name="contractor_email"/>
+                         <field name="client_email"/>
+                    </group>
                 </xpath>
 
             </field>
