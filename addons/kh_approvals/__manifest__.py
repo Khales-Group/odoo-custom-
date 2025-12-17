@@ -24,7 +24,9 @@
         "views/hr_employee_views_extension.xml",
         "views/payslip_views.xml",              # --- ACTIONS + MENUS LAST (they may reference the views above) ---
         "views/menu.xml",
-    ],
+    
+        "addons/kh_approvals/views/project_views.xml",
+        "addons/kh_approvals/views/project_email_views.xml",],
     "assets": {
         "web.assets_backend": [
             "kh_approvals/static/src/css/approvals_backend.css",
