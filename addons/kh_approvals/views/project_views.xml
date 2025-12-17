@@ -1,17 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <data>
-
         <!-- ============================= -->
         <!-- Project Form Extension -->
         <!-- ============================= -->
-        <record id="project_form_extension" model="ir.ui.view">
-            <field name="name">project.project.form.extension</field>
+        <record id="view_project_form_inherit_email_tab" model="ir.ui.view">
+            <field name="name">project.form.inherit.email.tab</field>
             <field name="model">project.project</field>
             <field name="inherit_id" ref="project.edit_project"/>
             <field name="arch" type="xml">
-
-                <!-- Add Communication Group to General Info -->
+                
+                <!-- 1. Add Email Fields to Settings Tab -->
                 <xpath expr="//page[@name='settings']//group[1]" position="after">
                     <group string="Communication">
                         <field name="contractor_email"/>
@@ -19,58 +18,34 @@
                     </group>
                 </xpath>
 
-            </field>
-        </record>
-
-        <!-- ============================= -->
-        <!-- Emails Tab (Two-Column UI) -->
-        <!-- ============================= -->
-        <record id="view_project_form_inherit_email_tab" model="ir.ui.view">
-            <field name="name">project.form.inherit.email.tab</field>
-            <field name="model">project.project</field>
-            <field name="inherit_id" ref="project.view_project_form"/>
-            <field name="arch" type="xml">
-                <xpath expr="//page[@string='Notes']" position="after">
-                    <page string="Emails">
-                        <group>
-                            <field name="email_ids" nolabel="1" class="oe_left_column" context="{'form_view_ref':'project.view_project_email_form'}">
-                                <tree
-                                    create="false"
-                                    edit="false"
-                                    delete="false"
-                                    string="Emails"
-                                    class="oe_left_column_tree"
-                                >
-                                    <field name="date" widget="datetime"/>
-                                    <field name="email_from"/>
-                                    <field name="subject"/>
-                                    <field name="preview"/>
-                                </tree>
-                            </field>
-
-                            <field name="email_ids" nolabel="1" class="oe_right_column" context="{'form_view_ref':'project.view_project_email_form'}">
-                                <form string="Email" create="false" edit="false" class="oe_right_column_form">
-                                    <sheet>
-                                        <group>
-                                            <field name="subject"/>
-                                            <field name="email_from"/>
-                                            <field name="email_to"/>
-                                            <field name="date"/>
-                                        </group>
-                                        <group>
-                                            <field name="attachment_ids" widget="many2many_binary"/>
-                                        </group>
-                                        <group>
-                                            <field name="body_html" widget="html" readonly="1"/>
-                                        </group>
-                                    </sheet>
-                                </form>
-                            </field>
-                        </group>
+                <!-- 2. Add New Emails Tab -->
+                <xpath expr="//page[@name='settings']" position="before">
+                    <page string="Emails" name="project_emails">
+                        <field name="email_ids" mode="tree">
+                            <tree string="Emails" editable="bottom">
+                                <field name="date"/>
+                                <field name="email_from"/>
+                                <field name="subject"/>
+                                <!-- Clicking a line will open the full form popup automatically -->
+                            </tree>
+                            <form string="Email Details">
+                                <sheet>
+                                    <group>
+                                        <field name="subject"/>
+                                        <field name="email_from"/>
+                                        <field name="email_to"/>
+                                        <field name="date"/>
+                                    </group>
+                                    <group>
+                                        <field name="body_html" widget="html" readonly="1"/>
+                                    </group>
+                                </sheet>
+                            </form>
+                        </field>
                     </page>
                 </xpath>
+
             </field>
         </record>
-
     </data>
 </odoo>
