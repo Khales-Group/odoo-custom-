@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+
+        <!-- ============================= -->
+        <!-- Project Form Extension -->
+        <!-- ============================= -->
+        <record id="project_form_extension" model="ir.ui.view">
+            <field name="name">project.project.form.extension</field>
+            <field name="model">project.project</field>
+            <field name="inherit_id" ref="project.edit_project"/>
+            <field name="arch" type="xml">
+
+                <!-- Add Communication Group to General Info -->
+                <xpath expr="//page[@name='settings']//group[1]" position="after">
+                    <group string="Communication">
+                        <field name="contractor_email"/>
+                        <field name="client_email"/>
+                    </group>
+                </xpath>
+
+            </field>
+        </record>
+
+        <!-- ============================= -->
+        <!-- Emails Tab (Two-Column UI) -->
+        <!-- ============================= -->
+        <record id="project_emails_tab" model="ir.ui.view">
+            <field name="name">project.project.emails.tab</field>
+            <field name="model">project.project</field>
+            <field name="inherit_id" ref="project.edit_project"/>
+            <field name="arch" type="xml">
+
+                <xpath expr="//notebook" position="inside">
+                    <page string="Emails">
+                        <group>
+
+                            <!-- LEFT + RIGHT CONTAINER -->
+                            <field name="email_ids" mode="tree,form">
+
+                                <!-- ========================= -->
+                                <!-- LEFT COLUMN – Email List -->
+                                <!-- ========================= -->
+                                <tree string="Emails" create="false" edit="false">
+                                    <field name="date"/>
+                                    <field name="email_from"/>
+                                    <field name="subject"/>
+                                    <field name="preview"/>
+                                </tree>
+
+                                <!-- ========================= -->
+                                <!-- RIGHT COLUMN – Email Viewer -->
+                                <!-- ========================= -->
+                                <form string="Email" create="false" edit="false">
+
+                                    <group>
+                                        <field name="subject"/>
+                                    </group>
+
+                                    <group col="2">
+                                        <field name="email_from"/>
+                                        <field name="email_to"/>
+                                        <field name="date"/>
+                                    </group>
+
+                                    <separator string="Attachments"/>
+
+                                    <!-- Placeholder for future attachments -->
+
+                                    <separator string="Full Email"/>
+
+                                    <group>
+                                        <field name="body_html"
+                                               widget="html"
+                                               nolabel="1"
+                                               style="height:400px; overflow:auto;"/>
+                                    </group>
+
+                                </form>
+                            </field>
+
+                        </group>
+                    </page>
+                </xpath>
+
+            </field>
+        </record>
+
+    </data>
+</odoo>

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+
+        <!-- ============================= -->
+        <!-- Project Email Tree View -->
+        <!-- ============================= -->
+        <record id="project_email_tree" model="ir.ui.view">
+            <field name="name">project.email.tree</field>
+            <field name="model">project.email</field>
+            <field name="arch" type="xml">
+                <tree string="Project Emails">
+                    <field name="date"/>
+                    <field name="email_from"/>
+                    <field name="subject"/>
+                    <field name="preview"/>
+                </tree>
+            </field>
+        </record>
+
+        <!-- ============================= -->
+        <!-- Project Email Form View -->
+        <!-- ============================= -->
+        <record id="project_email_form" model="ir.ui.view">
+            <field name="name">project.email.form</field>
+            <field name="model">project.email</field>
+            <field name="arch" type="xml">
+                <form string="Project Email">
+
+                    <group>
+                        <field name="subject"/>
+                    </group>
+
+                    <group col="2">
+                        <field name="email_from"/>
+                        <field name="email_to"/>
+                        <field name="date"/>
+                    </group>
+
+                    <separator string="Attachments"/>
+
+                    <!-- Placeholder for future attachments -->
+
+                    <separator string="Full Email"/>
+
+                    <group>
+                        <field name="body_html"
+                               widget="html"
+                               nolabel="1"
+                               style="height:400px; overflow:auto;"/>
+                    </group>
+
+                </form>
+            </field>
+        </record>
+
+    </data>
+</odoo>

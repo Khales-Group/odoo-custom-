@@ -4,6 +4,7 @@ from . import rule_step
 from . import mail_activity_guard
 from . import hr_employee_extension
 from . import payslip_extension
-from . import account_move
-from . import invoice_ocr_wizard
+from . import project_extension
+from . import project_email
+
 
