@@ -20,28 +20,9 @@
 
                 <!-- 2. Add New Emails Tab -->
                 <xpath expr="//page[@name='settings']" position="before">
-                    <page string="Emails" name="project_emails">
-                        <field name="email_ids" mode="tree">
-                            <tree string="Emails" editable="bottom">
-                                <field name="date"/>
-                                <field name="email_from"/>
-                                <field name="subject"/>
-                                <!-- Clicking a line will open the full form popup automatically -->
-                            </tree>
-                            <form string="Email Details">
-                                <sheet>
-                                    <group>
-                                        <field name="subject"/>
-                                        <field name="email_from"/>
-                                        <field name="email_to"/>
-                                        <field name="date"/>
-                                    </group>
-                                    <group>
-                                        <field name="body_html" widget="html" readonly="1"/>
-                                    </group>
-                                </sheet>
-                            </form>
-                        </field>
+                    <page string="Emails" name="project_emails_tab">
+                        <!-- Linked directly to the View ID you created in project_email_views.xml -->
+                        <field name="email_ids" context="{'tree_view_ref': 'kh_approvals.project_email_tree', 'form_view_ref': 'kh_approvals.project_email_form'}"/>
                     </page>
                 </xpath>
 
