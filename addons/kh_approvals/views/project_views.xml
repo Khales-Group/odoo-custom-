@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <data>
-        <!-- 1. DEFINE THE SEARCH VIEW WITH SIDEBAR -->
+        <!-- SEARCH VIEW WITH SIDEBAR -->
         <record id="project_email_search_panel_view" model="ir.ui.view">
-            <field name="name">project.email.search.panel</field>
+            <field name="name">project.email.search.sidebar</field>
             <field name="model">project.email</field>
             <field name="arch" type="xml">
                 <search string="Search Emails">
@@ -11,25 +11,26 @@
                     <field name="email_from"/>
                     <field name="email_to"/>
                     
-                    <!-- THE SIDEBAR (Filter by Category) -->
+                    <!-- Search by Tag -->
+                    <field name="category_ids"/>
+
+                    <!-- SIDEBAR: Using 'folder' (Selection) -->
+                    <!-- This works because 'folder' is now in project_email.py -->
                     <searchpanel>
-                        <field name="category_ids" icon="fa-folder" enable_counters="1"/>
+                        <field name="folder" icon="fa-folder" enable_counters="1"/>
                     </searchpanel>
                 </search>
             </field>
         </record>
 
-        <!-- 2. UPDATE THE SMART BUTTON TO USE THIS VIEW -->
+        <!-- SMART BUTTON (No changes needed here, just ensure it exists) -->
         <record id="view_project_form_inherit_email_ui" model="ir.ui.view">
             <field name="name">project.form.inherit.email.ui</field>
             <field name="model">project.project</field>
             <field name="inherit_id" ref="project.edit_project"/>
             <field name="arch" type="xml">
                 <xpath expr="//div[@name='button_box']" position="inside">
-                    <button class="oe_stat_button" 
-                            type="object" 
-                            name="action_open_project_emails" 
-                            icon="fa-envelope">
+                    <button class="oe_stat_button" type="object" name="action_open_project_emails" icon="fa-envelope">
                         <div class="o_field_widget o_stat_info">
                             <span class="o_stat_value"><field name="email_count"/></span>
                             <span class="o_stat_text">Emails</span>
