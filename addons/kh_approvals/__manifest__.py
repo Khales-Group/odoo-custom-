@@ -30,8 +30,8 @@
         "views/menu.xml",
     
         # CORRECTED PATHS HERE:
-        "views/project_email_views.xml",  # Load this first!
-        "views/project_views.xml",        # Load this second
+        # "views/project_email_views.xml",  # Load this first!
+        # "views/project_views.xml",        # Load this second
     ],
     "assets": {
         "web.assets_backend": [
