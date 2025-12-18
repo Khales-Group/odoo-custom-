@@ -43,10 +43,11 @@ class Project(models.Model):
             'name': 'Project Emails',
             'type': 'ir.actions.act_window',
             'res_model': 'project.email',
-            'view_mode': 'list,form', # Use 'list' for Odoo 18
+            'view_mode': 'list,form',
             'domain': [('project_id', '=', self.id)],
             'context': {'default_project_id': self.id},
-            'search_view_id': self.env.ref('kh_approvals.project_email_search_panel_view').id,
+            # I removed the 'search_view_id' line below.
+            # Odoo will automatically find the search panel we defined in XML.
             'help': """
                 <p class="o_view_nocontent_smiling_face">
                     No emails found.
