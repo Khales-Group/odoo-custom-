@@ -1,26 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <data>
-
-        <!-- SEARCH VIEW WITH SIDEBAR -->
+        <!-- 1. DEFINE THE SEARCH VIEW WITH SIDEBAR -->
         <record id="project_email_search_panel_view" model="ir.ui.view">
-            <field name="name">project.email.search.sidebar</field>
+            <field name="name">project.email.search.panel</field>
             <field name="model">project.email</field>
             <field name="arch" type="xml">
                 <search string="Search Emails">
                     <field name="subject"/>
                     <field name="email_from"/>
-                    <field name="category_ids"/>
-
-                    <!-- SIDEBAR: Using 'folder' (Selection) is SAFE. 'category_ids' causes CRASH. -->
+                    <field name="email_to"/>
+                    
+                    <!-- THE SIDEBAR (Filter by Category) -->
                     <searchpanel>
-                        <field name="folder" icon="fa-folder" enable_counters="1"/>
+                        <field name="category_ids" icon="fa-folder" enable_counters="1"/>
                     </searchpanel>
                 </search>
             </field>
         </record>
 
-        <!-- SMART BUTTON -->
+        <!-- 2. UPDATE THE SMART BUTTON TO USE THIS VIEW -->
         <record id="view_project_form_inherit_email_ui" model="ir.ui.view">
             <field name="name">project.form.inherit.email.ui</field>
             <field name="model">project.project</field>
@@ -39,6 +38,5 @@
                 </xpath>
             </field>
         </record>
-
     </data>
 </odoo>
