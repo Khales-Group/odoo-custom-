@@ -3,14 +3,17 @@ from odoo import models, fields, api
 class ProjectEmailCategory(models.Model):
     _name = "project.email.category"
     _description = "Email Category"
+
     name = fields.Char(required=True)
     color = fields.Integer(string="Color Index")
 
 class ProjectEmail(models.Model):
     _inherit = "project.email"
-    
+
+    # Tags for multiple labels
     category_ids = fields.Many2many("project.email.category", string="Categories")
-    # We define the field, but we won't show it in XML yet
+
+    # CRITICAL: This field MUST exist for the sidebar to work
     folder = fields.Selection([
         ('main', 'Main (Info)'),
         ('owner', 'Owner'),
@@ -28,8 +31,9 @@ class Project(models.Model):
     x_studio_consultant_email = fields.Char(string="Consultant Email")
     x_studio_contractor_email = fields.Char(string="Contractor Email")
     x_studio_consultant = fields.Char(string="Consultant Name")
-    
+
     email_ids = fields.One2many("project.email", "project_id", string="Emails")
+    
     email_count = fields.Integer(compute='_compute_email_count', string="Email Count")
 
     @api.depends('email_ids')

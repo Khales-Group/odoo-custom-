@@ -2,7 +2,7 @@
 <odoo>
     <data>
 
-        <!-- 1. SEARCH VIEW WITH LEFT SIDEBAR -->
+        <!-- SEARCH VIEW WITH SIDEBAR -->
         <record id="project_email_search_panel_view" model="ir.ui.view">
             <field name="name">project.email.search.sidebar</field>
             <field name="model">project.email</field>
@@ -12,17 +12,15 @@
                     <field name="email_from"/>
                     <field name="category_ids"/>
 
-                    <!-- COMMENT THIS OUT TO FIX THE CRASH -->
-                    <!-- 
+                    <!-- SIDEBAR: Using 'folder' (Selection) is SAFE. 'category_ids' causes CRASH. -->
                     <searchpanel>
                         <field name="folder" icon="fa-folder" enable_counters="1"/>
-                    </searchpanel> 
-                    -->
+                    </searchpanel>
                 </search>
             </field>
         </record>
 
-        <!-- 2. SMART BUTTON IN PROJECT FORM -->
+        <!-- SMART BUTTON -->
         <record id="view_project_form_inherit_email_ui" model="ir.ui.view">
             <field name="name">project.form.inherit.email.ui</field>
             <field name="model">project.project</field>
@@ -38,15 +36,6 @@
                             <span class="o_stat_text">Emails</span>
                         </div>
                     </button>
-                </xpath>
-                
-                <!-- Add Settings Fields for Testing -->
-                <xpath expr="//sheet/group" position="inside">
-                     <group string="Email Configuration">
-                        <field name="contractor_email"/>
-                        <field name="x_studio_offical_email"/>
-                        <field name="x_studio_consultant"/>
-                    </group>
                 </xpath>
             </field>
         </record>
