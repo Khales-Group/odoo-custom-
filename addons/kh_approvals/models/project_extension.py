@@ -2,6 +2,21 @@
 
 from odoo import models, fields, api
 
+class ProjectEmail(models.Model):
+    _inherit = "project.email"
+
+    # Keep your existing tags for advanced filtering
+    category_ids = fields.Many2many("project.email.category", string="Tags")
+
+    # ADD THIS FOR THE SIDEBAR UI
+    folder = fields.Selection([
+        ('main', 'Main (Info)'),
+        ('owner', 'Owner'),
+        ('consultant', 'Consultant'),
+        ('contractor', 'Contractor'),
+        ('internal', 'Internal / Team')
+    ], string="Folder", default='main', required=True)
+
 class ProjectEmailCategory(models.Model):
     _name = "project.email.category"
     _description = "Email Category (Owner, Contractor, etc)"
