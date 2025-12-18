@@ -2,6 +2,13 @@
 
 from odoo import models, fields, api
 
+class ProjectEmailCategory(models.Model):
+    _name = "project.email.category"
+    _description = "Email Category (Owner, Contractor, etc)"
+
+    name = fields.Char(required=True)
+    color = fields.Integer(string="Color Index")
+
 class Project(models.Model):
     _inherit = "project.project"
 
@@ -39,6 +46,7 @@ class Project(models.Model):
             'view_mode': 'list,form', # Use 'list' for Odoo 18
             'domain': [('project_id', '=', self.id)],
             'context': {'default_project_id': self.id},
+            'search_view_id': self.env.ref('kh_approvals.project_email_search_panel_view').id,
             'help': """
                 <p class="o_view_nocontent_smiling_face">
                     No emails found.

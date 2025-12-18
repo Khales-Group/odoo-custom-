@@ -37,3 +37,9 @@ class ProjectEmail(models.Model):
         string="Attachments",
         readonly=True
     )
+
+    # Add this field to store tags like [Main, Owner, Contractor]
+    category_ids = fields.Many2many(
+        "project.email.category",
+        string="Categories"
+    )

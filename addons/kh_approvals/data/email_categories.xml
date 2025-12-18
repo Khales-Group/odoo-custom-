@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="cat_main" model="project.email.category">
+            <field name="name">Main (Info)</field>
+            <field name="color">1</field> <!-- Red -->
+        </record>
+        <record id="cat_owner" model="project.email.category">
+            <field name="name">Owner</field>
+            <field name="color">2</field> <!-- Orange -->
+        </record>
+        <record id="cat_consultant" model="project.email.category">
+            <field name="name">Consultant</field>
+            <field name="color">3</field> <!-- Yellow -->
+        </record>
+        <record id="cat_contractor" model="project.email.category">
+            <field name="name">Contractor</field>
+            <field name="color">4</field> <!-- Blue -->
+        </record>
+        <record id="cat_internal" model="project.email.category">
+            <field name="name">Internal / Other</field>
+            <field name="color">5</field> <!-- Purple -->
+        </record>
+    </data>
+</odoo>

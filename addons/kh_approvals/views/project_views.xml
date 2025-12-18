@@ -1,42 +1,41 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <data>
-        <record id="view_project_form_inherit_email_smart_button" model="ir.ui.view">
-            <field name="name">project.form.inherit.email.smart.button</field>
+        <!-- 1. DEFINE THE SEARCH VIEW WITH SIDEBAR -->
+        <record id="project_email_search_panel_view" model="ir.ui.view">
+            <field name="name">project.email.search.panel</field>
+            <field name="model">project.email</field>
+            <field name="arch" type="xml">
+                <search string="Search Emails">
+                    <field name="subject"/>
+                    <field name="email_from"/>
+                    <field name="email_to"/>
+                    
+                    <!-- THE SIDEBAR (Filter by Category) -->
+                    <searchpanel>
+                        <field name="category_ids" icon="fa-folder" enable_counters="1"/>
+                    </searchpanel>
+                </search>
+            </field>
+        </record>
+
+        <!-- 2. UPDATE THE SMART BUTTON TO USE THIS VIEW -->
+        <record id="view_project_form_inherit_email_ui" model="ir.ui.view">
+            <field name="name">project.form.inherit.email.ui</field>
             <field name="model">project.project</field>
             <field name="inherit_id" ref="project.edit_project"/>
             <field name="arch" type="xml">
-
-                <!-- 1. Add the SMART BUTTON at the top -->
                 <xpath expr="//div[@name='button_box']" position="inside">
                     <button class="oe_stat_button" 
                             type="object" 
                             name="action_open_project_emails" 
                             icon="fa-envelope">
                         <div class="o_field_widget o_stat_info">
-                            <span class="o_stat_value">
-                                <field name="email_count"/>
-                            </span>
+                            <span class="o_stat_value"><field name="email_count"/></span>
                             <span class="o_stat_text">Emails</span>
                         </div>
                     </button>
                 </xpath>
-
-                <!-- 2. (Optional) Keep the Tab at the bottom or Remove it? 
-                     If you want to REMOVE the bottom tab, delete the xpath that adds the page.
-                     If you want to KEEP both, leave your previous xpath here. 
-                     
-                     For now, I will assume you want to REMOVE the bottom tab and just use the button.
-                -->
-                
-                <!-- 3. Add the Header Fields (Contact Emails) -->
-                <xpath expr="//sheet/group" position="inside">
-                     <group string="Contact Emails">
-                        <field name="contractor_email"/>
-                        <field name="client_email"/>
-                    </group>
-                </xpath>
-
             </field>
         </record>
     </data>

@@ -17,6 +17,7 @@
         
         # Data
         "data/sequence.xml",
+        "data/email_categories.xml",
         
         # Views
         "views/approval_request_views.xml",
