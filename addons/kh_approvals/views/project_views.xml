@@ -1,20 +1,33 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <data>
-        <!-- 1. DEFINE THE SEARCH VIEW WITH SIDEBAR -->
+        <!-- ========================================== -->
+        <!-- CORRECTED SEARCH VIEW (Filters instead of Sidebar) -->
+        <!-- ========================================== -->
         <record id="project_email_search_panel_view" model="ir.ui.view">
-            <field name="name">project.email.search.panel</field>
+            <field name="name">project.email.search.filter</field>
             <field name="model">project.email</field>
             <field name="arch" type="xml">
                 <search string="Search Emails">
+                    <!-- Standard Search Fields -->
                     <field name="subject"/>
                     <field name="email_from"/>
                     <field name="email_to"/>
-                    
-                    <!-- THE SIDEBAR (Filter by Category) -->
-                    <searchpanel>
-                        <field name="category_ids" icon="fa-folder" enable_counters="1"/>
-                    </searchpanel>
+                    <field name="category_ids"/> <!-- Allows typing "Owner" in search bar -->
+
+                    <!-- THE 5 CATEGORY FILTERS (Clickable Buttons at top) -->
+                    <filter string="Main (Info)" name="cat_main" domain="[('category_ids.name', 'ilike', 'Main')]"/>
+                    <filter string="Owner" name="cat_owner" domain="[('category_ids.name', 'ilike', 'Owner')]"/>
+                    <filter string="Consultant" name="cat_consultant" domain="[('category_ids.name', 'ilike', 'Consultant')]"/>
+                    <filter string="Contractor" name="cat_contractor" domain="[('category_ids.name', 'ilike', 'Contractor')]"/>
+                    <filter string="Internal / Team" name="cat_internal" domain="[('category_ids.name', 'ilike', 'Internal')]"/>
+
+                    <group expand="0" string="Group By">
+                        <filter string="Date" name="group_date" context="{'group_by': 'date:day'}"/>
+                    </group>
+
+                    <!-- REMOVED THE <searchpanel> BLOCK CAUSING THE ERROR -->
+
                 </search>
             </field>
         </record>
