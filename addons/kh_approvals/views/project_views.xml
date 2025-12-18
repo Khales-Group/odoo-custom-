@@ -12,11 +12,12 @@
                     <field name="email_from"/>
                     <field name="category_ids"/>
 
-                    <!-- THE SIDEBAR -->
-                    <!-- Only works if 'folder' exists in Python ProjectEmail class -->
+                    <!-- COMMENT THIS OUT TO FIX THE CRASH -->
+                    <!-- 
                     <searchpanel>
                         <field name="folder" icon="fa-folder" enable_counters="1"/>
-                    </searchpanel>
+                    </searchpanel> 
+                    -->
                 </search>
             </field>
         </record>
