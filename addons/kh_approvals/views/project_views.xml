@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <data>
-        <!-- Search View with LEFT SIDEBAR -->
+
+        <!-- 1. SEARCH VIEW WITH LEFT SIDEBAR -->
         <record id="project_email_search_panel_view" model="ir.ui.view">
             <field name="name">project.email.search.sidebar</field>
             <field name="model">project.email</field>
@@ -11,18 +12,16 @@
                     <field name="email_from"/>
                     <field name="category_ids"/>
 
-                    <!-- THE LEFT SIDEBAR -->
+                    <!-- THE SIDEBAR -->
+                    <!-- Only works if 'folder' exists in Python ProjectEmail class -->
                     <searchpanel>
-                        <!-- 'enable_counters' shows the number of emails in each folder -->
                         <field name="folder" icon="fa-folder" enable_counters="1"/>
-                        <!-- Optional: Add a second section for Tags if you want -->
-                        <!-- <field name="category_ids" select="multi" icon="fa-tag"/> (Might fail in older Odoo, safe to skip) -->
                     </searchpanel>
                 </search>
             </field>
         </record>
 
-        <!-- 2. UPDATE THE SMART BUTTON TO USE THIS VIEW -->
+        <!-- 2. SMART BUTTON IN PROJECT FORM -->
         <record id="view_project_form_inherit_email_ui" model="ir.ui.view">
             <field name="name">project.form.inherit.email.ui</field>
             <field name="model">project.project</field>
@@ -39,7 +38,17 @@
                         </div>
                     </button>
                 </xpath>
+                
+                <!-- Add Settings Fields for Testing -->
+                <xpath expr="//sheet/group" position="inside">
+                     <group string="Email Configuration">
+                        <field name="contractor_email"/>
+                        <field name="x_studio_offical_email"/>
+                        <field name="x_studio_consultant"/>
+                    </group>
+                </xpath>
             </field>
         </record>
+
     </data>
 </odoo>
