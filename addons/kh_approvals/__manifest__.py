@@ -1,3 +1,14 @@
-
 # -*- coding: utf-8 -*-
-{'name': 'Khales Approvals', 'summary': 'Configurable multi-step approvals with routing rules.', 'version': '18.0.1.0.0', 'author': 'Khales Team', 'website': 'https://khales.ae', 'category': 'Operations/Approvals', 'depends': ['account', 'hr_payroll', 'purchase', 'base', 'hr', 'crm', 'mail', 'project', 'account_invoice_extract'], 'external_dependencies': {'python': ['requests']}, 'data': ['security/kh_approvals_security.xml', 'security/ir.model.access.csv', 'security/kh_approvals_manager_access.xml', 'security/kh_approvals_rules.xml', 'data/sequence.xml', 'data/email_categories.xml', 'views/approval_request_views.xml', 'views/approval_rule_views.xml', 'views/qweb_templates.xml', 'views/department_views.xml', 'views/approval_request_tree_view.xml', 'views/hr_employee_views_extension.xml', 'views/payslip_views.xml', 'views/menu.xml', 'views/project_email_views.xml', 'views/project_views.xml'], 'assets': {'web.assets_backend': ['kh_approvals/static/src/css/approvals_backend.css']}, 'application': True, 'installable': True, 'license': 'LGPL-3'}
+{    'name': 'Khales Approvals',
+    'summary': 'Approvals and workflow integrations (compatibility patch for v19)',
+    'description': 'Compatibility layer for Studio fields and links to CRM/Project/Purchase after migration to Odoo 19.',
+    'author': 'Prepared by ChatGPT for Khales',
+    'website': 'https://khales.ae',
+    'category': 'Uncategorized',
+    'version': '19.0.1.0.0',
+    'depends': ['base', 'mail', 'crm', 'project', 'purchase'],
+    'data': [],
+    'installable': True,
+    'application': False,
+    'license': 'LGPL-3',
+}
