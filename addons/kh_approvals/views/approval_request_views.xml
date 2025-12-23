@@ -22,10 +22,21 @@
       <field name="name">kh.approval.request.search</field>
       <field name="model">kh.approval.request</field>
       <field name="arch" type="xml">
-        <search>
+        <search string="Search Approvals">
           <filter name="my_requests" string="My Requests" domain="[('requester_id','=',uid)]"/>
           <filter name="to_approve" string="To Approve"
                   domain="[('approval_line_ids.approver_id','=',uid), ('approval_line_ids.state','=','pending')]"/>
+          <separator/>
+          <filter string="My Activities" name="activities_my"
+                  domain="[('activity_ids.user_id', '=', uid)]"/>
+          <separator/>
+          <filter string="Late Activities" name="activities_overdue"
+                  domain="[('activity_ids.date_deadline', '<', context_today().strftime('%Y-%m-%d'))]"
+                  help="Show all records which has next action date is before today"/>
+          <filter string="Today Activities" name="activities_today"
+                  domain="[('activity_ids.date_deadline', '=', context_today().strftime('%Y-%m-%d'))]"/>
+          <filter string="Future Activities" name="activities_upcoming_all"
+                  domain="[('activity_ids.date_deadline', '>', context_today().strftime('%Y-%m-%d'))]"/>
           <separator/>
           <field name="title"/>
           <field name="state"/>
