@@ -26,6 +26,10 @@
           <filter name="my_requests" string="My Requests" domain="[('requester_id','=',uid)]"/>
           <filter name="to_approve" string="To Approve"
                   domain="[('approval_line_ids.approver_id','=',uid), ('approval_line_ids.state','=','pending')]"/>
+          <filter string="My Activities" name="my_activities" domain="[('activity_ids.user_id', '=', uid)]"/>
+          <filter string="Late Activities" name="activities_overdue"
+                  domain="[('activity_ids.date_deadline', '<', context_today().strftime('%Y-%m-%d'))]"
+                  help="Show all records which has next action date is before today"/>
           <separator/>
           <field name="title"/>
           <field name="state"/>
