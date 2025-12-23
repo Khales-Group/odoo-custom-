@@ -800,7 +800,7 @@ class KhApprovalRequest(models.Model):
                 rec.write({'state': 'rejected'})
                 try:
                     rec.message_post(
-                        body=_("❌ Rejected by <b>%s</b>.") % self.env.user.name,
+                        body=_("❌ Rejected  <b>%s</b>.") % self.env.user.name,
                         tracking_value_ids=[(0, 0, {
                             'field_id': self.env['ir.model.fields']._get(self._name, 'state').id,
                             'old_value_char': dict(self._fields['state'].selection).get(old_state),
