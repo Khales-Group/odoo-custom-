@@ -13,6 +13,15 @@ class Project(models.Model):
     x_studio_contractor_email = fields.Char(string="Contractor Email")
     x_studio_consultant = fields.Char(string="Consultant Name")
 
+# Studio-created one2many used in views (added for backwards compatibility)
+x_studio_one2many_field_6vb_1j99dind7 = fields.One2many(
+    'kh.approval.request',
+    'project_id',
+    string='Approvals (Studio)',
+    readonly=False,
+    copy=False,
+)
+
     # --- Email Linkage ---
     email_ids = fields.One2many("project.email", "project_id", string="Emails")
     
