@@ -23,7 +23,7 @@ x_studio_one2many_field_6vb_1j99dind7 = fields.One2many(
 )
 
     # --- Email Linkage ---
-    email_ids = fields.One2many("project.email", "project_id", string="Emails")
+email_ids = fields.One2many("project.email", "project_id", string="Emails")
     
     # --- Smart Button Counter ---
     email_count = fields.Integer(compute='_compute_email_count', string="Email Count")
