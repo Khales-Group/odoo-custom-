@@ -27,7 +27,6 @@ class KhApprovalRequest(models.Model):
         string="Title",
         required=True,
         tracking=True,
-        states={'in_review': [('readonly', True)], 'approved': [('readonly', True)], 'rejected': [('readonly', True)]}
     )
     company_id = fields.Many2one(
         "res.company",
