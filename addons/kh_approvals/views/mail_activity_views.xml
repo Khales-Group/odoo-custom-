@@ -1,17 +1,3 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <record id="mail_activity_form_guard_assignee_not_creator" model="ir.ui.view">
-        <field name="name">mail.activity.form.guard.assignee.not.creator</field>
-        <field name="model">mail.activity</field>
-        <field name="inherit_id" ref="mail.mail_activity_view_form"/>
-        <field name="arch" type="xml">
-            <xpath expr="//footer//button[@name='action_done']" position="attributes">
-                <attribute name="invisible">user_id != uid</attribute>
-            </xpath>
-
-            <xpath expr="//footer//button[@name='action_done_schedule_next']" position="attributes">
-                <attribute name="invisible">user_id != uid</attribute>
-            </xpath>
-        </field>
-    </record>
-</odoo>
+    </odoo>
