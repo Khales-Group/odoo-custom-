@@ -9,3 +9,4 @@ from . import project_email
 from . import project_extension
 from . import purchase_extension
 from . import rule_step
+from . import res_users  # <--- MAKE SURE THIS LINE EXISTS
