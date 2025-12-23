@@ -5,6 +5,7 @@ class Project(models.Model):
 
     # Ensure this line is aligned with the _inherit line (usually 4 spaces)
     email_count = fields.Integer(compute='_compute_email_count', string="Email Count")
+    contractor_email = fields.Char(string="Contractor Email")
 
     def _compute_email_count(self):
         for project in self:
