@@ -5,8 +5,8 @@
     <field name="inherit_id" ref="mail.mail_activity_view_form_popup"/>
     <field name="arch" type="xml">
 
-      <!-- Hide the Cancel (unlink) button when current user is assignee but not creator -->
-      <xpath expr="//footer//button[@name='unlink']" position="attributes">
+      <!-- Hide the Cancel (discard) button when current user is assignee but not creator -->
+      <xpath expr="//footer//button[@special='cancel']" position="attributes">
         <attribute name="attrs">{'invisible': ['&amp;', ('user_id','=',uid), ('create_uid','!=',uid)]}</attribute>
       </xpath>
 
