@@ -21,8 +21,8 @@ class KhApprovalRequest(models.Model):
     project_id = fields.Many2one('project.project', string='Project', ondelete='cascade', index=True)
     purchase_order_id = fields.Many2one('purchase.order', string='Purchase Order', ondelete='cascade', index=True)
     crm_lead_id = fields.Many2one('crm.lead', string='Related Lead', ondelete='cascade', index=True)
-    
-    name = fields.Char(string="Request ID", required=True, tracking=True, default=_("New"), copy=False)
+
+    name = fields.Char(string="Request ID", required=True, tracking=True, default=lambda self: _("New"), copy=False)
     title = fields.Char(
         string="Title",
         required=True,

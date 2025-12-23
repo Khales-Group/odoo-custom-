@@ -6,7 +6,7 @@
     'website': 'https://khales.ae',
     'category': 'Uncategorized',
     'version': '19.0.1.0.0',
-    'depends': ['base', 'mail', 'crm', 'project', 'purchase'],
+    'depends': ['base', 'mail', 'crm', 'project', 'purchase', 'hr_payroll'],
     'data': [],
     'installable': True,
     'application': False,
