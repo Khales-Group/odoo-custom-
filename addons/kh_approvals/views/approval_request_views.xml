@@ -2,7 +2,6 @@
 <odoo>
   <data>
 
-    <!-- Line subview (list view) -->
     <record id="view_kh_approval_line_list" model="ir.ui.view">
       <field name="name">kh.approval.line.list</field>
       <field name="model">kh.approval.line</field>
@@ -17,7 +16,6 @@
       </field>
     </record>
 
-    <!-- Search -->
     <record id="view_kh_approval_request_search" model="ir.ui.view">
       <field name="name">kh.approval.request.search</field>
       <field name="model">kh.approval.request</field>
@@ -31,12 +29,14 @@
                   domain="[('activity_ids.user_id', '=', uid)]"/>
           <separator/>
           <filter string="Late Activities" name="activities_overdue"
-                  domain="[('activity_ids.date_deadline', '<', context_today().strftime('%Y-%m-%d'))]"
+                  domain="[('activity_ids.date_deadline', '&lt;', context_today().strftime('%Y-%m-%d'))]"
                   help="Show all records which has next action date is before today"/>
+          
           <filter string="Today Activities" name="activities_today"
                   domain="[('activity_ids.date_deadline', '=', context_today().strftime('%Y-%m-%d'))]"/>
+          
           <filter string="Future Activities" name="activities_upcoming_all"
-                  domain="[('activity_ids.date_deadline', '>', context_today().strftime('%Y-%m-%d'))]"/>
+                  domain="[('activity_ids.date_deadline', '&gt;', context_today().strftime('%Y-%m-%d'))]"/>
           <separator/>
           <field name="title"/>
           <field name="state"/>
@@ -47,7 +47,6 @@
       </field>
     </record>
 
-    <!-- List -->
     <record id="view_kh_approval_request_list" model="ir.ui.view">
       <field name="name">kh.approval.request.list</field>
       <field name="model">kh.approval.request</field>
@@ -66,7 +65,6 @@
       </field>
     </record>
 
-    <!-- Petty Cash Lines Tree View -->
     <record id="view_kh_approval_petty_cash_line_tree" model="ir.ui.view">
       <field name="name">kh.approval.petty.cash.line.tree</field>
       <field name="model">kh.approval.petty.cash.line</field>
@@ -80,19 +78,16 @@
       </field>
     </record>
 
-    <!-- Form (Odoo 17+: use 'invisible' not 'attrs') -->
     <record id="view_kh_approval_request_form_base" model="ir.ui.view">
       <field name="name">kh.approval.request.form</field>
       <field name="model">kh.approval.request</field>
       <field name="arch" type="xml">
         <form string="Approval Request">
           <header>
-            <!-- Draft only -->
             <button name="action_submit" type="object" string="Submit"
                     class="oe_highlight"
                     invisible="state != 'draft'"/>
 
-            <!-- Approve/Reject ONLY for the current pending approver -->
             <button name="action_approve_request" type="object" string="Approve"
                     class="btn-primary o_mobile_force_show"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
@@ -100,12 +95,10 @@
                     class="btn-secondary o_mobile_force_show"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
 
-            <!-- Edit Request (owner-only) -->
             <button name="action_revise_request" type="object" string="Edit Request"
                     class="btn-secondary o_mobile_force_show"
                     invisible="state == 'draft' or requester_id != uid"/>
 
-            <!-- Mark as Paid (for approved payment requests) -->
             <button name="action_mark_as_paid"
                     type="object"
                     string="Mark as Paid"
@@ -162,7 +155,6 @@
 
             <notebook>
               <page string="Approval Steps" name="approval_steps">
-                <!-- This HTML field uses sudo to show all steps to all viewers, bypassing record rules -->
                 <field name="steps_overview_html" nolabel="1"/>
               </page>
 
