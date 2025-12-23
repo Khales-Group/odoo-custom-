@@ -5,11 +5,11 @@
         <field name="model">mail.activity</field>
         <field name="inherit_id" ref="mail.mail_activity_view_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//button[@name='action_done']" position="attributes">
+            <xpath expr="//button[@name='action_done']" position="attributes" any="1">
                 <attribute name="invisible">user_id != uid</attribute>
             </xpath>
 
-            <xpath expr="//button[@name='action_done_schedule_next']" position="attributes">
+            <xpath expr="//button[@name='action_done_schedule_next']" position="attributes" any="1">
                 <attribute name="invisible">user_id != uid</attribute>
             </xpath>
         </field>
