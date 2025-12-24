@@ -48,7 +48,7 @@
                 <field name="approval_type" invisible="1"/>
             </xpath>
             <xpath expr="//notebook" position="inside">
-                <page string="Payslips" name="payslips" invisible="approval_type != 'payslip'">
+                <page string="Payslips" name="payslips" invisible="approval_type != 'payslip'" groups="hr_payroll.group_hr_payroll_user">
                     <field name="payslip_ids">
                         <list string="Payslips">
                             <field name="name"/>
