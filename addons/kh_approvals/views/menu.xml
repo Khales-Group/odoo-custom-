@@ -69,7 +69,8 @@
           sequence="3"
           groups="kh_approvals.group_kh_approvals_manager"/>
 
-
+    <!-- Actions 'action_kh_approval_rules' and 'action_kh_departments' are missing.
+         Uncomment these menus once the actions are defined.
     <menuitem id="menu_kh_approvals_rules"
               name="Rules"
               parent="menu_kh_approvals_root"
@@ -83,6 +84,7 @@
               action="action_kh_departments"
               sequence="5"
               groups="kh_approvals.group_kh_approvals_manager"/>
+    -->
 
   </data>
 </odoo>
