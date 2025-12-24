@@ -1,64 +1,72 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-  <data>
 
-    <!-- Inherit hr.payslip tree view to add approval_state field -->
-    <record id="view_hr_payslip_tree_inherited" model="ir.ui.view">
-      <field name="name">hr.payslip.tree.inherited</field>
-      <field name="model">hr.payslip</field>
-      <field name="inherit_id" ref="hr_payroll.view_hr_payslip_tree"/>
-      <field name="arch" type="xml">
-        <xpath expr="//field[@name='employee_id']" position="after">
-          <field name="approval_state"/>
-        </xpath>
-      </field>
-    </record>
-
-    <!-- Inherit hr.payslip form view to add approval_state and approval_request_id fields -->
-    <record id="view_hr_payslip_form_inherited" model="ir.ui.view">
-      <field name="name">hr.payslip.form.inherited</field>
-      <field name="model">hr.payslip</field>
-      <field name="inherit_id" ref="hr_payroll.view_hr_payslip_form"/>
-      <field name="arch" type="xml">
-        <xpath expr="//field[@name='employee_id']" position="after">
-          <field name="approval_state"/>
-          <field name="approval_request_id"/>
-        </xpath>
-      </field>
-    </record>
-
-    <!-- Server action for requesting approval -->
-    <record id="action_request_payslip_approval" model="ir.actions.server">
-      <field name="name">Request Approval</field>
-      <field name="model_id" ref="hr_payroll.model_hr_payslip"/>
-      <field name="binding_model_id" ref="hr_payroll.model_hr_payslip"/>
-      <field name="state">code</field>
-      <field name="code">
-        action = records.action_request_approval()
-      </field>
-    </record>
-
-    <!-- Inherit approval request form view to show payslips -->
-    <record id="view_kh_approval_request_form_inherited" model="ir.ui.view">
-        <field name="name">kh.approval.request.form.inherited</field>
+    <record id="view_kh_approval_request_list" model="ir.ui.view">
+        <field name="name">kh.approval.request.list</field>
         <field name="model">kh.approval.request</field>
-        <field name="inherit_id" ref="kh_approvals.view_kh_approval_request_form_base"/>
         <field name="arch" type="xml">
-            <xpath expr="//field[@name='rule_id']" position="after">
-                <field name="approval_type" invisible="1"/>
-            </xpath>
-            <xpath expr="//notebook" position="inside">
-                <page string="Payslips" name="payslips" invisible="approval_type != 'payslip'">
-                    <field name="payslip_ids">
-                        <tree string="Payslips">
-                            <field name="name"/>
-                            <field name="state"/>
-                        </tree>
-                    </field>
-                </page>
-            </xpath>
+            <list string="Approval Requests">
+                <field name="name"/>
+                <field name="requester_id"/>
+                <field name="date_from"/>
+                <field name="date_to"/>
+                <field name="state" widget="badge" 
+                       decoration-success="state == 'approved'" 
+                       decoration-info="state == 'submitted'" 
+                       decoration-muted="state == 'draft'"/>
+            </list>
         </field>
     </record>
 
-  </data>
+    <record id="view_kh_approval_request_form" model="ir.ui.view">
+        <field name="name">kh.approval.request.form</field>
+        <field name="model">kh.approval.request</field>
+        <field name="arch" type="xml">
+            <form string="Approval Request">
+                <header>
+                    <button name="action_submit" string="Submit" type="object" class="oe_highlight" 
+                            invisible="state != 'draft'"/>
+                    
+                    <button name="action_approve" string="Approve" type="object" class="oe_highlight" 
+                            invisible="state != 'submitted'"/>
+                    
+                    <button name="action_reject" string="Reject" type="object" 
+                            invisible="state != 'submitted'"/>
+                            
+                    <button name="action_draft" string="Reset to Draft" type="object" 
+                            invisible="state == 'draft'"/>
+                            
+                    <field name="state" widget="statusbar" statusbar_visible="draft,submitted,approved"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="e.g. Vacation Request"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="requester_id"/>
+                            <field name="approver_id"/>
+                        </group>
+                        <group>
+                            <field name="date_from"/>
+                            <field name="date_to"/>
+                        </group>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_kh_approval_request" model="ir.actions.act_window">
+        <field name="name">Approval Requests</field>
+        <field name="res_model">kh.approval.request</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem id="menu_kh_approval_root" name="Approvals" sequence="10"/>
+    <menuitem id="menu_kh_approval_request" name="Requests" parent="menu_kh_approval_root" action="action_kh_approval_request"/>
+
 </odoo>
