@@ -52,8 +52,6 @@
                     <field name="payslip_ids">
                         <tree string="Payslips">
                             <field name="name"/>
-                            <field name="employee_id"/>
-                            <field name="date_to"/>
                             <field name="state"/>
                         </tree>
                     </field>
