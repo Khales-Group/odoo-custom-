@@ -46,7 +46,15 @@
         <field name="arch" type="xml">
             <xpath expr="//notebook" position="inside">
                 <page string="Payslips" name="payslips" invisible="approval_type != 'payslip'">
-                    <field name="payslip_ids"/>
+                    <field name="payslip_ids">
+                        <tree string="Payslips">
+                            <field name="name"/>
+                            <field name="employee_id"/>
+                            <field name="date_from"/>
+                            <field name="date_to"/>
+                            <field name="state"/>
+                        </tree>
+                    </field>
                 </page>
             </xpath>
         </field>
