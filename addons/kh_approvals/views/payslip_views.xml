@@ -50,10 +50,10 @@
             <xpath expr="//notebook" position="inside">
                 <page string="Payslips" name="payslips" invisible="approval_type != 'payslip'">
                     <field name="payslip_ids">
-                        <tree string="Payslips">
+                        <list string="Payslips">
                             <field name="name"/>
                             <field name="state"/>
-                        </tree>
+                        </list>
                     </field>
                 </page>
             </xpath>
