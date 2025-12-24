@@ -8,7 +8,9 @@
     'version': '19.0.1.0.0',
     'depends': ['base', 'mail', 'hr', 'project', 'purchase', 'hr_payroll'],
     'data': [
+        'security/kh_approvals_security.xml',
         'security/ir.model.access.csv',
+        'security/kh_approvals_rules.xml',
         'views/menu.xml',
         'views/approval_request_views.xml',
         'views/approval_rule_views.xml',
