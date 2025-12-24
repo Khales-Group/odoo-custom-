@@ -10,14 +10,12 @@
 
     <record id="group_kh_approvals_manager" model="res.groups">
       <field name="name">Approvals / Manager</field>
-      <field name="category_id" ref="kh_approvals.module_category_kh_approvals"/>
       <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
       <field name="comment">Managers can see and manage all approval requests.</field>
     </record>
 
     <record id="group_kh_approvals_accountant" model="res.groups">
         <field name="name">Approvals Accountant</field>
-        <field name="category_id" ref="base.module_category_accounting"/>
     </record>
 
   </data>
