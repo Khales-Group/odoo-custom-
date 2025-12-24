@@ -44,13 +44,15 @@
         <field name="model">kh.approval.request</field>
         <field name="inherit_id" ref="kh_approvals.view_kh_approval_request_form_base"/>
         <field name="arch" type="xml">
+            <xpath expr="//field[@name='rule_id']" position="after">
+                <field name="approval_type" invisible="1"/>
+            </xpath>
             <xpath expr="//notebook" position="inside">
                 <page string="Payslips" name="payslips" invisible="approval_type != 'payslip'">
                     <field name="payslip_ids">
                         <tree string="Payslips">
                             <field name="name"/>
                             <field name="employee_id"/>
-                            <field name="date_from"/>
                             <field name="date_to"/>
                             <field name="state"/>
                         </tree>

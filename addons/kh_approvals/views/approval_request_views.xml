@@ -115,6 +115,7 @@
           </header>
 
           <sheet>
+            <field name="is_current_user_approver" invisible="1"/>
             <group>
               <group string="Request Details">
                 <field name="title"/>
