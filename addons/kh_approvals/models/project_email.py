@@ -31,7 +31,7 @@ class ProjectEmail(models.Model):
 
     # Selection for the Sidebar (This prevents the Invalid Operation error)
     folder = fields.Selection([
-        ('main', 'Main (Info)'),
+        ('main', 'Others (Authorities)'),
         ('owner', 'Owner'),
         ('consultant', 'Consultant'),
         ('contractor', 'Contractor'),
