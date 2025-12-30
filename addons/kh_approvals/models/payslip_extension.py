@@ -30,6 +30,8 @@ class HrPayslipExtension(models.Model):
     def action_request_approval(self):
         department_id = False
         kh_department_id = False
+        total_amount = sum(self.mapped('net_wage'))
+
         if self:
             department = self[0].employee_id.department_id
             if department:
@@ -42,6 +44,7 @@ class HrPayslipExtension(models.Model):
             "requester_id": self.env.user.id,
             "payslip_ids": [(6, 0, self.ids)],
             "approval_type": "payslip",
+            "amount": total_amount,
             "rule_id": False,  # We are not using rules for this type of approval
             "department_id": kh_department_id,
         })
