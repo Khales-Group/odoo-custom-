@@ -6,6 +6,19 @@ from odoo.exceptions import UserError, AccessError
 class HrPayslipExtension(models.Model):
     _inherit = "hr.payslip"
 
+    # =========================================================
+    # FIX FOR PRINT ERROR
+    # =========================================================
+    # The standard layout expects a 'partner_id' to print the address.
+    # We link this to the Employee's Private Address (address_home_id).
+    partner_id = fields.Many2one(
+        'res.partner',
+        string='Partner',
+        related='employee_id.address_home_id',
+        readonly=True,
+    )
+    # =========================================================
+
     approval_request_id = fields.Many2one(
         "kh.approval.request",
         string="Approval Request",
@@ -38,6 +51,7 @@ class HrPayslipExtension(models.Model):
                 kh_department = self.env['kh.approvals.department'].search([('name', '=', department.name)], limit=1)
                 if kh_department:
                     kh_department_id = kh_department.id
+        
         # Create a new approval request
         approval_request = self.env["kh.approval.request"].create({
             "title": "Payslip Approval Request",
