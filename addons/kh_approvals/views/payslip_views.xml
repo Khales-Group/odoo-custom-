@@ -52,7 +52,9 @@
                     <field name="payslip_ids">
                         <list string="Payslips">
                             <field name="name"/>
-                            <field name="state"/>
+                            <field name="employee_id"/>
+                            <field name="net_wage" sum="Total Net Wage"/>
+                            <field name="state" widget="badge" decoration-success="state == 'done'" decoration-info="state == 'draft'"/>
                         </list>
                     </field>
                 </page>
