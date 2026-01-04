@@ -102,12 +102,6 @@
                     class="btn-secondary o_mobile_force_show"
                     invisible="state == 'draft' or requester_id != uid"/>
 
-            <button name="action_start_payment_cycle" 
-                    string="Start Payment Cycle" 
-                    type="object" 
-                    class="oe_highlight"
-                    invisible="state != 'approved' or approval_stage != 'procurement'"/>
-
             <button name="action_mark_as_paid"
                     type="object"
                     string="Mark as Paid"
@@ -160,12 +154,6 @@
                 <field name="rule_id"
                        readonly="state != 'draft'"
                        options="{'no_create_edit': True}"/>
-                <field name="payment_rule_id" 
-                       required="approval_type == 'standard'"
-                       readonly="state != 'draft'"/>
-                <field name="approval_stage" readonly="1" widget="badge" 
-                       decoration-info="approval_stage == 'procurement'" 
-                       decoration-success="approval_stage == 'done'"/>
               </group>
             </group>
 
@@ -187,6 +175,32 @@
           </chatter>
         </form>
       </field>
+    </record>
+
+    <record id="view_kh_approval_request_form_inherit_cycles" model="ir.ui.view">
+        <field name="name">kh.approval.request.form.inherit.cycles</field>
+        <field name="model">kh.approval.request</field>
+        <field name="inherit_id" ref="kh_approvals.view_kh_approval_request_form_base"/>
+        <field name="arch" type="xml">
+            
+            <xpath expr="//header" position="inside">
+                <button name="action_start_payment_cycle" 
+                        string="Start Payment Cycle" 
+                        type="object" 
+                        class="oe_highlight"
+                        invisible="state != 'approved' or approval_stage != 'procurement'"/>
+            </xpath>
+
+            <xpath expr="//field[@name='rule_id']" position="after">
+                <field name="payment_rule_id" 
+                       invisible="approval_type != 'standard'"
+                       readonly="state != 'draft'"/>
+                <field name="approval_stage" readonly="1" widget="badge" 
+                       decoration-info="approval_stage == 'procurement'" 
+                       decoration-warning="approval_stage == 'pay_review'"
+                       decoration-success="approval_stage == 'done'"/>
+            </xpath>
+        </field>
     </record>
 
   </data>
