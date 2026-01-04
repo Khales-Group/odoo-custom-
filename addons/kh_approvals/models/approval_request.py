@@ -738,7 +738,21 @@ class KhApprovalRequest(models.Model):
                             except Exception:
                                 _logger.exception("Failed to mark payslips approved for request %s", rec.name)
 
-                            if rec.amount and rec.amount > 0:
+                            # --- NOTIFY KHALED (364) TO START PAYMENT CYCLE ---
+                            if rec.approval_stage == 'procurement' and rec.payment_rule_id:
+                                khaled = self.env['res.users'].sudo().browse(364)
+                                if khaled.exists():
+                                    rec.activity_schedule(
+                                        'mail.mail_activity_data_todo',
+                                        user_id=khaled.id,
+                                        summary=_("Procurement Approved: Start Payment Cycle"),
+                                        note=_("The procurement cycle for %s is complete. Please click 'Start Payment Cycle' to trigger the Payment Cycle.") % rec.name,
+                                    )
+                                    rec._post_note(_("🔔 Notified Khaled (364) to start the Payment Cycle."))
+
+                            # --- NOTIFY ACCOUNTANT (355) ---
+                            # We only want this to trigger at the very end of everything (Payment Cycle Done)
+                            if rec.approval_stage == 'pay_review' and rec.amount and rec.amount > 0:
                                 user_to_notify_and_follow = self.env['res.users'].browse(355)
                                 if user_to_notify_and_follow.exists():
                                     try:
