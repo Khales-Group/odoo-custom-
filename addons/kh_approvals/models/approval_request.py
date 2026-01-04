@@ -191,7 +191,7 @@ class KhApprovalRequest(models.Model):
 
     def _critical_fields(self):
         """Fields that, if changed, should trigger a new approval cycle."""
-        return {'title', 'amount', 'currency_id', 'company_id', 'department_id', 'rule_id'}
+        return {'title', 'amount', 'currency_id', 'company_id', 'department_id', 'rule_id', 'payment_rule_id'}
 
     # -------------------------------------------------------------------------
     # ORM overrides
@@ -731,22 +731,6 @@ class KhApprovalRequest(models.Model):
                             except Exception as e:
                                 _logger.exception("Failed to send approval partner notification for request %s: %s", rec.name, e)
 
-                            # --- NOTIFICATION FOR PROCUREMENT ENGINEER (User 364) ---
-                            # If Procurement Cycle just finished, notify them to start Payment Cycle
-                            if rec.approval_stage == 'procurement' and rec.payment_rule_id:
-                                proc_eng_user = self.env['res.users'].browse(364)
-                                if proc_eng_user.exists():
-                                    try:
-                                        rec.with_company(rec.company_id).activity_schedule(
-                                            'mail.mail_activity_data_todo',
-                                            user_id=proc_eng_user.id,
-                                            summary=_("Ready for Payment Cycle"),
-                                            note=_("Procurement Approved. Please click 'Start Payment Approval' to proceed."),
-                                        )
-                                        rec._post_note(_("🔔 Notified Procurement Engineer to start Payment Cycle."))
-                                    except Exception as e:
-                                        _logger.warning("Failed to notify Procurement Engineer (364): %s", e)
-
                             # Post-approval actions
                             try:
                                 if rec.approval_type == "payslip":
@@ -770,6 +754,11 @@ class KhApprovalRequest(models.Model):
                                         )
                                     except Exception as e:
                                         _logger.warning("Scheduling post-approval activity failed for user %s on request %s: %s", user_to_notify_and_follow.id, rec.name, e)
+
+                            # --- AUTOMATIC TRANSITION TO PAYMENT CYCLE ---
+                            # If Procurement Cycle just finished and a Payment Rule exists, start the next cycle immediately.
+                            if rec.approval_stage == 'procurement' and rec.payment_rule_id:
+                                rec.action_start_payment_approval()
 
             except Exception as e:
                 _logger.exception("Unhandled exception while approving request %s (id=%s): %s", rec.name, rec.id, e)
