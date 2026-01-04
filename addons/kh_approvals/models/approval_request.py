@@ -126,9 +126,9 @@ class KhApprovalRequest(models.Model):
         help="Rule used for the second cycle (Payment Approval)."
     )
     approval_stage = fields.Selection(
-        [('procurement', 'Procurement'), ('payment', 'Payment')],
+        [('procurement', 'Procurement Cycle'), ('pay_review', 'Payment Cycle'), ('done', 'Fully Approved')],
         default='procurement',
-        string="Approval Stage",
+        string="Current Stage",
         required=True,
         tracking=True
     )
@@ -191,7 +191,7 @@ class KhApprovalRequest(models.Model):
 
     def _critical_fields(self):
         """Fields that, if changed, should trigger a new approval cycle."""
-        return {'title', 'amount', 'currency_id', 'company_id', 'department_id', 'rule_id', 'payment_rule_id'}
+        return {'title', 'amount', 'currency_id', 'company_id', 'department_id', 'rule_id'}
 
     # -------------------------------------------------------------------------
     # ORM overrides
@@ -444,7 +444,7 @@ class KhApprovalRequest(models.Model):
             # Clear ONLY the lines for the current stage (allow retrying/resetting current cycle)
             # We preserve lines from other stages (e.g. completed procurement lines)
             rec.approval_line_ids.filtered(lambda l: l.approval_stage == current_stage).sudo().unlink()
-
+            
             vals_list = []
 
             if rec.approval_type == 'standard':
@@ -452,7 +452,7 @@ class KhApprovalRequest(models.Model):
                 rule = False
                 if current_stage == 'procurement':
                     rule = rec.rule_id
-                elif current_stage == 'payment':
+                elif current_stage == 'pay_review':
                     rule = rec.payment_rule_id
                 
                 if not rule:
@@ -755,11 +755,6 @@ class KhApprovalRequest(models.Model):
                                     except Exception as e:
                                         _logger.warning("Scheduling post-approval activity failed for user %s on request %s: %s", user_to_notify_and_follow.id, rec.name, e)
 
-                            # --- AUTOMATIC TRANSITION TO PAYMENT CYCLE ---
-                            # If Procurement Cycle just finished and a Payment Rule exists, start the next cycle immediately.
-                            if rec.approval_stage == 'procurement' and rec.payment_rule_id:
-                                rec.action_start_payment_approval()
-
             except Exception as e:
                 _logger.exception("Unhandled exception while approving request %s (id=%s): %s", rec.name, rec.id, e)
         return True
@@ -896,6 +891,30 @@ class KhApprovalRequest(models.Model):
 
         return True
 
+    def action_start_payment_cycle(self):
+        """ This function triggers the second cycle (Payment) """
+        for rec in self:
+            if rec.state != 'approved':
+                raise UserError(_("Request must be Approved before starting Payment cycle."))
+            if rec.approval_stage != 'procurement':
+                raise UserError(_("Payment cycle already started."))
+            if not rec.payment_rule_id:
+                raise UserError(_("Please select a Payment Rule before proceeding."))
+
+            # 1. Switch Stage
+            rec.write({
+                'approval_stage': 'pay_review',
+                'state': 'in_review', # Go back to In Review
+            })
+
+            # 2. Build lines for the new stage
+            rec._build_approval_lines()
+            
+            # 3. Notify new approvers
+            rec._notify_pending_approvers()
+            
+            rec._post_note(_("🚀 <b>Payment Approval Cycle Started.</b>"))
+
 
 
 # ============================================================================
@@ -954,7 +973,7 @@ class KhApprovalLine(models.Model):
         required=True,
     )
     approval_stage = fields.Selection(
-        [('procurement', 'Procurement'), ('payment', 'Payment')],
+        [('procurement', 'Procurement Cycle'), ('pay_review', 'Payment Cycle'), ('done', 'Fully Approved')],
         default='procurement',
         required=True
     )
