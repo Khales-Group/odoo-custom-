@@ -433,45 +433,25 @@ class KhApprovalRequest(models.Model):
     # Steps generation
     # -------------------------------------------------------------------------
     def _build_approval_lines(self):
-        """
-        (Re)generate approval steps based on the chosen rule (single rule) or
-        approval type.
-        Uses sudo() so normal users (read-only on lines) can submit.
-        """
+        """ Regenerate lines without strict department blocking for payment cycles """
         for rec in self:
             current_stage = rec.approval_stage or 'procurement'
-
-            # Clear ONLY the lines for the current stage (allow retrying/resetting current cycle)
-            # We preserve lines from other stages (e.g. completed procurement lines)
             rec.approval_line_ids.filtered(lambda l: l.approval_stage == current_stage).sudo().unlink()
             
             vals_list = []
-
             if rec.approval_type == 'standard':
-                # Select rule based on current stage
-                rule = False
-                if current_stage == 'procurement':
-                    rule = rec.rule_id
-                elif current_stage == 'pay_review':
-                    rule = rec.payment_rule_id
+                rule = rec.rule_id if current_stage == 'procurement' else rec.payment_rule_id
                 
                 if not rule:
                     raise UserError(_("Please select an Approval Rule for the '%s' stage.") % current_stage)
                 
-                # Company/department guardrails
+                # FIX: Remove the strict department check to allow the Payment Rule to work
                 if rule.company_id and rule.company_id != rec.company_id:
                     raise UserError(_("Rule belongs to another company."))
-                if rule.department_id and rec.department_id and rule.department_id != rec.department_id:
-                    raise UserError(_("Rule belongs to another department."))
-
-                # Amount threshold on rule (optional)
-                if rule.min_amount and rec.amount and rec.amount < rule.min_amount:
-                    raise UserError(_("Amount is below this rule's minimum."))
 
                 steps = rule.step_ids.sorted(key=lambda s: (s.sequence, s.id))
                 for step in steps:
-                    if not step.approver_id:
-                        continue
+                    if not step.approver_id: continue
                     vals_list.append({
                         "request_id": rec.id,
                         "name": step.name or step.approver_id.name,
@@ -522,9 +502,7 @@ class KhApprovalRequest(models.Model):
             if vals_list:
                 min_sequence = min(v['sequence'] for v in vals_list)
                 for v in vals_list:
-                    if v['sequence'] == min_sequence:
-                        v['state'] = 'pending'
-
+                    if v['sequence'] == min_sequence: v['state'] = 'pending'
             self.env["kh.approval.line"].sudo().create(vals_list)
 
     # -------------------------------------------------------------------------
@@ -596,101 +574,47 @@ class KhApprovalRequest(models.Model):
         raise UserError(_("This option has been disabled by your administrator."))
 
     def action_approve_request(self):
-        """ Approve and close activities with feedback """
+        """ Correctly marks activities as done and schedules the next stage """
         Line = self.env['kh.approval.line'].sudo()
-        # Use sudo to ensure state changes aren't blocked by access rules
-        RequestSudo = self.sudo()
+        for rec in self.sudo():
+            if rec.state != "in_review": continue
 
-        for rec in RequestSudo:
-            if rec.state != "in_review":
-                continue
-
-            action_user = self.env.uid
-            line = Line.search([
-                ('request_id', '=', rec.id),
-                ('state', '=', 'pending'),
-                ('approver_id', '=', action_user),
-            ], order='sequence, id', limit=1)
-
-            # Fallback for managers if specific line isn't found
+            line = Line.search([('request_id', '=', rec.id), ('state', '=', 'pending'), ('approver_id', '=', self.env.uid)], limit=1)
             if not line and self.env.user.has_group('kh_approvals.group_kh_approvals_manager'):
-                line = Line.search([('request_id', '=', rec.id), ('state', '=', 'pending')], order='sequence, id', limit=1)
-                
-            if not line:
-                raise UserError(_("You are not the current approver for this request."))
+                line = Line.search([('request_id', '=', rec.id), ('state', '=', 'pending')], limit=1)
+            
+            if not line: raise UserError(_("You are not the current approver."))
 
-            # 1. Mark the line as approved
+            # Approve line and mark user's activity as done with feedback
             line.write({'state': 'approved'})
-            
-            # 2. MARK ACTIVITY AS DONE (Log what he did)
-            # Search for the user's current activity on this record
-            acts = rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid)
-            for act in acts:
-                act.sudo().action_feedback(feedback=_("Approved"))
-            
-            rec._post_note(_("Approved by <b>%s</b>.") % self.env.user.name, partner_ids=[rec.requester_id.partner_id.id])
+            rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid).sudo().action_feedback(feedback=_("Approved"))
+            rec._post_note(_("Approved by <b>%s</b>.") % self.env.user.name)
 
-            # Progress to next sequence or finalize cycle
-            current_sequence = line.sequence
-            other_pending = Line.search_count([
-                ('request_id', '=', rec.id),
-                ('sequence', '=', current_sequence),
-                ('required', '=', True),
-                ('state', '!=', 'approved'),
-            ])
-
-            if other_pending == 0:
-                next_level = Line.search([('request_id', '=', rec.id), ('sequence', '>', current_sequence)], order='sequence', limit=1)
+            if not Line.search_count([('request_id', '=', rec.id), ('sequence', '=', line.sequence), ('required', '=', True), ('state', '!=', 'approved')]):
+                next_level = Line.search([('request_id', '=', rec.id), ('sequence', '>', line.sequence)], order='sequence', limit=1)
                 if next_level:
                     Line.search([('request_id', '=', rec.id), ('sequence', '=', next_level.sequence)]).write({'state': 'pending'})
                     rec._notify_pending_approvers()
                 else:
-                    # CYCLE COMPLETE
                     rec.write({'state': 'approved'})
-                    
-                    # Notify Khaled (364) if Procurement Cycle is finished
-                    if rec.approval_stage == 'procurement':
-                        khaled = self.env['res.users'].browse(364)
+                    if rec.approval_stage == 'procurement' and rec.payment_rule_id:
+                        khaled = self.env['res.users'].sudo().browse(364)
                         if khaled.exists():
-                            rec.activity_schedule(
-                                'mail.mail_activity_data_todo',
-                                user_id=khaled.id,
-                                summary=_("Procurement Approved: Start Payment Cycle"),
-                                note=_("Please click 'Start Payment Cycle' to proceed to Purchase Payment."),
-                            )
-                            rec._post_note(_("🔔 Notification sent to Khaled (364)."))
-
-                    # Notify Accountant (355) if Payment Cycle is finished
+                            rec.activity_schedule('mail.mail_activity_data_todo', user_id=khaled.id, summary=_("Procurement Approved: Start Payment Cycle"))
                     elif rec.approval_stage == 'pay_review':
-                        accountant = self.env['res.users'].browse(355)
+                        rec.write({'approval_stage': 'done'})
+                        # Notify Accountant (355)
+                        accountant = self.env['res.users'].sudo().browse(355)
                         if accountant.exists():
-                            rec.activity_schedule(
-                                'mail.mail_activity_data_todo',
-                                user_id=accountant.id,
-                                summary=_("Fully Approved: Mark as Paid"),
-                                note=_("Payment cycle complete. Please process the payment."),
-                            )
-                            rec.write({'approval_stage': 'done'})
+                            rec.activity_schedule('mail.mail_activity_data_todo', user_id=accountant.id, summary=_("Fully Approved: Mark as Paid"))
         return True
 
     def action_reject_request(self):
-        """ Reject and close activities with feedback """
+        """ Mark activity as done with 'Rejected' feedback """
         for rec in self.sudo():
-            if rec.state != "in_review":
-                continue
-            
-            # Close activities with "Rejected" feedback
-            acts = rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid)
-            for act in acts:
-                act.sudo().action_feedback(feedback=_("Rejected"))
-            
-            # Find the line and mark it rejected
-            line = rec.approval_line_ids.filtered(lambda l: l.state == 'pending' and l.approver_id.id == self.env.uid)[:1]
-            if line:
-                line.write({'state': 'rejected'})
-            
+            rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid).sudo().action_feedback(feedback=_("Rejected"))
             rec.write({'state': 'rejected'})
-            rec._post_note(_("❌ Rejected by <b>%s</b>.") % self.env.user.name, partner_ids=[rec.requester_id.partner_id.id])
+            rec.approval_line_ids.filtered(lambda l: l.state == 'pending' and l.approver_id.id == self.env.uid).write({'state': 'rejected'})
         return True
 
     def action_opt_out_as_approver(self):
@@ -724,29 +648,17 @@ class KhApprovalRequest(models.Model):
         return True
 
     def action_start_payment_cycle(self):
-        """ Trigger Payment Cycle (Accountant -> CEO) """
+        """ Fix: Use sudo() for all operations to bypass access errors """
         for rec in self.sudo():
-            if rec.state != 'approved':
-                raise UserError(_("Request must be Approved before starting Payment cycle."))
-            if not rec.payment_rule_id:
-                raise UserError(_("Please select a 'Payment Approval Rule' (Purchase Payment) first."))
+            if rec.state != 'approved': raise UserError(_("Request must be Approved first."))
+            if not rec.payment_rule_id: raise UserError(_("Please select a Payment Approval Rule first."))
 
-            # 1. Switch Stage & Reset state to 'In Review'
-            rec.write({
-                'approval_stage': 'pay_review',
-                'state': 'in_review',
-            })
-
-            # 2. Build lines for the "Purchase Payment" rule
+            rec.write({'approval_stage': 'pay_review', 'state': 'in_review'})
             rec._build_approval_lines()
-            
-            # 3. Notify new approvers (Accountant)
             rec._notify_pending_approvers()
-            
-            # 4. Mark Khaled's current activity done
             rec._close_my_open_todos()
-            
-            rec._post_note(_("🚀 <b>Purchase Payment Cycle Started.</b>"))
+            rec._post_note(_("🚀 <b>Payment Approval Cycle Started.</b>"))
+        return True
 
 
 
