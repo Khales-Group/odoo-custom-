@@ -16,7 +16,7 @@
 
                     <!-- THE SIDEBAR (Filter by Category) -->
                     <searchpanel>
-                        <field name="category_ids" icon="fa-folder" enable_counters="1"/>
+                        <field name="category_ids" icon="fa-folder" enable_counters="0"/>
                     </searchpanel>
                 </search>
             </field>
