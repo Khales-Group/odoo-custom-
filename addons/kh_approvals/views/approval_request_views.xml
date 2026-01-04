@@ -177,8 +177,8 @@
       </field>
     </record>
 
-    <record id="view_kh_approval_request_form_cycle_final" model="ir.ui.view">
-        <field name="name">kh.approval.request.form.cycle.final</field>
+    <record id="view_kh_approval_request_form_inherit_cycles" model="ir.ui.view">
+        <field name="name">kh.approval.request.form.inherit.cycles</field>
         <field name="model">kh.approval.request</field>
         <field name="inherit_id" ref="kh_approvals.view_kh_approval_request_form_base"/>
         <field name="arch" type="xml">
