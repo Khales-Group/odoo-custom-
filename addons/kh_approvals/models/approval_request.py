@@ -117,6 +117,22 @@ class KhApprovalRequest(models.Model):
         tracking=True,
     )
 
+    # --- Two-Cycle Approval Support ---
+    payment_rule_id = fields.Many2one(
+        "kh.approval.rule",
+        string="Payment Rule",
+        domain="[('company_id', '=', company_id)]",
+        tracking=True,
+        help="Rule used for the second cycle (Payment Approval)."
+    )
+    approval_stage = fields.Selection(
+        [('procurement', 'Procurement'), ('payment', 'Payment')],
+        default='procurement',
+        string="Approval Stage",
+        required=True,
+        tracking=True
+    )
+
     # UI helper: show Petty Cash items tab when the chosen rule is 'Petty Cash'
     is_petty_cash = fields.Boolean(compute='_compute_is_petty_cash', store=False)
 
@@ -423,16 +439,25 @@ class KhApprovalRequest(models.Model):
         Uses sudo() so normal users (read-only on lines) can submit.
         """
         for rec in self:
-            # Clear any existing generated steps
-            rec.approval_line_ids.sudo().unlink()
+            current_stage = rec.approval_stage or 'procurement'
+
+            # Clear ONLY the lines for the current stage (allow retrying/resetting current cycle)
+            # We preserve lines from other stages (e.g. completed procurement lines)
+            rec.approval_line_ids.filtered(lambda l: l.approval_stage == current_stage).sudo().unlink()
+
             vals_list = []
 
             if rec.approval_type == 'standard':
-                if not rec.rule_id:
-                    raise UserError(_("Please choose an Approval Rule first."))
-
-                rule = rec.rule_id
-
+                # Select rule based on current stage
+                rule = False
+                if current_stage == 'procurement':
+                    rule = rec.rule_id
+                elif current_stage == 'payment':
+                    rule = rec.payment_rule_id
+                
+                if not rule:
+                    raise UserError(_("Please select an Approval Rule for the '%s' stage.") % current_stage)
+                
                 # Company/department guardrails
                 if rule.company_id and rule.company_id != rec.company_id:
                     raise UserError(_("Rule belongs to another company."))
@@ -455,6 +480,7 @@ class KhApprovalRequest(models.Model):
                         "state": "waiting",
                         "company_id": rec.company_id.id,
                         "sequence": step.sequence,
+                        "approval_stage": current_stage,
                     })
 
             elif rec.approval_type == 'payslip':
@@ -487,6 +513,7 @@ class KhApprovalRequest(models.Model):
                         "state": "waiting",
                         "company_id": rec.company_id.id,
                         "sequence": step.sequence,
+                        "approval_stage": current_stage,
                     })
 
             if not vals_list:
@@ -541,7 +568,8 @@ class KhApprovalRequest(models.Model):
             prev_approver_partners = rec.approval_line_ids.mapped('approver_id.partner_id')
 
             rec._close_all_todos()
-            rec.approval_line_ids.sudo().unlink()
+            # Only clear lines for the active stage
+            rec.approval_line_ids.filtered(lambda l: l.approval_stage == rec.approval_stage).sudo().unlink()
 
             rec.with_context(tracking_disable=True).write({
                 'state': 'draft',
@@ -702,6 +730,22 @@ class KhApprovalRequest(models.Model):
                                 )
                             except Exception as e:
                                 _logger.exception("Failed to send approval partner notification for request %s: %s", rec.name, e)
+
+                            # --- NOTIFICATION FOR PROCUREMENT ENGINEER (User 364) ---
+                            # If Procurement Cycle just finished, notify them to start Payment Cycle
+                            if rec.approval_stage == 'procurement' and rec.payment_rule_id:
+                                proc_eng_user = self.env['res.users'].browse(364)
+                                if proc_eng_user.exists():
+                                    try:
+                                        rec.with_company(rec.company_id).activity_schedule(
+                                            'mail.mail_activity_data_todo',
+                                            user_id=proc_eng_user.id,
+                                            summary=_("Ready for Payment Cycle"),
+                                            note=_("Procurement Approved. Please click 'Start Payment Approval' to proceed."),
+                                        )
+                                        rec._post_note(_("🔔 Notified Procurement Engineer to start Payment Cycle."))
+                                    except Exception as e:
+                                        _logger.warning("Failed to notify Procurement Engineer (364): %s", e)
 
                             # Post-approval actions
                             try:
@@ -919,6 +963,11 @@ class KhApprovalLine(models.Model):
         ],
         default="waiting",
         required=True,
+    )
+    approval_stage = fields.Selection(
+        [('procurement', 'Procurement'), ('payment', 'Payment')],
+        default='procurement',
+        required=True
     )
     note = fields.Char()
 
