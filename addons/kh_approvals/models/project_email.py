@@ -37,6 +37,11 @@ class ProjectEmail(models.Model):
         ('old_contractor', 'Old Contractor')   # New
     ], string="Folder", default='main')
 
+    @api.model
+    def check_access_rights(self, operation, raise_exception=True):
+        # This ensures the system doesn't block the basic loading of the model
+        return super(ProjectEmail, self).check_access_rights(operation, raise_exception=raise_exception)
+
 # 3. PROJECT MODEL
 class Project(models.Model):
     _inherit = "project.project"
