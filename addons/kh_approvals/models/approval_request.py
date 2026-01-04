@@ -120,7 +120,7 @@ class KhApprovalRequest(models.Model):
     # --- Two-Cycle Approval Support ---
     payment_rule_id = fields.Many2one(
         "kh.approval.rule",
-        string="Payment Rule",
+        string="Payment Approval Rule",
         domain="[('company_id', '=', company_id)]",
         tracking=True,
         help="Rule used for the second cycle (Payment Approval)."
@@ -899,7 +899,7 @@ class KhApprovalRequest(models.Model):
             if rec.approval_stage != 'procurement':
                 raise UserError(_("Payment cycle already started."))
             if not rec.payment_rule_id:
-                raise UserError(_("Please select a Payment Rule before proceeding."))
+                raise UserError(_("Please select a Payment Approval Rule before starting the next cycle."))
 
             # 1. Switch Stage
             rec.write({
