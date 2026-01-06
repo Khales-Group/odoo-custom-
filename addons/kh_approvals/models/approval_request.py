@@ -663,16 +663,40 @@ class KhApprovalRequest(models.Model):
         return True
 
     def action_start_payment_cycle(self):
-        """ Fix: Use sudo() for all operations to bypass access errors """
+        """ Fix: Auto-assign Purchase Payment rule and use sudo() to bypass Access Errors """
         for rec in self.sudo():
-            if rec.state != 'approved': raise UserError(_("Request must be Approved first."))
-            if not rec.payment_rule_id: raise UserError(_("Please select a Payment Approval Rule first."))
+            if rec.state != 'approved':
+                raise UserError(_("Request must be Approved before starting Payment cycle."))
+            
+            # --- AUTOMATIC RULE ASSIGNMENT ---
+            # If no payment rule is selected, search for the 'Purchase Payment' rule automatically
+            if not rec.payment_rule_id:
+                payment_rule = self.env['kh.approval.rule'].search([
+                    ('name', '=', 'Purchase Payment'),
+                    ('company_id', '=', rec.company_id.id)
+                ], limit=1)
+                
+                if payment_rule:
+                    rec.payment_rule_id = payment_rule.id
+                else:
+                    raise UserError(_("Please select a 'Payment Approval Rule' or create a rule named 'Purchase Payment'."))
 
-            rec.write({'approval_stage': 'pay_review', 'state': 'in_review'})
+            # 1. Switch Stage to Payment Cycle
+            rec.write({
+                'approval_stage': 'pay_review',
+                'state': 'in_review', # Resets state to trigger new approvers
+            })
+
+            # 2. Build lines for the new stage (Purchase Payment)
             rec._build_approval_lines()
+            
+            # 3. Notify new approvers (Accountant/CEO)
             rec._notify_pending_approvers()
+            
+            # 4. Mark Khaled's current activity as done
             rec._close_my_open_todos()
-            rec._post_note(_("🚀 <b>Payment Approval Cycle Started.</b>"))
+            
+            rec._post_note(_("🚀 <b>Purchase Payment Cycle Started.</b> Rule assigned: %s") % rec.payment_rule_id.name)
         return True
 
 

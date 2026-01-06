@@ -198,10 +198,13 @@
             <xpath expr="//field[@name='rule_id']" position="after">
                 <field name="payment_rule_id" 
                        string="Payment Approval Rule"
-                       invisible="not is_purchase_request or approval_type != 'standard'"
-                       required="is_purchase_request and approval_type == 'standard'"
+                       invisible="not is_purchase_request"
+                       required="is_purchase_request"
                        readonly="state != 'draft'"/>
-                <field name="approval_stage" string="Current Stage" readonly="1" widget="badge" 
+                <field name="approval_stage" 
+                       string="Current Stage" 
+                       readonly="1" 
+                       widget="badge" 
                        invisible="not is_purchase_request"
                        decoration-info="approval_stage == 'procurement'" 
                        decoration-warning="approval_stage == 'pay_review'"
