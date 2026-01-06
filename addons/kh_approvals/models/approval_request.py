@@ -550,98 +550,94 @@ class KhApprovalRequest(models.Model):
         raise UserError(_("This option has been disabled by your administrator."))
 
     def action_approve_request(self):
-        """ Robust version: Handles empty stages and correctly notifies Khaled """
+        """ 
+        Strict Stage Filtering: Ensures we only approve the line for the CURRENT cycle.
+        """
         Line = self.env['kh.approval.line'].sudo()
         
-        # Use sudo() to ensure the transition isn't blocked by 'Approved' state restrictions
         for rec in self.sudo():
-            # Find the active line for the current user that is actually PENDING
+            # 1. STRICT SEARCH: Filter by Request + User + Pending + CURRENT STAGE
+            # This prevents finding the "Cycle 1" line if we are in "Cycle 2"
             line = Line.search([
                 ('request_id', '=', rec.id),
                 ('state', '=', 'pending'),
-                ('approver_id', '=', self.env.uid)
+                ('approver_id', '=', self.env.uid),
+                ('approval_stage', '=', rec.approval_stage)  # <--- CRITICAL FIX
             ], limit=1)
 
             if not line:
-                # Fallback for managers who might be approving on someone else's behalf
+                # Manager fallback (also strictly scoped to current stage)
                 if self.env.user.has_group('kh_approvals.group_kh_approvals_manager'):
                     line = Line.search([
                         ('request_id', '=', rec.id),
-                        ('state', '=', 'pending')
+                        ('state', '=', 'pending'),
+                        ('approval_stage', '=', rec.approval_stage) # <--- CRITICAL FIX
                     ], limit=1)
             
             if not line:
-                raise UserError(_("It is not your turn to approve, or this request is not pending for you."))
+                raise UserError(_("You are not the current active approver for this stage."))
 
-            # 1. Approve current line
+            # 2. Approve the found line
             line.write({'state': 'approved'})
-            
-            # 2. Close user's activity
             rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid).sudo().action_feedback(feedback="Approved")
 
-            # 3. Check if all required lines at the CURRENT sequence are done
-            current_level_pending = Line.search_count([
+            # 3. Check for peers at the same sequence IN THIS STAGE
+            same_level_pending = Line.search_count([
                 ('request_id', '=', rec.id),
                 ('sequence', '=', line.sequence),
+                ('approval_stage', '=', rec.approval_stage), # <--- Filter by stage
                 ('state', '!=', 'approved'),
                 ('required', '=', True)
             ])
 
-            if current_level_pending == 0:
-                # 4. Find the NEXT sequence level
+            if same_level_pending == 0:
+                # 4. Find the NEXT sequence level IN THIS STAGE
                 next_step = Line.search([
                     ('request_id', '=', rec.id),
                     ('sequence', '>', line.sequence),
+                    ('approval_stage', '=', rec.approval_stage), # <--- Filter by stage
                     ('state', '=', 'waiting')
                 ], order='sequence, id', limit=1)
 
                 if next_step:
-                    # Mark ONLY the next sequence level as pending
+                    # Activate next steps
+                    next_seq_val = next_step.sequence
                     Line.search([
                         ('request_id', '=', rec.id), 
-                        ('sequence', '=', next_step.sequence)
+                        ('sequence', '=', next_seq_val),
+                        ('approval_stage', '=', rec.approval_stage) # <--- Filter by stage
                     ]).write({'state': 'pending'})
                     
-                    # 5. NOW notify only the newly pending people
                     rec._notify_pending_approvers()
                 else:
-                    # --- CYCLE COMPLETE ---
+                    # --- STAGE COMPLETE ---
                     rec.write({'state': 'approved'})
                     
-                    # LOGIC FIX: Check if it is Procurement Cycle OR if it's a Purchase Request with no stage set
-                    is_procurement_cycle = (
-                        rec.approval_stage == 'procurement' or 
-                        (not rec.approval_stage and rec.is_purchase_request)
-                    )
-
+                    # Notifications Logic
+                    is_procurement_cycle = (rec.approval_stage == 'procurement' or (not rec.approval_stage and rec.is_purchase_request))
+                    
                     if is_procurement_cycle:
-                        # Ensure we force the stage value so future checks work
-                        if not rec.approval_stage:
-                            rec.write({'approval_stage': 'procurement'})
-
+                        # Fix empty stage if needed
+                        if not rec.approval_stage: rec.write({'approval_stage': 'procurement'})
+                        
                         khaled = self.env['res.users'].sudo().browse(364)
                         if khaled.exists():
                             rec.activity_schedule(
                                 'mail.mail_activity_data_todo',
                                 user_id=khaled.id,
                                 summary=_("Procurement Approved: Start Payment Cycle"),
-                                note=_("Please check the Amount and click 'Start Payment Cycle' to proceed.")
+                                note=_("Please click 'Start Payment Cycle' to proceed.")
                             )
-                            rec._post_note(_("🔔 Notification sent to Khaled (364)."))
-                        else:
-                            rec._post_note(_("⚠️ Error: User Khaled (ID 364) not found. Notification skipped."))
-
-                    # Notify Accountant (355) if Payment Cycle is finished
                     elif rec.approval_stage == 'pay_review':
+                        rec.write({'approval_stage': 'done'})
                         accountant = self.env['res.users'].sudo().browse(355)
                         if accountant.exists():
                             rec.activity_schedule(
                                 'mail.mail_activity_data_todo',
                                 user_id=accountant.id,
                                 summary=_("Fully Approved: Mark as Paid"),
-                                note=_("Payment cycle complete. Please process the payment."),
+                                note=_("Payment cycle complete.")
                             )
-                            rec.write({'approval_stage': 'done'})
         return True
 
     def action_reject_request(self):
