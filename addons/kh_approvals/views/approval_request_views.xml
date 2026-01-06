@@ -200,7 +200,7 @@
                        string="Payment Approval Rule"
                        readonly="1"
                        force_save="1"
-                       invisible="not is_purchase_request"
+                       invisible="not is_purchase_request"/>
                 <field name="approval_stage" 
                        string="Current Stage" 
                        readonly="1" 
