@@ -550,8 +550,10 @@ class KhApprovalRequest(models.Model):
         raise UserError(_("This option has been disabled by your administrator."))
 
     def action_approve_request(self):
-        """ Moves to next sequence ONLY after current level is fully approved """
+        """ Robust version: Handles empty stages and correctly notifies Khaled """
         Line = self.env['kh.approval.line'].sudo()
+        
+        # Use sudo() to ensure the transition isn't blocked by 'Approved' state restrictions
         for rec in self.sudo():
             # Find the active line for the current user that is actually PENDING
             line = Line.search([
@@ -561,7 +563,15 @@ class KhApprovalRequest(models.Model):
             ], limit=1)
 
             if not line:
-                raise UserError("It is not your turn to approve, or this request is not pending for you.")
+                # Fallback for managers who might be approving on someone else's behalf
+                if self.env.user.has_group('kh_approvals.group_kh_approvals_manager'):
+                    line = Line.search([
+                        ('request_id', '=', rec.id),
+                        ('state', '=', 'pending')
+                    ], limit=1)
+            
+            if not line:
+                raise UserError(_("It is not your turn to approve, or this request is not pending for you."))
 
             # 1. Approve current line
             line.write({'state': 'approved'})
@@ -595,9 +605,43 @@ class KhApprovalRequest(models.Model):
                     # 5. NOW notify only the newly pending people
                     rec._notify_pending_approvers()
                 else:
-                    # Final completion logic...
+                    # --- CYCLE COMPLETE ---
                     rec.write({'state': 'approved'})
-                    # [Khaled/Accountant notification logic here]
+                    
+                    # LOGIC FIX: Check if it is Procurement Cycle OR if it's a Purchase Request with no stage set
+                    is_procurement_cycle = (
+                        rec.approval_stage == 'procurement' or 
+                        (not rec.approval_stage and rec.is_purchase_request)
+                    )
+
+                    if is_procurement_cycle:
+                        # Ensure we force the stage value so future checks work
+                        if not rec.approval_stage:
+                            rec.write({'approval_stage': 'procurement'})
+
+                        khaled = self.env['res.users'].sudo().browse(364)
+                        if khaled.exists():
+                            rec.activity_schedule(
+                                'mail.mail_activity_data_todo',
+                                user_id=khaled.id,
+                                summary=_("Procurement Approved: Start Payment Cycle"),
+                                note=_("Please check the Amount and click 'Start Payment Cycle' to proceed.")
+                            )
+                            rec._post_note(_("🔔 Notification sent to Khaled (364)."))
+                        else:
+                            rec._post_note(_("⚠️ Error: User Khaled (ID 364) not found. Notification skipped."))
+
+                    # Notify Accountant (355) if Payment Cycle is finished
+                    elif rec.approval_stage == 'pay_review':
+                        accountant = self.env['res.users'].sudo().browse(355)
+                        if accountant.exists():
+                            rec.activity_schedule(
+                                'mail.mail_activity_data_todo',
+                                user_id=accountant.id,
+                                summary=_("Fully Approved: Mark as Paid"),
+                                note=_("Payment cycle complete. Please process the payment."),
+                            )
+                            rec.write({'approval_stage': 'done'})
         return True
 
     def action_reject_request(self):
