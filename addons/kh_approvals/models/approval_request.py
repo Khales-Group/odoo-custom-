@@ -632,17 +632,39 @@ class KhApprovalRequest(models.Model):
         return True
 
     def action_start_payment_cycle(self):
-        """ Fix: Use sudo() for all operations to bypass access errors """
+        """
+        Automatically assigns the 'Purchase Payment' rule for the correct company
+        and bypasses access errors using sudo().
+        """
         for rec in self.sudo():
-            if rec.state != 'approved': raise UserError(_("Request must be Approved first."))
-            if not rec.payment_rule_id: raise UserError(_("Please select a Payment Approval Rule first."))
+            if rec.state != 'approved':
+                raise UserError(_("Request must be Approved before starting the Payment cycle."))
 
-            # Switch Stage and Reset state to trigger new cycle
-            rec.write({'approval_stage': 'pay_review', 'state': 'in_review'})
+            # --- AUTOMATIC SYSTEM FILLING ---
+            # Search for the specific rule named 'Purchase Payment' in the SAME company
+            payment_rule = self.env['kh.approval.rule'].search([
+                ('name', '=', 'Purchase Payment'),
+                ('company_id', '=', rec.company_id.id)
+            ], limit=1)
+
+            if not payment_rule:
+                raise UserError(_("System Error: No rule named 'Purchase Payment' found for company '%s'. Please create it first.") % rec.company_id.name)
+
+            # Assign the rule and move to the next stage
+            rec.write({
+                'payment_rule_id': payment_rule.id,
+                'approval_stage': 'pay_review',
+                'state': 'in_review',
+            })
+
+            # Regenerate lines for the second cycle (Purchase Payment)
             rec._build_approval_lines()
             rec._notify_pending_approvers()
+
+            # Close Khaled's activity since he has now started the cycle
             rec._close_my_open_todos()
-            rec._post_note(_("🚀 <b>Payment Approval Cycle Started.</b>"))
+
+            rec._post_note(_("🚀 <b>Cycle 2 Started:</b> System assigned '%s' automatically for company %s.") % (payment_rule.name, rec.company_id.name))
         return True
 
 
