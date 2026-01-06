@@ -508,44 +508,45 @@ class KhApprovalRequest(models.Model):
         return True
 
     def action_revise_request(self):
+        """ 
+        Resets the request to Draft and clears all cycle-related data 
+        to ensure a fresh start.
         """
-        Requester turns a non-draft request back to Draft to edit safely.
-        - Allowed for owner only
-        - Closes activities
-        - Clears approval lines
-        - Increments revision
-        - Notifies followers & previous approvers
-        """
-        for rec in self:
-            if rec.requester_id.id != self.env.uid:
-                raise AccessError(_("Only the requester can revise this request."))
+        for rec in self.sudo():
+            if rec.requester_id.id != self.env.uid and not self.env.user.has_group('kh_approvals.group_kh_approvals_manager'):
+                raise AccessError("Only the requester or a manager can revise this request.")
+            
             if rec.state not in ('in_review', 'approved', 'rejected'):
-                raise UserError(_("Only non-Draft requests can be revised."))
+                raise UserError("Only non-Draft requests can be revised.")
 
-            prev_approver_partners = rec.approval_line_ids.mapped('approver_id.partner_id')
+            # 1. Clear approval lines for the active stage
+            rec.approval_line_ids.filtered(lambda l: l.approval_stage == rec.approval_stage).unlink()
 
-            rec._close_all_todos()
-            # Only clear lines for the active stage
-            rec.approval_line_ids.filtered(lambda l: l.approval_stage == rec.approval_stage).sudo().unlink()
-
-            rec.with_context(tracking_disable=True).write({
+            # 2. RESET CYCLE FIELDS
+            # Clear the payment rule and set stage back to Procurement
+            vals = {
                 'state': 'draft',
                 'revision': rec.revision + 1,
                 'last_revised_by': self.env.user.id,
                 'last_revised_on': fields.Datetime.now(),
-                'submitted_on': False,  # Clear submission date on revise
-            })
+                'submitted_on': False,
+                'payment_rule_id': False, # This clears the 'Purchase Payment' selection
+            }
+            
+            # Only reset stage if it's a Purchase Request
+            if rec.is_purchase_request:
+                vals['approval_stage'] = 'procurement'
+            else:
+                vals['approval_stage'] = False
+
+            rec.write(vals)
+
+            # 3. Close any open activities
+            rec._close_all_todos()
 
             rec._post_note(
-                _("✏️ Request revised by <b>%s</b>. All approvals have been reset.<br/>"
-                  "Revision: <b>%s</b>") % (self.env.user.name, rec.revision),
-                partner_ids=rec.message_follower_ids.mapped("partner_id").ids,
+                "✏️ <b>Request Revised:</b> All approval steps reset. Cycle data cleared."
             )
-            if prev_approver_partners:
-                rec._post_note(
-                    _("Revised and approvals reset."),
-                    partner_ids=prev_approver_partners.ids,
-                )
         return True
 
     def action_withdraw_request(self):
