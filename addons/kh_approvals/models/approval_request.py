@@ -555,31 +555,34 @@ class KhApprovalRequest(models.Model):
 
     def action_approve_request(self):
         """ 
-        Strict Stage Filtering: Ensures we only approve the line for the CURRENT cycle.
+        Approves the current line. 
+        Fixes the 'Invalid Operation' error by correctly handling empty stages.
         """
         Line = self.env['kh.approval.line'].sudo()
         
         for rec in self.sudo():
-            # 1. STRICT SEARCH: Filter by Request + User + Pending + CURRENT STAGE
-            # This prevents finding the "Cycle 1" line if we are in "Cycle 2"
+            # FIX: If stage is empty (False), default to 'procurement' to match the lines
+            current_stage_filter = rec.approval_stage or 'procurement'
+
+            # 1. STRICT SEARCH: Filter by Request + User + Pending + CORRECT STAGE
             line = Line.search([
                 ('request_id', '=', rec.id),
                 ('state', '=', 'pending'),
                 ('approver_id', '=', self.env.uid),
-                ('approval_stage', '=', rec.approval_stage)  # <--- CRITICAL FIX
+                ('approval_stage', '=', current_stage_filter)  # <--- FIXED FILTER
             ], limit=1)
 
             if not line:
-                # Manager fallback (also strictly scoped to current stage)
+                # Manager fallback
                 if self.env.user.has_group('kh_approvals.group_kh_approvals_manager'):
                     line = Line.search([
                         ('request_id', '=', rec.id),
                         ('state', '=', 'pending'),
-                        ('approval_stage', '=', rec.approval_stage) # <--- CRITICAL FIX
+                        ('approval_stage', '=', current_stage_filter) # <--- FIXED FILTER
                     ], limit=1)
             
             if not line:
-                raise UserError(_("You are not the current active approver for this stage."))
+                raise UserError(_("Invalid Operation: You are not the current active approver for this stage."))
 
             # 2. Approve the found line
             line.write({'state': 'approved'})
@@ -589,7 +592,7 @@ class KhApprovalRequest(models.Model):
             same_level_pending = Line.search_count([
                 ('request_id', '=', rec.id),
                 ('sequence', '=', line.sequence),
-                ('approval_stage', '=', rec.approval_stage), # <--- Filter by stage
+                ('approval_stage', '=', current_stage_filter), 
                 ('state', '!=', 'approved'),
                 ('required', '=', True)
             ])
@@ -599,7 +602,7 @@ class KhApprovalRequest(models.Model):
                 next_step = Line.search([
                     ('request_id', '=', rec.id),
                     ('sequence', '>', line.sequence),
-                    ('approval_stage', '=', rec.approval_stage), # <--- Filter by stage
+                    ('approval_stage', '=', current_stage_filter), 
                     ('state', '=', 'waiting')
                 ], order='sequence, id', limit=1)
 
@@ -609,7 +612,7 @@ class KhApprovalRequest(models.Model):
                     Line.search([
                         ('request_id', '=', rec.id), 
                         ('sequence', '=', next_seq_val),
-                        ('approval_stage', '=', rec.approval_stage) # <--- Filter by stage
+                        ('approval_stage', '=', current_stage_filter)
                     ]).write({'state': 'pending'})
                     
                     rec._notify_pending_approvers()
@@ -617,11 +620,13 @@ class KhApprovalRequest(models.Model):
                     # --- STAGE COMPLETE ---
                     rec.write({'state': 'approved'})
                     
-                    # Notifications Logic
-                    is_procurement_cycle = (rec.approval_stage == 'procurement' or (not rec.approval_stage and rec.is_purchase_request))
+                    # Logic for Two-Cycle Requests (Purchase Request)
+                    is_procurement_cycle = (
+                        rec.approval_stage == 'procurement' or 
+                        (not rec.approval_stage and rec.is_purchase_request)
+                    )
                     
                     if is_procurement_cycle:
-                        # Fix empty stage if needed
                         if not rec.approval_stage: rec.write({'approval_stage': 'procurement'})
                         
                         khaled = self.env['res.users'].sudo().browse(364)
@@ -632,8 +637,13 @@ class KhApprovalRequest(models.Model):
                                 summary=_("Procurement Approved: Start Payment Cycle"),
                                 note=_("Please click 'Start Payment Cycle' to proceed.")
                             )
-                    elif rec.approval_stage == 'pay_review':
-                        rec.write({'approval_stage': 'done'})
+                    
+                    # Logic for Payment Cycle OR Single Payment Requests
+                    elif rec.approval_stage == 'pay_review' or not rec.is_purchase_request:
+                        # If it's a simple Payment Request (not purchase request), we mark as done
+                        if rec.approval_stage == 'pay_review':
+                             rec.write({'approval_stage': 'done'})
+                        
                         accountant = self.env['res.users'].sudo().browse(355)
                         if accountant.exists():
                             rec.activity_schedule(
