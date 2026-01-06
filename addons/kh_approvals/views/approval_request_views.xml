@@ -87,24 +87,24 @@
       <field name="arch" type="xml">
         <form string="Approval Request">
           <header>
-            <button name="action_submit" type="object" string="Submit"
+            <button name="action_submit" type="object" string="🚀 Submit"
                     class="oe_highlight"
                     invisible="state != 'draft'"/>
 
-            <button name="action_approve_request" type="object" string="Approve"
+            <button name="action_approve_request" type="object" string="✅ Approve"
                     class="btn-primary o_mobile_force_show"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
-            <button name="action_reject_request" type="object" string="Reject"
+            <button name="action_reject_request" type="object" string="❌ Reject"
                     class="btn-secondary o_mobile_force_show"
                     invisible="state != 'in_review' or not is_current_user_approver"/>
 
-            <button name="action_revise_request" type="object" string="Edit Request"
+            <button name="action_revise_request" type="object" string="✏️ Edit Request"
                     class="btn-secondary o_mobile_force_show"
                     invisible="state == 'draft' or requester_id != uid"/>
 
             <button name="action_mark_as_paid"
                     type="object"
-                    string="Mark as Paid"
+                    string="💰 Mark as Paid"
                     class="btn-primary o_mobile_force_show"
                     groups="kh_approvals.group_kh_approvals_accountant,kh_approvals.group_kh_approvals_manager"
                     invisible="state != 'approved' or payment_state != 'not_paid' or amount &lt;= 0"/>
@@ -117,52 +117,54 @@
           <sheet>
             <field name="is_current_user_approver" invisible="1"/>
             <group>
-              <group string="Request Details">
-                <field name="title"/>
-                <label for="name" string="Request ID"/>
+              <group string="📝 Request Details">
+                <field name="title" string="📌 Title"/>
+                <label for="name" string="🆔 Request ID"/>
                 <div class="o_row">
                   <i class="fa fa-hashtag text-muted me-2" title="Request ID"/>
                   <field name="name" readonly="1"/>
                 </div>
-                <label for="requester_id"/>
+                <label for="requester_id" string="👤 Requester"/>
                 <div class="o_row">
                   <i class="fa fa-user-o text-muted me-2" title="Requester"/>
                   <field name="requester_id" readonly="1" widget="many2one_avatar_user"/>
                 </div>
-                <label for="amount"/>
+                <label for="amount" string="💰 Amount"/>
                 <div class="o_row">
                   <i class="fa fa-money text-muted me-2" title="Amount"/>
                   <field name="amount" readonly="state != 'draft' and (state != 'approved' or uid != 364)" force_save="1"/>
                   <field name="currency_id" readonly="state != 'draft'"/>
                 </div>
-                <field name="revision" readonly="1"/>
-                <field name="last_revised_by" readonly="1"/>
-                <field name="last_revised_on" readonly="1"/>
-                <field name="submitted_on" readonly="1"/>
+                <separator string="📜 Audit Trail"/>
+                <field name="revision" string="🔢 Revision" readonly="1"/>
+                <field name="last_revised_by" string="👤 Last Revised By" readonly="1"/>
+                <field name="last_revised_on" string="📅 Last Revised On" readonly="1"/>
+                <field name="submitted_on" string="📤 Submitted On" readonly="1"/>
               </group>
-              <group string="Configuration">
-                <label for="company_id" groups="base.group_multi_company"/>
+              <group string="⚙️ Configuration">
+                <label for="company_id" string="🏢 Company" groups="base.group_multi_company"/>
                 <div class="o_row" groups="base.group_multi_company">
                   <i class="fa fa-building-o text-muted me-2" title="Company"/>
                   <field name="company_id" readonly="state != 'draft'"/>
                 </div>
-                <label for="department_id"/>
+                <label for="department_id" string="🏢 Department"/>
                 <div class="o_row">
                   <i class="fa fa-sitemap text-muted me-2" title="Department"/>
                   <field name="department_id" readonly="state != 'draft'"/>
                 </div>
                 <field name="rule_id"
+                       string="📜 Approval Rule"
                        readonly="state != 'draft'"
                        options="{'no_create_edit': True}"/>
               </group>
             </group>
 
             <notebook>
-              <page string="Approval Steps" name="approval_steps">
+              <page string="✅ Approval Steps" name="approval_steps">
                 <field name="steps_overview_html" nolabel="1"/>
               </page>
 
-              <page string="Petty Cash Items" name="petty_cash_items" invisible="not is_petty_cash">
+              <page string="💵 Petty Cash Items" name="petty_cash_items" invisible="not is_petty_cash">
                 <field name="petty_cash_line_ids" nolabel="1"/>
               </page>
             </notebook>
@@ -189,7 +191,7 @@
 
             <xpath expr="//header" position="inside">
                 <button name="action_start_payment_cycle" 
-                        string="Start Payment Cycle" 
+                        string="💸 Start Payment Cycle" 
                         type="object" 
                         class="oe_highlight"
                         invisible="not is_purchase_request or state != 'approved' or approval_stage != 'procurement'"/>
@@ -197,12 +199,12 @@
 
             <xpath expr="//field[@name='rule_id']" position="after">
                 <field name="payment_rule_id" 
-                       string="Payment Approval Rule"
+                       string="💳 Payment Approval Rule"
                        readonly="1"
                        force_save="1"
                        invisible="not is_purchase_request"/>
                 <field name="approval_stage" 
-                       string="Current Stage" 
+                       string="📍 Current Stage" 
                        readonly="1" 
                        widget="badge" 
                        invisible="not is_purchase_request"

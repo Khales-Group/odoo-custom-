@@ -49,10 +49,10 @@
             </xpath>
             <xpath expr="//notebook" position="inside">
                 <!-- Restore Internal Notes page to fix Studio view error -->
-                <page string="Internal Notes" name="internal_notes">
+                <page string="🗒️ Internal Notes" name="internal_notes">
                     <p class="text-muted">Internal Notes</p>
                 </page>
-                <page string="Payslips" name="payslips" invisible="approval_type != 'payslip'" groups="hr_payroll.group_hr_payroll_user">
+                <page string="📄 Payslips" name="payslips" invisible="approval_type != 'payslip'" groups="hr_payroll.group_hr_payroll_user">
                     <field name="payslip_ids">
                         <list string="Payslips">
                             <field name="name"/>
