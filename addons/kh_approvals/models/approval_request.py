@@ -505,31 +505,32 @@ class KhApprovalRequest(models.Model):
 
     def action_revise_request(self):
         """ 
-        Resets the request to Draft and clears all cycle-related data 
-        to ensure a fresh start.
+        Full Reset: Clears ALL approval lines (Procurement & Payment) 
+        so the new Revision starts fresh.
         """
         for rec in self.sudo():
+            # Permission check
             if rec.requester_id.id != self.env.uid and not self.env.user.has_group('kh_approvals.group_kh_approvals_manager'):
-                raise AccessError("Only the requester or a manager can revise this request.")
+                raise AccessError(_("Only the requester or a manager can revise this request."))
             
             if rec.state not in ('in_review', 'approved', 'rejected'):
-                raise UserError("Only non-Draft requests can be revised.")
+                raise UserError(_("Only non-Draft requests can be revised."))
 
-            # 1. Clear approval lines for the active stage
-            rec.approval_line_ids.filtered(lambda l: l.approval_stage == rec.approval_stage).unlink()
+            # 1. DELETE ALL APPROVAL LINES (Clean Slate)
+            # We remove everything because a Revised request requires full re-approval.
+            rec.approval_line_ids.sudo().unlink()
 
-            # 2. RESET CYCLE FIELDS
-            # Clear the payment rule and set stage back to Procurement
+            # 2. RESET FIELDS
             vals = {
                 'state': 'draft',
                 'revision': rec.revision + 1,
                 'last_revised_by': self.env.user.id,
                 'last_revised_on': fields.Datetime.now(),
                 'submitted_on': False,
-                'payment_rule_id': False, # This clears the 'Purchase Payment' selection
+                'payment_rule_id': False, # Clear the Payment Rule
             }
             
-            # Only reset stage if it's a Purchase Request
+            # Reset stage based on rule type
             if rec.is_purchase_request:
                 vals['approval_stage'] = 'procurement'
             else:
@@ -537,11 +538,14 @@ class KhApprovalRequest(models.Model):
 
             rec.write(vals)
 
-            # 3. Close any open activities
+            # 3. Close any open activities from the old version
             rec._close_all_todos()
 
+            # 4. Log the History in Chatter
             rec._post_note(
-                "✏️ <b>Request Revised:</b> All approval steps reset. Cycle data cleared."
+                _("✏️ <b>Request Revised (Rev %s):</b><br/>"
+                  "All previous approval steps have been cleared for re-approval.<br/>"
+                  "Check the chatter history above for previous approval logs.") % (rec.revision + 1)
             )
         return True
 
