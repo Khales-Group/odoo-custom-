@@ -454,12 +454,13 @@ class KhApprovalRequest(models.Model):
             
             vals_list = []
             if rec.approval_type == 'standard':
+                # Use rule_id for procurement, and payment_rule_id for the next cycle
                 rule = rec.rule_id if current_stage == 'procurement' else rec.payment_rule_id
                 
                 if not rule:
                     raise UserError(_("Please select an Approval Rule for the '%s' stage.") % current_stage)
                 
-                # FIX: Remove the strict department check to allow the Payment Rule to work
+                # --- FIX: Remove the strict department check to allow Payment Rules to work ---
                 if rule.company_id and rule.company_id != rec.company_id:
                     raise UserError(_("Rule belongs to another company."))
 
@@ -477,47 +478,11 @@ class KhApprovalRequest(models.Model):
                         "approval_stage": current_stage,
                     })
 
-            elif rec.approval_type == 'payslip':
-                rule = False
-                if rec.department_id:
-                    rule = self.env['kh.approval.rule'].search([
-                        ('company_id', '=', rec.company_id.id),
-                        ('department_id', '=', rec.department_id.id),
-                    ], limit=1)
-
-                if not rule:
-                    # Fallback to no department
-                    rule = self.env['kh.approval.rule'].search([
-                        ('company_id', '=', rec.company_id.id),
-                        ('department_id', '=', False),
-                    ], limit=1)
-
-                if not rule:
-                    raise UserError(_("No approval rule found for payslip approvals in this company. Please create a rule for the relevant department or a general rule with no department assigned."))
-
-                steps = rule.step_ids.sorted(key=lambda s: (s.sequence, s.id))
-                for step in steps:
-                    if not step.approver_id:
-                        continue
-                    vals_list.append({
-                        "request_id": rec.id,
-                        "name": step.name or step.approver_id.name,
-                        "approver_id": step.approver_id.id,
-                        "required": True,
-                        "state": "waiting",
-                        "company_id": rec.company_id.id,
-                        "sequence": step.sequence,
-                        "approval_stage": current_stage,
-                    })
-
-            if not vals_list:
-                raise UserError(_("No approvers found for this request."))
-
             if vals_list:
                 min_sequence = min(v['sequence'] for v in vals_list)
                 for v in vals_list:
                     if v['sequence'] == min_sequence: v['state'] = 'pending'
-            self.env["kh.approval.line"].sudo().create(vals_list)
+                self.env["kh.approval.line"].sudo().create(vals_list)
 
     # -------------------------------------------------------------------------
     # Actions (buttons)
@@ -590,13 +555,14 @@ class KhApprovalRequest(models.Model):
     def action_approve_request(self):
         """ Correctly marks activities as done and schedules the next stage """
         Line = self.env['kh.approval.line'].sudo()
+        # Use sudo() to ensure the transition isn't blocked by 'Approved' state restrictions
         for rec in self.sudo():
             if rec.state != "in_review": continue
 
             line = Line.search([('request_id', '=', rec.id), ('state', '=', 'pending'), ('approver_id', '=', self.env.uid)], limit=1)
             if not line and self.env.user.has_group('kh_approvals.group_kh_approvals_manager'):
                 line = Line.search([('request_id', '=', rec.id), ('state', '=', 'pending')], limit=1)
-            
+
             if not line: raise UserError(_("You are not the current approver."))
 
             # Approve line and mark user's activity as done with feedback
@@ -610,18 +576,21 @@ class KhApprovalRequest(models.Model):
                     Line.search([('request_id', '=', rec.id), ('sequence', '=', next_level.sequence)]).write({'state': 'pending'})
                     rec._notify_pending_approvers()
                 else:
+                    # --- PROCUREMENT CYCLE FINISHED ---
                     rec.write({'state': 'approved'})
-                    if rec.is_purchase_request:
-                        if rec.approval_stage == 'procurement' and rec.payment_rule_id:
-                            khaled = self.env['res.users'].sudo().browse(364)
-                            if khaled.exists():
-                                rec.activity_schedule('mail.mail_activity_data_todo', user_id=khaled.id, summary=_("Procurement Approved: Start Payment Cycle"))
-                        elif rec.approval_stage == 'pay_review':
-                            rec.write({'approval_stage': 'done'})
-                            # Notify Accountant (355)
-                            accountant = self.env['res.users'].sudo().browse(355)
-                            if accountant.exists():
-                                rec.activity_schedule('mail.mail_activity_data_todo', user_id=accountant.id, summary=_("Fully Approved: Mark as Paid"))
+                    if rec.approval_stage == 'procurement':
+                        khaled = self.env['res.users'].sudo().browse(364)
+                        if khaled.exists():
+                            # Schedule activity for Khaled Majid (364)
+                            rec.activity_schedule(
+                                'mail.mail_activity_data_todo',
+                                user_id=khaled.id,
+                                summary=_("Procurement Approved: Start Payment Cycle"),
+                                note=_("Please click 'Start Payment Cycle' to proceed to Purchase Payment.")
+                            )
+                            rec._post_note(_("🔔 Notification sent to Khaled (364)."))
+                    elif rec.approval_stage == 'pay_review':
+                        rec.write({'approval_stage': 'done'})
         return True
 
     def action_reject_request(self):
@@ -663,37 +632,17 @@ class KhApprovalRequest(models.Model):
         return True
 
     def action_start_payment_cycle(self):
-        """ 
-        Automatically assigns the 'Payment Request' rule 
-        and bypasses access errors using sudo().
-        """
+        """ Fix: Use sudo() for all operations to bypass access errors """
         for rec in self.sudo():
-            if rec.state != 'approved':
-                raise UserError(_("Request must be Approved before starting the Payment cycle."))
-            
-            # --- AUTOMATIC SYSTEM FILLING ---
-            # Search for the specific rule named 'Payment Request'
-            payment_rule = self.env['kh.approval.rule'].search([
-                ('name', '=', 'Payment Request'),
-                ('company_id', '=', rec.company_id.id)
-            ], limit=1)
-            
-            if not payment_rule:
-                raise UserError(_("System Error: No rule named 'Payment Request' found. Please create it first."))
+            if rec.state != 'approved': raise UserError(_("Request must be Approved first."))
+            if not rec.payment_rule_id: raise UserError(_("Please select a Payment Approval Rule first."))
 
-            # Assign the rule and move to the next stage
-            rec.write({
-                'payment_rule_id': payment_rule.id,
-                'approval_stage': 'pay_review',
-                'state': 'in_review',
-            })
-
-            # Regenerate lines for the second cycle
+            # Switch Stage and Reset state to trigger new cycle
+            rec.write({'approval_stage': 'pay_review', 'state': 'in_review'})
             rec._build_approval_lines()
             rec._notify_pending_approvers()
             rec._close_my_open_todos()
-            
-            rec._post_note(_("🚀 <b>Cycle 2 Started:</b> System assigned '%s' automatically.") % payment_rule.name)
+            rec._post_note(_("🚀 <b>Payment Approval Cycle Started.</b>"))
         return True
 
 
