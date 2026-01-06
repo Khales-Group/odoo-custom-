@@ -679,17 +679,26 @@ class KhApprovalRequest(models.Model):
         return True
 
     def action_start_payment_cycle(self):
-        """ Start Cycle 2 with Sequential Activities """
+        """ 
+        Starts Cycle 2. 
+        RESTRICTION: Only Khaled (ID 364) can trigger this action.
+        """
+        # 1. STRICT ID CHECK: Block anyone who is not Khaled
+        if self.env.user.id != 364:
+            raise UserError(_("Access Denied: Only Khaled (ID 364) is authorized to start the Payment Cycle."))
+
         for rec in self.sudo():
-            if rec.state != 'approved': raise UserError("Request must be Approved first.")
+            if rec.state != 'approved':
+                raise UserError(_("Request must be Approved before starting the Payment cycle."))
             
+            # --- AUTOMATIC SYSTEM FILLING ---
             payment_rule = self.env['kh.approval.rule'].search([
                 ('name', '=', 'Purchase Payment'),
                 ('company_id', '=', rec.company_id.id)
             ], limit=1)
             
             if not payment_rule:
-                raise UserError("No rule named 'Purchase Payment' found for this company.")
+                raise UserError(_("System Error: No rule named 'Purchase Payment' found for company '%s'.") % rec.company_id.name)
 
             # Switch Stage
             rec.write({
@@ -698,10 +707,14 @@ class KhApprovalRequest(models.Model):
                 'state': 'in_review',
             })
 
-            # This method generates lines and marks only the FIRST sequence as 'pending'
+            # Generate lines for the second cycle
             rec._build_approval_lines()
             rec._notify_pending_approvers()
+            
+            # Close Khaled's activity
             rec._close_my_open_todos()
+            
+            rec._post_note(_("🚀 <b>Cycle 2 Started:</b> Payment Cycle triggered by Khaled."))
         return True
 
 
