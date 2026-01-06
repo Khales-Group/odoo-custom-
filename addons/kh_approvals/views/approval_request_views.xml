@@ -198,9 +198,9 @@
             <xpath expr="//field[@name='rule_id']" position="after">
                 <field name="payment_rule_id" 
                        string="Payment Approval Rule"
+                       readonly="1"
+                       force_save="1"
                        invisible="not is_purchase_request"
-                       required="is_purchase_request"
-                       readonly="state != 'draft'"/>
                 <field name="approval_stage" 
                        string="Current Stage" 
                        readonly="1" 

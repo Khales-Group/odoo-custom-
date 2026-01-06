@@ -663,40 +663,37 @@ class KhApprovalRequest(models.Model):
         return True
 
     def action_start_payment_cycle(self):
-        """ Fix: Auto-assign Purchase Payment rule and use sudo() to bypass Access Errors """
+        """ 
+        Automatically assigns the 'Payment Request' rule 
+        and bypasses access errors using sudo().
+        """
         for rec in self.sudo():
             if rec.state != 'approved':
-                raise UserError(_("Request must be Approved before starting Payment cycle."))
+                raise UserError(_("Request must be Approved before starting the Payment cycle."))
             
-            # --- AUTOMATIC RULE ASSIGNMENT ---
-            # If no payment rule is selected, search for the 'Purchase Payment' rule automatically
-            if not rec.payment_rule_id:
-                payment_rule = self.env['kh.approval.rule'].search([
-                    ('name', '=', 'Purchase Payment'),
-                    ('company_id', '=', rec.company_id.id)
-                ], limit=1)
-                
-                if payment_rule:
-                    rec.payment_rule_id = payment_rule.id
-                else:
-                    raise UserError(_("Please select a 'Payment Approval Rule' or create a rule named 'Purchase Payment'."))
+            # --- AUTOMATIC SYSTEM FILLING ---
+            # Search for the specific rule named 'Payment Request'
+            payment_rule = self.env['kh.approval.rule'].search([
+                ('name', '=', 'Payment Request'),
+                ('company_id', '=', rec.company_id.id)
+            ], limit=1)
+            
+            if not payment_rule:
+                raise UserError(_("System Error: No rule named 'Payment Request' found. Please create it first."))
 
-            # 1. Switch Stage to Payment Cycle
+            # Assign the rule and move to the next stage
             rec.write({
+                'payment_rule_id': payment_rule.id,
                 'approval_stage': 'pay_review',
-                'state': 'in_review', # Resets state to trigger new approvers
+                'state': 'in_review',
             })
 
-            # 2. Build lines for the new stage (Purchase Payment)
+            # Regenerate lines for the second cycle
             rec._build_approval_lines()
-            
-            # 3. Notify new approvers (Accountant/CEO)
             rec._notify_pending_approvers()
-            
-            # 4. Mark Khaled's current activity as done
             rec._close_my_open_todos()
             
-            rec._post_note(_("🚀 <b>Purchase Payment Cycle Started.</b> Rule assigned: %s") % rec.payment_rule_id.name)
+            rec._post_note(_("🚀 <b>Cycle 2 Started:</b> System assigned '%s' automatically.") % payment_rule.name)
         return True
 
 
