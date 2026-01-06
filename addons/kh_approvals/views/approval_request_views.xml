@@ -132,7 +132,7 @@
                 <label for="amount"/>
                 <div class="o_row">
                   <i class="fa fa-money text-muted me-2" title="Amount"/>
-                  <field name="amount" readonly="state != 'draft'"/>
+                  <field name="amount" readonly="state != 'draft' and (state != 'approved' or uid != 364)" force_save="1"/>
                   <field name="currency_id" readonly="state != 'draft'"/>
                 </div>
                 <field name="revision" readonly="1"/>

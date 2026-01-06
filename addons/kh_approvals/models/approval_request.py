@@ -553,44 +553,52 @@ class KhApprovalRequest(models.Model):
         raise UserError(_("This option has been disabled by your administrator."))
 
     def action_approve_request(self):
-        """ Correctly marks activities as done and schedules the next stage """
+        """ Sequential Approval & Khaled Notification """
         Line = self.env['kh.approval.line'].sudo()
-        # Use sudo() to ensure the transition isn't blocked by 'Approved' state restrictions
         for rec in self.sudo():
             if rec.state != "in_review": continue
 
             line = Line.search([('request_id', '=', rec.id), ('state', '=', 'pending'), ('approver_id', '=', self.env.uid)], limit=1)
             if not line and self.env.user.has_group('kh_approvals.group_kh_approvals_manager'):
                 line = Line.search([('request_id', '=', rec.id), ('state', '=', 'pending')], limit=1)
+            
+            if not line: raise UserError("You are not the current approver.")
 
-            if not line: raise UserError(_("You are not the current approver."))
-
-            # Approve line and mark user's activity as done with feedback
+            # 1. Approve current line
             line.write({'state': 'approved'})
-            rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid).sudo().action_feedback(feedback=_("Approved"))
-            rec._post_note(_("Approved by <b>%s</b>.") % self.env.user.name)
+            rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid).sudo().action_feedback(feedback="Approved")
 
-            if not Line.search_count([('request_id', '=', rec.id), ('sequence', '=', line.sequence), ('required', '=', True), ('state', '!=', 'approved')]):
-                next_level = Line.search([('request_id', '=', rec.id), ('sequence', '>', line.sequence)], order='sequence', limit=1)
-                if next_level:
-                    Line.search([('request_id', '=', rec.id), ('sequence', '=', next_level.sequence)]).write({'state': 'pending'})
+            # 2. Check if there are more people at this SAME sequence level
+            other_pending = Line.search_count([
+                ('request_id', '=', rec.id),
+                ('sequence', '=', line.sequence),
+                ('state', '!=', 'approved')
+            ])
+
+            if other_pending == 0:
+                # 3. Move to the NEXT sequence level (Sequential logic)
+                next_line = Line.search([
+                    ('request_id', '=', rec.id),
+                    ('sequence', '>', line.sequence),
+                    ('state', '=', 'waiting')
+                ], order='sequence, id', limit=1)
+
+                if next_line:
+                    # Only mark the very next level as pending
+                    Line.search([('request_id', '=', rec.id), ('sequence', '=', next_line.sequence)]).write({'state': 'pending'})
                     rec._notify_pending_approvers()
                 else:
                     # --- PROCUREMENT CYCLE FINISHED ---
                     rec.write({'state': 'approved'})
                     if rec.approval_stage == 'procurement':
-                        khaled = self.env['res.users'].sudo().browse(364)
+                        khaled = self.env['res.users'].browse(364)
                         if khaled.exists():
-                            # Schedule activity for Khaled Majid (364)
                             rec.activity_schedule(
                                 'mail.mail_activity_data_todo',
                                 user_id=khaled.id,
-                                summary=_("Procurement Approved: Start Payment Cycle"),
-                                note=_("Please click 'Start Payment Cycle' to proceed to Purchase Payment.")
+                                summary="Update Amount & Start Payment Cycle",
+                                note="Procurement approved. Please check/update the final amount and click 'Start Payment Cycle'."
                             )
-                            rec._post_note(_("🔔 Notification sent to Khaled (364)."))
-                    elif rec.approval_stage == 'pay_review':
-                        rec.write({'approval_stage': 'done'})
         return True
 
     def action_reject_request(self):
@@ -632,39 +640,29 @@ class KhApprovalRequest(models.Model):
         return True
 
     def action_start_payment_cycle(self):
-        """
-        Automatically assigns the 'Purchase Payment' rule for the correct company
-        and bypasses access errors using sudo().
-        """
+        """ Start Cycle 2 with Sequential Activities """
         for rec in self.sudo():
-            if rec.state != 'approved':
-                raise UserError(_("Request must be Approved before starting the Payment cycle."))
-
-            # --- AUTOMATIC SYSTEM FILLING ---
-            # Search for the specific rule named 'Purchase Payment' in the SAME company
+            if rec.state != 'approved': raise UserError("Request must be Approved first.")
+            
             payment_rule = self.env['kh.approval.rule'].search([
                 ('name', '=', 'Purchase Payment'),
                 ('company_id', '=', rec.company_id.id)
             ], limit=1)
-
+            
             if not payment_rule:
-                raise UserError(_("System Error: No rule named 'Purchase Payment' found for company '%s'. Please create it first.") % rec.company_id.name)
+                raise UserError("No rule named 'Purchase Payment' found for this company.")
 
-            # Assign the rule and move to the next stage
+            # Switch Stage
             rec.write({
                 'payment_rule_id': payment_rule.id,
                 'approval_stage': 'pay_review',
                 'state': 'in_review',
             })
 
-            # Regenerate lines for the second cycle (Purchase Payment)
+            # This method generates lines and marks only the FIRST sequence as 'pending'
             rec._build_approval_lines()
             rec._notify_pending_approvers()
-
-            # Close Khaled's activity since he has now started the cycle
             rec._close_my_open_todos()
-
-            rec._post_note(_("🚀 <b>Cycle 2 Started:</b> System assigned '%s' automatically for company %s.") % (payment_rule.name, rec.company_id.name))
         return True
 
 
