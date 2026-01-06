@@ -127,11 +127,12 @@ class KhApprovalRequest(models.Model):
     )
     approval_stage = fields.Selection(
         [('procurement', 'Procurement Cycle'), ('pay_review', 'Payment Cycle'), ('done', 'Fully Approved')],
-        default='procurement',
         string="Current Stage",
-        required=True,
+        required=False,
         tracking=True
     )
+
+    is_purchase_request = fields.Boolean(compute='_compute_is_purchase_request', store=True)
 
     # UI helper: show Petty Cash items tab when the chosen rule is 'Petty Cash'
     is_petty_cash = fields.Boolean(compute='_compute_is_petty_cash', store=False)
@@ -163,6 +164,19 @@ class KhApprovalRequest(models.Model):
     # -------------------------------------------------------------------------
     # Computes
     # -------------------------------------------------------------------------
+    @api.depends('rule_id')
+    def _compute_is_purchase_request(self):
+        for rec in self:
+            # Check if the rule name matches your specific purchase request rule
+            is_pr = rec.rule_id and rec.rule_id.name == 'Purchase request'
+            rec.is_purchase_request = is_pr
+            
+            # Automatically set the initial stage ONLY for Purchase Requests in Draft
+            if is_pr and not rec.approval_stage and rec.state == 'draft':
+                rec.approval_stage = 'procurement'
+            elif not is_pr:
+                rec.approval_stage = False # Keep empty for all other rules
+
     @api.depends('rule_id.name')
     def _compute_is_petty_cash(self):
         for rec in self:
@@ -597,16 +611,17 @@ class KhApprovalRequest(models.Model):
                     rec._notify_pending_approvers()
                 else:
                     rec.write({'state': 'approved'})
-                    if rec.approval_stage == 'procurement' and rec.payment_rule_id:
-                        khaled = self.env['res.users'].sudo().browse(364)
-                        if khaled.exists():
-                            rec.activity_schedule('mail.mail_activity_data_todo', user_id=khaled.id, summary=_("Procurement Approved: Start Payment Cycle"))
-                    elif rec.approval_stage == 'pay_review':
-                        rec.write({'approval_stage': 'done'})
-                        # Notify Accountant (355)
-                        accountant = self.env['res.users'].sudo().browse(355)
-                        if accountant.exists():
-                            rec.activity_schedule('mail.mail_activity_data_todo', user_id=accountant.id, summary=_("Fully Approved: Mark as Paid"))
+                    if rec.is_purchase_request:
+                        if rec.approval_stage == 'procurement' and rec.payment_rule_id:
+                            khaled = self.env['res.users'].sudo().browse(364)
+                            if khaled.exists():
+                                rec.activity_schedule('mail.mail_activity_data_todo', user_id=khaled.id, summary=_("Procurement Approved: Start Payment Cycle"))
+                        elif rec.approval_stage == 'pay_review':
+                            rec.write({'approval_stage': 'done'})
+                            # Notify Accountant (355)
+                            accountant = self.env['res.users'].sudo().browse(355)
+                            if accountant.exists():
+                                rec.activity_schedule('mail.mail_activity_data_todo', user_id=accountant.id, summary=_("Fully Approved: Mark as Paid"))
         return True
 
     def action_reject_request(self):

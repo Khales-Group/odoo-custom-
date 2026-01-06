@@ -183,20 +183,26 @@
         <field name="inherit_id" ref="kh_approvals.view_kh_approval_request_form_base"/>
         <field name="arch" type="xml">
             
+            <xpath expr="//sheet" position="inside">
+                <field name="is_purchase_request" invisible="1"/>
+            </xpath>
+
             <xpath expr="//header" position="inside">
                 <button name="action_start_payment_cycle" 
                         string="Start Payment Cycle" 
                         type="object" 
                         class="oe_highlight"
-                        invisible="state != 'approved' or approval_stage != 'procurement'"/>
+                        invisible="not is_purchase_request or state != 'approved' or approval_stage != 'procurement'"/>
             </xpath>
 
             <xpath expr="//field[@name='rule_id']" position="after">
                 <field name="payment_rule_id" 
                        string="Payment Approval Rule"
-                       invisible="approval_type != 'standard'"
+                       invisible="not is_purchase_request or approval_type != 'standard'"
+                       required="is_purchase_request and approval_type == 'standard'"
                        readonly="state != 'draft'"/>
                 <field name="approval_stage" string="Current Stage" readonly="1" widget="badge" 
+                       invisible="not is_purchase_request"
                        decoration-info="approval_stage == 'procurement'" 
                        decoration-warning="approval_stage == 'pay_review'"
                        decoration-success="approval_stage == 'done'"/>
