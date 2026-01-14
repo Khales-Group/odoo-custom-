@@ -8,8 +8,7 @@
             <field name="code">model.action_generate_audit_report()</field>
             <field name="interval_number">1</field>
             <field name="interval_type">weeks</field>
-            <field name="numbercall">-1</field>
-            <field name="nextcall" eval="(DateTime.now() + timedelta(days=(3-DateTime.now().weekday()) + 7)).strftime('%Y-%m-%d 16:00:00')"/>
+            <field name="nextcall" eval="(datetime.datetime.now() + datetime.timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')"/>
         </record>
 
         <record id="ir_cron_auto_payroll" model="ir.cron">
@@ -19,8 +18,7 @@
             <field name="code">model.action_auto_generate_payroll()</field>
             <field name="interval_number">1</field>
             <field name="interval_type">months</field>
-            <field name="numbercall">-1</field>
-            <field name="nextcall" eval="(DateTime.now().replace(day=25) if DateTime.now().day &lt; 25 else (DateTime.now() + relativedelta(months=1)).replace(day=25)).strftime('%Y-%m-%d 06:00:00')"/>
+            <field name="nextcall" eval="(datetime.datetime.now() + relativedelta(day=25)).strftime('%Y-%m-%d 06:00:00')"/>
         </record>
     </data>
 </odoo>
