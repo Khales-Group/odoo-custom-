@@ -34,22 +34,9 @@
 
                     <notebook>
                         <page string="نتائج التحليل">
-                            <field name="audit_line_ids">
-                            <tree create="0" delete="0" decoration-danger="status=='danger'">
-                                    <field name="employee_id"/>
-                                    <field name="avg_check_in"/>
-                                    <field name="late_count"/>
-                                    <field name="leave_balance"/>
-                                    <field name="recommendation"/>
-                                    <field name="status" widget="badge" decoration-danger="status == 'danger'" decoration-success="status == 'success'"/>
-                                </tree>
-                            </field>
-                            </page>
-                        
-                        <page string="إعدادات الرواتب">
-                             <div class="text-muted" style="padding: 20px;">
-                                <p>سيتم إنشاء الرواتب للفترة المحددة أعلاه.</p>
-                             </div>
+                            <div class="text-muted">
+                                <p>الجدول مخفي مؤقتاً للتحديث...</p>
+                            </div>
                         </page>
                     </notebook>
                 </sheet>

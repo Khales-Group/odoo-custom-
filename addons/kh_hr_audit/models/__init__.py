@@ -1,1 +1,1 @@
-from . import audit
+from . import hr_smart_audit
