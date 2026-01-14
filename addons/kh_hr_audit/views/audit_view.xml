@@ -1,39 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
-<odoo>
-    <record id="action_smart_audit" model="ir.actions.act_window">
-        <field name="name">Smart Audit Control</field>
-        <field name="res_model">hr.smart.audit</field>
-        <field name="view_mode">form</field>
-        <field name="target">current</field>
-    </record>
-
-    <record id="view_hr_smart_audit_form" model="ir.ui.view">
-        <field name="name">hr.smart.audit.form</field>
-        <field name="model">hr.smart.audit</field>
-        <field name="arch" type="xml">
-            <form string="لوحة التحكم الذكية">
-                <header>
-                    <button name="action_analyze_data" string="🔍 1. تحليل البيانات وعرضها" type="object" class="oe_highlight"/>
-                    
-                    <button name="action_send_report" string="📩 2. إرسال التقرير للمدير" type="object"/>
-                    <button name="action_auto_generate_payroll" string="💰 إنشاء الرواتب" type="object" class="btn-secondary"/>
-                </header>
-                <sheet>
-                    <div class="oe_title">
-                        <h1>Smart HR Control Center</h1>
-                    </div>
-                    
-                    <group string="إعدادات الفلترة">
-                        <group>
-                            <field name="date_from"/>
-                            <field name="date_to"/>
-                        </group>
-                        <group>
-                            <field name="employee_ids" widget="many2many_tags" options="{'no_create': True}" placeholder="اتركه فارغاً لتحليل جميع الموظفين..."/>
-                        </group>
-                    </group>
-
-                    <notebook>
+<notebook>
                         <page string="📊 نتائج تحليل الموظفين (Audit Results)">
                             <field name="audit_line_ids">
                                 <tree create="0" delete="0" decoration-danger="status=='danger'" decoration-success="status=='success'">
@@ -55,20 +20,3 @@
                             </group>
                         </page>
                     </notebook>
-                </sheet>
-            </form>
-        </field>
-    </record>
-
-    <menuitem id="root_menu_smart_audit"
-              name="Smart Audit"
-              web_icon="kh_hr_audit,static/description/icon.png"
-              sequence="10"
-              groups="base.group_system"/>
-
-    <menuitem id="menu_smart_audit_dashboard"
-              name="Dashboard"
-              parent="root_menu_smart_audit"
-              action="action_smart_audit"
-              sequence="1"/>
-</odoo>
