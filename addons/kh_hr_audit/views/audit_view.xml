@@ -28,13 +28,13 @@
                             <field name="date_to"/>
                         </group>
                         <group>
-                            <field name="employee_ids" widget="many2many_tags" options="{'no_create': True}" placeholder="اتركه فارغاً للكل..."/>
+                            <field name="employee_ids" widget="many2many_tags" options="{'no_create': True}" placeholder="الكل..."/>
                         </group>
                     </group>
 
                     <notebook>
                         <page string="نتائج التحليل">
-                            <field name="audit_line_ids">
+                            <field name="audit_line_ids"> 
                                 <tree create="0" delete="0" decoration-danger="status=='danger'">
                                     <field name="employee_id"/>
                                     <field name="avg_check_in"/>
@@ -44,7 +44,7 @@
                                     <field name="status" widget="badge" decoration-danger="status == 'danger'" decoration-success="status == 'success'"/>
                                 </tree>
                             </field>
-                        </page>
+                            </page>
                         
                         <page string="إعدادات الرواتب">
                              <div class="text-muted" style="padding: 20px;">
