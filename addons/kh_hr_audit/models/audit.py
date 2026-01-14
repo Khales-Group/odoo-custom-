@@ -9,6 +9,10 @@ class HrSmartAudit(models.TransientModel):
     # ضع رقم الـ ID الخاص بالمدير هنا (مثلاً 2 للآدمن، أو الرقم اللي عندك)
     MANAGER_USER_ID = 2 
 
+    # حقول التاريخ المطلوبة في ملف العرض (View)
+    date_from = fields.Date(string='Date From')
+    date_to = fields.Date(string='Date To')
+
     def action_generate_audit_report(self):
         """ يتم استدعاؤها بواسطة الكرون جوب """
         end_date = fields.Date.today()
@@ -96,3 +100,9 @@ class HrSmartAudit(models.TransientModel):
             subtype_xmlid='mail.mt_comment',
             author_id=self.env.user.partner_id.id 
         )
+
+    def action_auto_generate_payroll(self):
+        """ يشتغل يوم 25 من كل شهر وينشئ الرواتب """
+        today = fields.Date.today()
+        # هنا يمكنك إضافة منطق إنشاء الرواتب التلقائي
+        return True
