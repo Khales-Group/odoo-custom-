@@ -9,32 +9,28 @@ class HrSmartAudit(models.TransientModel):
     date_to = fields.Date(string='إلى تاريخ', default=fields.Date.today())
     employee_ids = fields.Many2many('hr.employee', string='تحديد موظفين')
     
-    # الحقل الرابط مع الجدول
+    # تأكد من وجود هذا الحقل
     audit_line_ids = fields.One2many('hr.smart.audit.line', 'audit_id', string='نتائج التحليل')
     
     def action_analyze_data(self):
-        # 1. تنظيف النتائج القديمة
+        # مسح النتائج القديمة
         self.audit_line_ids.unlink()
         
         target_employees = self.env['hr.employee']
 
-        # 2. تحديد الموظفين المستهدفين (تعديل جذري لتفادي خطأ contract_id)
         if self.employee_ids:
-            # الحالة أ: إذا المدير اختار موظفين محددين، نعتمد عليهم بغض النظر عن العقد
             target_employees = self.employee_ids
         else:
-            # الحالة ب: إذا ترك الحقل فارغاً، نجلب الموظفين الذين لديهم عقود سارية
-            # نبحث في موديل العقود مباشرة بدلاً من الموظف
+            # التصحيح هنا: البحث في العقود بدلاً من الموظف لتفادي الخطأ
             running_contracts = self.env['hr.contract'].search([('state', '=', 'open')])
             target_employees = running_contracts.mapped('employee_id')
             
-            # حماية إضافية: إذا لم نجد عقود مفتوحة، نجلب جميع الموظفين النشطين
             if not target_employees:
                 target_employees = self.env['hr.employee'].search([])
 
         lines = []
         for emp in target_employees:
-            # حساب البيانات (يمكنك تطوير هذه الدالة لاحقاً لتكون أدق)
+            # هنا دالة الحسابات
             metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
             
             lines.append((0, 0, {
@@ -48,7 +44,7 @@ class HrSmartAudit(models.TransientModel):
             
         self.audit_line_ids = lines
         
-        # إعادة تحميل الصفحة لعرض النتائج
+        # إعادة تحميل الصفحة
         return {
             'type': 'ir.actions.act_window',
             'res_model': 'hr.smart.audit',
@@ -58,13 +54,12 @@ class HrSmartAudit(models.TransientModel):
         }
 
     def _get_employee_metrics(self, employee, date_from, date_to):
-        """ دالة وهمية للحسابات - يمكنك وضع اللوجيك الحقيقي هنا """
-        # هنا سنضع كود الحضور الحقيقي لاحقاً
+        # دالة وهمية مبدئياً عشان ما يضرب ايرور، لاحقاً بنحط اللوجيك المعقد
         return {
             'avg_check_in': '08:55', 
-            'late_after_9': 2, 
-            'balance': 21.5, 
-            'recommendation': 'Good Performance'
+            'late_after_9': 0, 
+            'balance': 21.0, 
+            'recommendation': 'Good'
         }
 
     def action_send_report(self):
