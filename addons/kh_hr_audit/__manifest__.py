@@ -12,4 +12,5 @@
     ],
     'installable': True,
     'application': True,
+    'sequence': -100,
 }

@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <record id="action_smart_audit" model="ir.actions.act_window">
+        <field name="name">Smart Audit Control</field>
+        <field name="res_model">hr.smart.audit</field>
+        <field name="view_mode">form</field>
+        <field name="target">current</field>
+    </record>
+
     <record id="view_hr_smart_audit_form" model="ir.ui.view">
         <field name="name">hr.smart.audit.form</field>
         <field name="model">hr.smart.audit</field>
@@ -15,22 +22,22 @@
                         <field name="date_to"/>
                     </group>
                     <div class="alert alert-info">
-                        This wizard triggers the AI Audit logic manually.
+                        AI System Control Panel
                     </div>
                 </sheet>
             </form>
         </field>
     </record>
 
-    <record id="action_smart_audit" model="ir.actions.act_window">
-        <field name="name">Smart Audit Control</field>
-        <field name="res_model">hr.smart.audit</field>
-        <field name="view_mode">form</field>
-        <field name="target">new</field>
-    </record>
+    <menuitem id="root_menu_smart_audit"
+              name="Smart Audit"
+              web_icon="kh_hr_audit,static/description/icon.png"
+              sequence="10"
+              groups="base.group_system"/>
 
-    <menuitem id="menu_hr_smart_audit"
-              name="Smart Audit AI"
-              parent="hr.menu_hr_root"
+    <menuitem id="menu_smart_audit_dashboard"
+              name="Dashboard"
+              parent="root_menu_smart_audit"
               action="action_smart_audit"
-              groups="base.group_system"/> </odoo>
+              sequence="1"/>
+</odoo>
