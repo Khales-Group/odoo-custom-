@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="email_template_smart_audit" model="mail.template">
+        <field name="name">Smart Audit Report</field>
+        <field name="model_id" ref="model_hr_smart_audit"/>
+        <field name="subject">تقرير الرقابة الذكي - {{ ctx.get('end') }}</field>
+        <field name="email_to">manager@example.com</field> <field name="body_html" type="html">
+            <div style="font-family: 'Tajawal', Arial; direction: rtl; text-align: right;">
+                <h2>تقرير الموارد البشرية الذكي</h2>
+                <p>الفترة: من {{ ctx.get('start') }} إلى {{ ctx.get('end') }}</p>
+                
+                <table border="1" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+                    <tr style="background-color: #f2f2f2;">
+                        <th>الموظف</th>
+                        <th>معدل الدخول</th>
+                        <th>تأخير > 9</th>
+                        <th>نمط التأخير</th>
+                        <th>رصيد إجازات</th>
+                        <th>مهام معلقة</th>
+                        <th>التوصية</th>
+                    </tr>
+                    <t t-foreach="ctx.get('audit_data')" t-as="line">
+                        <tr>
+                            <td><t t-out="line['name']"/></td>
+                            <td><t t-out="line['avg_check_in']"/></td>
+                            <td style="color: red;"><t t-out="line['late_after_9']"/></td>
+                            <td><t t-out="line['pattern']"/></td>
+                            <td><t t-out="line['balance']"/></td>
+                            <td><t t-out="line['pending_tasks']"/></td>
+                            <td><t t-out="line['recommendation']"/></td>
+                        </tr>
+                    </t>
+                </table>
+                <br/>
+                <p>تم الإنشاء تلقائياً بواسطة نظام Smart Audit.</p>
+            </div>
+        </field>
+    </record>
+</odoo>

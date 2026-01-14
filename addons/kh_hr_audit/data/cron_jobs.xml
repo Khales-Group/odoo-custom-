@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="ir_cron_smart_audit_report" model="ir.cron">
+            <field name="name">Smart HR Audit: Weekly Report</field>
+            <field name="model_id" ref="model_hr_smart_audit"/>
+            <field name="state">code</field>
+            <field name="code">model.action_generate_audit_report()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">weeks</field>
+            <field name="numbercall">-1</field>
+            <field name="nextcall" eval="(DateTime.now() + timedelta(days=(3-DateTime.now().weekday()) + 7)).strftime('%Y-%m-%d 16:00:00')"/>
+        </record>
+
+        <record id="ir_cron_auto_payroll" model="ir.cron">
+            <field name="name">Smart HR: Auto Generate Payroll (25th)</field>
+            <field name="model_id" ref="model_hr_smart_audit"/>
+            <field name="state">code</field>
+            <field name="code">model.action_auto_generate_payroll()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">months</field>
+            <field name="numbercall">-1</field>
+            <field name="nextcall" eval="(DateTime.now().replace(day=25) if DateTime.now().day &lt; 25 else (DateTime.now() + relativedelta(months=1)).replace(day=25)).strftime('%Y-%m-%d 06:00:00')"/>
+        </record>
+    </data>
+</odoo>

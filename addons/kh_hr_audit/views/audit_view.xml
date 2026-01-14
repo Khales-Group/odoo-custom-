@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_hr_smart_audit_form" model="ir.ui.view">
+        <field name="name">hr.smart.audit.form</field>
+        <field name="model">hr.smart.audit</field>
+        <field name="arch" type="xml">
+            <form string="Audit">
+                <header>
+                    <button name="action_generate_audit_report" string="Send Report Now" type="object" class="oe_highlight"/>
+                    <button name="action_auto_generate_payroll" string="Test Payroll Generation" type="object"/>
+                </header>
+                <sheet>
+                    <group>
+                        <field name="date_from"/>
+                        <field name="date_to"/>
+                    </group>
+                    <div class="alert alert-info">
+                        This wizard triggers the AI Audit logic manually.
+                    </div>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_smart_audit" model="ir.actions.act_window">
+        <field name="name">Smart Audit Control</field>
+        <field name="res_model">hr.smart.audit</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <menuitem id="menu_hr_smart_audit"
+              name="Smart Audit AI"
+              parent="hr.menu_hr_root"
+              action="action_smart_audit"
+              groups="base.group_system"/> </odoo>
