@@ -4,14 +4,54 @@ from dateutil.relativedelta import relativedelta
 
 class HrSmartAudit(models.TransientModel):
     _name = 'hr.smart.audit'
-    _description = 'HR Smart Audit Notification'
+    _description = 'Smart HR Control Panel'
 
     # ضع رقم الـ ID الخاص بالمدير هنا (مثلاً 2 للآدمن، أو الرقم اللي عندك)
     MANAGER_USER_ID = 2 
 
-    # حقول التاريخ المطلوبة في ملف العرض (View)
-    date_from = fields.Date(string='Date From')
-    date_to = fields.Date(string='Date To')
+    # --- الفلاتر العلوية ---
+    date_from = fields.Date(string='من تاريخ', default=lambda self: fields.Date.today() - relativedelta(months=1))
+    date_to = fields.Date(string='إلى تاريخ', default=fields.Date.today())
+    
+    # اختيار موظفين محددين (اذا ترك فاضي يعني الكل)
+    employee_ids = fields.Many2many('hr.employee', string='تحديد موظفين (اختياري)')
+    
+    # --- جداول العرض (النتيجة) ---
+    audit_line_ids = fields.One2many('hr.smart.audit.line', 'audit_id', string='نتائج التحليل')
+
+    def action_analyze_data(self):
+        """ زر جديد: يقوم بالحساب وعرض النتائج في الجدول أمامك """
+        self.audit_line_ids.unlink() # تنظيف النتائج القديمة
+        
+        # الفلترة: اذا محدد موظفين خذهم، اذا لا خذ الكل
+        domain = [('contract_id.state', '=', 'open')]
+        if self.employee_ids:
+            domain.append(('id', 'in', self.employee_ids.ids))
+            
+        employees = self.env['hr.employee'].search(domain)
+        
+        lines = []
+        for emp in employees:
+            metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
+            lines.append((0, 0, {
+                'employee_id': emp.id,
+                'avg_check_in': metrics['avg_check_in'],
+                'late_count': metrics['late_after_9'],
+                'leave_balance': metrics['balance'],
+                'recommendation': metrics['recommendation'],
+                'status': 'danger' if metrics['late_after_9'] > 3 else 'success'
+            }))
+            
+        self.audit_line_ids = lines
+        
+        # إرجاع نفس النافذة عشان تشوف الداتا (Refresh)
+        return {
+            'type': 'ir.actions.act_window',
+            'res_model': 'hr.smart.audit',
+            'res_id': self.id,
+            'view_mode': 'form',
+            'target': 'current',
+        }
 
     def action_generate_audit_report(self):
         """ يتم استدعاؤها بواسطة الكرون جوب """
@@ -19,6 +59,22 @@ class HrSmartAudit(models.TransientModel):
         start_date = end_date - relativedelta(days=30)
         
         employees = self.env['hr.employee'].search([('contract_id.state', '=', 'open')])
+        self._generate_and_send_report(employees, start_date, end_date)
+
+    def action_send_report(self):
+        """ زر إرسال التقرير للمدير (من الشاشة) """
+        start_date = self.date_from
+        end_date = self.date_to
+        
+        domain = [('contract_id.state', '=', 'open')]
+        if self.employee_ids:
+            domain.append(('id', 'in', self.employee_ids.ids))
+            
+        employees = self.env['hr.employee'].search(domain)
+        self._generate_and_send_report(employees, start_date, end_date)
+
+    def _generate_and_send_report(self, employees, start_date, end_date):
+        """ دالة مساعدة لبناء التقرير وإرساله """
         
         # 1. بناء محتوى التقرير (HTML) يدوياً
         html_body = f"""
@@ -106,3 +162,20 @@ class HrSmartAudit(models.TransientModel):
         today = fields.Date.today()
         # هنا يمكنك إضافة منطق إنشاء الرواتب التلقائي
         return True
+
+# --- موديل جديد لعرض السطور في الجدول ---
+class HrSmartAuditLine(models.TransientModel):
+    _name = 'hr.smart.audit.line'
+    _description = 'Audit Result Line'
+
+    audit_id = fields.Many2one('hr.smart.audit')
+    employee_id = fields.Many2one('hr.employee', string='الموظف', readonly=True)
+    avg_check_in = fields.Char(string='معدل الدخول', readonly=True)
+    late_count = fields.Integer(string='تأخيرات', readonly=True)
+    leave_balance = fields.Float(string='رصيد إجازات', readonly=True)
+    recommendation = fields.Char(string='توصية AI', readonly=True)
+    status = fields.Selection([
+        ('success', 'ممتاز'),
+        ('warning', 'مقبول'),
+        ('danger', 'خطر')
+    ], string='الحالة')

@@ -11,19 +11,50 @@
         <field name="name">hr.smart.audit.form</field>
         <field name="model">hr.smart.audit</field>
         <field name="arch" type="xml">
-            <form string="Audit">
+            <form string="لوحة التحكم الذكية">
                 <header>
-                    <button name="action_generate_audit_report" string="Send Report Now" type="object" class="oe_highlight"/>
-                    <button name="action_auto_generate_payroll" string="Test Payroll Generation" type="object"/>
+                    <button name="action_analyze_data" string="🔍 1. تحليل البيانات وعرضها" type="object" class="oe_highlight"/>
+                    
+                    <button name="action_send_report" string="📩 2. إرسال التقرير للمدير" type="object"/>
+                    <button name="action_auto_generate_payroll" string="💰 إنشاء الرواتب" type="object" class="btn-secondary"/>
                 </header>
                 <sheet>
-                    <group>
-                        <field name="date_from"/>
-                        <field name="date_to"/>
-                    </group>
-                    <div class="alert alert-info">
-                        AI System Control Panel
+                    <div class="oe_title">
+                        <h1>Smart HR Control Center</h1>
                     </div>
+                    
+                    <group string="إعدادات الفلترة">
+                        <group>
+                            <field name="date_from"/>
+                            <field name="date_to"/>
+                        </group>
+                        <group>
+                            <field name="employee_ids" widget="many2many_tags" options="{'no_create': True}" placeholder="اتركه فارغاً لتحليل جميع الموظفين..."/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="📊 نتائج تحليل الموظفين (Audit Results)">
+                            <field name="audit_line_ids">
+                                <tree create="0" delete="0" decoration-danger="status=='danger'" decoration-success="status=='success'">
+                                    <field name="employee_id"/>
+                                    <field name="avg_check_in"/>
+                                    <field name="late_count"/>
+                                    <field name="leave_balance"/>
+                                    <field name="recommendation"/>
+                                    <field name="status" widget="badge" decoration-danger="status == 'danger'" decoration-success="status == 'success'"/>
+                                </tree>
+                            </field>
+                        </page>
+                        
+                        <page string="⚙️ إعدادات الرواتب">
+                            <group>
+                                <div class="text-muted">
+                                    سيتم إنشاء الرواتب للفترة المحددة أعلاه. يرجى التأكد من اكتمال سجلات الحضور قبل البدء.
+                                </div>
+                            </group>
+                        </page>
+                    </notebook>
                 </sheet>
             </form>
         </field>
