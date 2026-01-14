@@ -18,31 +18,38 @@
                     <button name="action_auto_generate_payroll" string="💰 إنشاء الرواتب" type="object"/>
                 </header>
                 <sheet>
-                    <div class="oe_title"><h1>Smart HR Control Center</h1></div>
-                    <group>
+                    <div class="oe_title">
+                        <h1>Smart HR Control Center</h1>
+                    </div>
+                    
+                    <group string="إعدادات الفلترة">
                         <group>
                             <field name="date_from"/>
                             <field name="date_to"/>
                         </group>
                         <group>
-                            <field name="employee_ids" widget="many2many_tags"/>
+                            <field name="employee_ids" widget="many2many_tags" options="{'no_create': True}" placeholder="اتركه فارغاً للكل..."/>
                         </group>
                     </group>
+
                     <notebook>
                         <page string="نتائج التحليل">
                             <field name="audit_line_ids">
-                                <tree create="0" delete="0" decoration-danger="status=='danger'">
+                            <tree create="0" delete="0" decoration-danger="status=='danger'">
                                     <field name="employee_id"/>
                                     <field name="avg_check_in"/>
                                     <field name="late_count"/>
                                     <field name="leave_balance"/>
                                     <field name="recommendation"/>
-                                    <field name="status" widget="badge"/>
+                                    <field name="status" widget="badge" decoration-danger="status == 'danger'" decoration-success="status == 'success'"/>
                                 </tree>
                             </field>
                             </page>
-                        <page string="الرواتب">
-                             <div class="text-muted"><p>إعدادات الرواتب...</p></div>
+                        
+                        <page string="إعدادات الرواتب">
+                             <div class="text-muted" style="padding: 20px;">
+                                <p>سيتم إنشاء الرواتب للفترة المحددة أعلاه.</p>
+                             </div>
                         </page>
                     </notebook>
                 </sheet>
@@ -50,6 +57,15 @@
         </field>
     </record>
 
-    <menuitem id="root_menu_smart_audit" name="Smart Audit" sequence="10" groups="base.group_system"/>
-    <menuitem id="menu_smart_audit_dashboard" name="Dashboard" parent="root_menu_smart_audit" action="action_smart_audit" sequence="1"/>
+    <menuitem id="root_menu_smart_audit"
+              name="Smart Audit"
+              web_icon="kh_hr_audit,static/description/icon.png"
+              sequence="10"
+              groups="base.group_system"/>
+
+    <menuitem id="menu_smart_audit_dashboard"
+              name="Dashboard"
+              parent="root_menu_smart_audit"
+              action="action_smart_audit"
+              sequence="1"/>
 </odoo>
