@@ -44,12 +44,11 @@
                                     <field name="status" widget="badge" decoration-danger="status == 'danger'" decoration-success="status == 'success'"/>
                                 </tree>
                             </field>
-                        </page>
+                            </page>
                         
                         <page string="⚙️ إعدادات الرواتب">
                             <div class="text-muted" style="padding: 20px;">
-                                <p><strong>ملاحظة:</strong> سيتم إنشاء الرواتب للفترة المحددة أعلاه.</p>
-                                <p>يرجى التأكد من ترحيل جميع سجلات الحضور قبل البدء.</p>
+                                <p>سيتم إنشاء الرواتب للفترة المحددة أعلاه.</p>
                             </div>
                         </page>
                     </notebook>
