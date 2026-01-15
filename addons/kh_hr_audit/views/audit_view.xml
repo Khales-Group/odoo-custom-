@@ -39,6 +39,8 @@
                                     <field name="employee_id"/>
                                     <field name="avg_check_in"/>
                                     <field name="late_count"/>
+                                    <field name="days_worked"/>
+                                    <field name="absence_count" decoration-danger="absence_count > 0"/>
                                     <field name="leave_balance"/>
                                     <field name="recommendation"/>
                                     <field name="status" widget="badge" decoration-danger="status == 'danger'" decoration-success="status == 'success'"/>

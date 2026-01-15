@@ -1,6 +1,6 @@
 from odoo import models, fields, api
 from dateutil.relativedelta import relativedelta
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 class HrSmartAudit(models.TransientModel):
     _name = 'hr.smart.audit'
@@ -38,9 +38,11 @@ class HrSmartAudit(models.TransientModel):
                 'employee_id': emp.id,
                 'avg_check_in': metrics.get('avg_check_in', '-'),
                 'late_count': metrics.get('late_after_9', 0),
+                'days_worked': metrics.get('days_worked', 0),
+                'absence_count': metrics.get('absence_count', 0),
                 'leave_balance': metrics.get('balance', 0.0),
                 'recommendation': metrics.get('recommendation', ''),
-                'status': 'danger' if metrics.get('late_after_9', 0) > 3 else 'success'
+                'status': 'danger' if (metrics.get('late_after_9', 0) > 3 or metrics.get('absence_count', 0) > 0) else 'success'
             }))
             
         self.audit_line_ids = lines
@@ -59,44 +61,110 @@ class HrSmartAudit(models.TransientModel):
         start_dt = datetime.combine(date_from, time.min)
         end_dt = datetime.combine(date_to, time.max)
         
-        # البحث في سجلات الحضور
+        # 1. جلب سجلات الحضور وتجميع الساعات حسب اليوم
         attendances = self.env['hr.attendance'].search([
             ('employee_id', '=', employee.id),
             ('check_in', '>=', start_dt),
             ('check_in', '<=', end_dt)
         ])
 
-        late_count = 0
-        total_minutes = 0
-        days_count = 0
-
+        attendance_by_date = {}
         for att in attendances:
             if not att.check_in:
                 continue
             
-            # تحويل التوقيت إلى المنطقة الزمنية للمستخدم
+            # تحويل التوقيت للمنطقة الزمنية المحلية لتحديد "اليوم" بشكل صحيح
             local_check_in = fields.Datetime.context_timestamp(self, att.check_in)
-            check_in_minutes = local_check_in.hour * 60 + local_check_in.minute
+            local_date = local_check_in.date()
             
-            total_minutes += check_in_minutes
-            days_count += 1
+            if local_date not in attendance_by_date:
+                attendance_by_date[local_date] = {'hours': 0.0, 'check_ins': []}
             
-            # اعتبار التأخير بعد الساعة 9:00 صباحاً
-            if check_in_minutes > 9 * 60:
-                late_count += 1
+            attendance_by_date[local_date]['check_ins'].append(local_check_in)
+            
+            # حساب ساعات العمل (إذا كان مسجلاً خروج)
+            if att.check_out:
+                duration = (att.check_out - att.check_in).total_seconds() / 3600.0
+                attendance_by_date[local_date]['hours'] += duration
+
+        # 2. جلب الإجازات المعتمدة في الفترة
+        leaves = self.env['hr.leave'].search([
+            ('employee_id', '=', employee.id),
+            ('state', '=', 'validate'),
+            ('request_date_from', '<=', date_to),
+            ('request_date_to', '>=', date_from)
+        ])
+        
+        leave_dates = set()
+        for leave in leaves:
+            curr = max(leave.request_date_from, date_from)
+            end = min(leave.request_date_to, date_to)
+            while curr <= end:
+                leave_dates.add(curr)
+                curr += timedelta(days=1)
+
+        # 3. الحسابات اليومية
+        late_count = 0
+        days_worked = 0
+        absence_count = 0
+        total_check_in_minutes = 0
+        check_in_days_count = 0
+
+        # نمر على كل يوم في الفترة المحددة
+        current_day = date_from
+        while current_day <= date_to:
+            att_data = attendance_by_date.get(current_day, {'hours': 0.0, 'check_ins': []})
+            worked_hours = att_data['hours']
+            
+            # حساب أيام العمل (أي يوم حضر فيه)
+            if worked_hours > 0:
+                days_worked += 1
+
+            # حساب التأخيرات (فقط للأيام التي حضر فيها)
+            if att_data['check_ins']:
+                first_check_in = min(att_data['check_ins'])
+                check_in_minutes = first_check_in.hour * 60 + first_check_in.minute
+                total_check_in_minutes += check_in_minutes
+                check_in_days_count += 1
+                
+                if check_in_minutes > 9 * 60: # بعد 9:00 صباحاً
+                    late_count += 1
+            
+            # منطق الغياب: عمل أقل من 4.5 ساعات
+            if worked_hours < 4.5:
+                # التحقق هل هو يوم عمل رسمي؟ (ليس عطلة أسبوعية وليس إجازة رسمية في الجدول)
+                is_working_day = True
+                if employee.resource_calendar_id:
+                    # الدالة get_work_hours_count تعيد 0 إذا كان اليوم عطلة أو إجازة عامة (Global Time Off)
+                    day_start = datetime.combine(current_day, time.min)
+                    day_end = datetime.combine(current_day, time.max)
+                    expected_hours = employee.resource_calendar_id.get_work_hours_count(day_start, day_end, compute_leaves=True, domain=None)
+                    if expected_hours <= 0:
+                        is_working_day = False
+                
+                # التحقق هل الموظف في إجازة شخصية (Leave)
+                is_on_leave = current_day in leave_dates
+                
+                # إذا كان يوم عمل، وليس لديه إجازة، وساعاته أقل من 4.5 -> غياب
+                if is_working_day and not is_on_leave:
+                    absence_count += 1
+            
+            current_day += timedelta(days=1)
 
         # حساب المتوسط
         avg_check_in = '-'
-        if days_count > 0:
-            avg_val = total_minutes / days_count
+        if check_in_days_count > 0:
+            avg_val = total_check_in_minutes / check_in_days_count
             avg_check_in = '{:02d}:{:02d}'.format(int(avg_val // 60), int(avg_val % 60))
             
         # رصيد الإجازات (بشكل آمن)
         balance = employee.remaining_leaves if 'remaining_leaves' in employee else 0.0
         
         # التوصية
-        if late_count > 3:
-            recommendation = 'تحقيق (تأخيرات متعددة)'
+        if absence_count > 0:
+            recommendation = 'خصم/تحقيق (غياب)'
+        elif late_count > 3:
+            recommendation = 'لفت نظر (تأخيرات)'
         elif late_count > 0:
             recommendation = 'تنبيه'
         else:
@@ -105,6 +173,8 @@ class HrSmartAudit(models.TransientModel):
         return {
             'avg_check_in': avg_check_in, 
             'late_after_9': late_count, 
+            'days_worked': days_worked,
+            'absence_count': absence_count,
             'balance': balance, 
             'recommendation': recommendation
         }
@@ -123,6 +193,8 @@ class HrSmartAuditLine(models.TransientModel):
     employee_id = fields.Many2one('hr.employee', string='الموظف')
     avg_check_in = fields.Char(string='معدل الدخول')
     late_count = fields.Integer(string='تأخيرات')
+    days_worked = fields.Integer(string='أيام العمل')
+    absence_count = fields.Integer(string='غيابات')
     leave_balance = fields.Float(string='رصيد إجازات')
     recommendation = fields.Char(string='توصية')
     status = fields.Selection([('success', 'Good'), ('danger', 'Bad')], string='الحالة')
