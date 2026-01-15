@@ -7,6 +7,22 @@
         <field name="target">current</field>
     </record>
 
+    <!-- تعريف الجدول بشكل منفصل لحل مشكلة السياق -->
+    <record id="view_hr_smart_audit_line_tree" model="ir.ui.view">
+        <field name="name">hr.smart.audit.line.tree</field>
+        <field name="model">hr.smart.audit.line</field>
+        <field name="arch" type="xml">
+            <tree create="0" delete="0" decoration-danger="status=='danger'">
+                <field name="employee_id"/>
+                <field name="avg_check_in"/>
+                <field name="late_count"/>
+                <field name="leave_balance"/>
+                <field name="recommendation"/>
+                <field name="status" widget="badge" decoration-danger="status == 'danger'" decoration-success="status == 'success'"/>
+            </tree>
+        </field>
+    </record>
+
     <record id="view_hr_smart_audit_form" model="ir.ui.view">
         <field name="name">hr.smart.audit.form</field>
         <field name="model">hr.smart.audit</field>
@@ -34,16 +50,7 @@
 
                     <notebook>
                         <page string="نتائج التحليل">
-                            <field name="audit_line_ids">
-                                <tree create="0" delete="0" decoration-danger="status=='danger'">
-                                    <field name="employee_id"/>
-                                    <field name="avg_check_in"/>
-                                    <field name="late_count"/>
-                                    <field name="leave_balance"/>
-                                    <field name="recommendation"/>
-                                    <field name="status" widget="badge" decoration-danger="status == 'danger'" decoration-success="status == 'success'"/>
-                                </tree>
-                            </field> 
+                            <field name="audit_line_ids"/>
                             </page>
                         
                         <page string="إعدادات الرواتب">
