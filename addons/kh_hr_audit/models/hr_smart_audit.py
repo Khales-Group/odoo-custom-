@@ -1,5 +1,6 @@
 from odoo import models, fields, api
 from dateutil.relativedelta import relativedelta
+from datetime import datetime, time
 
 class HrSmartAudit(models.TransientModel):
     _name = 'hr.smart.audit'
@@ -54,12 +55,58 @@ class HrSmartAudit(models.TransientModel):
         }
 
     def _get_employee_metrics(self, employee, date_from, date_to):
-        # دالة وهمية مبدئياً عشان ما يضرب ايرور، لاحقاً بنحط اللوجيك المعقد
+        # تحويل التواريخ إلى Datetime لضمان دقة البحث
+        start_dt = datetime.combine(date_from, time.min)
+        end_dt = datetime.combine(date_to, time.max)
+        
+        # البحث في سجلات الحضور
+        attendances = self.env['hr.attendance'].search([
+            ('employee_id', '=', employee.id),
+            ('check_in', '>=', start_dt),
+            ('check_in', '<=', end_dt)
+        ])
+
+        late_count = 0
+        total_minutes = 0
+        days_count = 0
+
+        for att in attendances:
+            if not att.check_in:
+                continue
+            
+            # تحويل التوقيت إلى المنطقة الزمنية للمستخدم
+            local_check_in = fields.Datetime.context_timestamp(self, att.check_in)
+            check_in_minutes = local_check_in.hour * 60 + local_check_in.minute
+            
+            total_minutes += check_in_minutes
+            days_count += 1
+            
+            # اعتبار التأخير بعد الساعة 9:00 صباحاً
+            if check_in_minutes > 9 * 60:
+                late_count += 1
+
+        # حساب المتوسط
+        avg_check_in = '-'
+        if days_count > 0:
+            avg_val = total_minutes / days_count
+            avg_check_in = '{:02d}:{:02d}'.format(int(avg_val // 60), int(avg_val % 60))
+            
+        # رصيد الإجازات (بشكل آمن)
+        balance = employee.remaining_leaves if 'remaining_leaves' in employee else 0.0
+        
+        # التوصية
+        if late_count > 3:
+            recommendation = 'تحقيق (تأخيرات متعددة)'
+        elif late_count > 0:
+            recommendation = 'تنبيه'
+        else:
+            recommendation = 'ممتاز'
+
         return {
-            'avg_check_in': '08:55', 
-            'late_after_9': 0, 
-            'balance': 21.0, 
-            'recommendation': 'Good'
+            'avg_check_in': avg_check_in, 
+            'late_after_9': late_count, 
+            'balance': balance, 
+            'recommendation': recommendation
         }
 
     def action_send_report(self):
