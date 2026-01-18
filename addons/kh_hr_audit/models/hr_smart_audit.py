@@ -91,6 +91,7 @@ class HrSmartAudit(models.TransientModel):
         leaves = self.env['hr.leave'].search([
             ('employee_id', '=', employee.id),
             ('state', '=', 'validate'),
+            # لا نضع شرط على holiday_status_id لنشمل جميع الأنواع (سنوي، مرضي، إلخ)
             ('request_date_from', '<=', date_to),
             ('request_date_to', '>=', date_from)
         ])
