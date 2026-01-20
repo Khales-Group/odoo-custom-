@@ -15,7 +15,6 @@ class HrSmartAudit(models.TransientModel):
     
     def action_analyze_data(self):
         self.audit_line_ids.unlink()
-        # جلب الموظفين
         employees = self.employee_ids if self.employee_ids else self.env['hr.employee'].search([])
 
         lines = []
@@ -99,68 +98,66 @@ class HrSmartAudit(models.TransientModel):
         pass
 
     # ==========================================
-    #  دالة الرواتب (بدون hr.contract نهائياً)
+    #  دالة الرواتب (نسخة الحرباء - Dynamic Fields)
     # ==========================================
     def action_auto_generate_payroll(self):
         if 'hr.payslip' not in self.env:
             return self._show_warning('نظام الرواتب غير مثبت.')
 
         employees = self.employee_ids if self.employee_ids else self.env['hr.employee'].search([])
-        payslips = self.env['hr.payslip']
+        PayslipObj = self.env['hr.payslip']
+        
+        # حماية: معرفة الحقول المتاحة في جدول القسائم حالياً
+        payslip_fields = PayslipObj.fields_get().keys()
+
         month_days = calendar.monthrange(self.date_to.year, self.date_to.month)[1]
-        
-        # حماية ضد نقص الفئات
         ded_category = self.env['hr.salary.rule.category'].search([('code', 'in', ['DED', 'DEDUCTION'])], limit=1)
-        
+
         created_count = 0
         errors = []
 
         for emp in employees:
             try:
-                # 1. محاولة الحصول على العقد من حقل الموظف فقط
-                # (ممنوع استخدام self.env['hr.contract'] لأنه يسبب الكراش)
+                # 1. إحضار العقد (فقط عشان الراتب)
                 contract = False
                 if 'contract_id' in emp._fields and emp.contract_id:
                     contract = emp.contract_id
-                
-                # إذا لم نجد العقد المباشر، نحاول البحث في القائمة (contract_ids)
                 if not contract and 'contract_ids' in emp._fields and emp.contract_ids:
-                    # نأخذ أول واحد بوجهنا
                     contract = emp.contract_ids[0]
 
-                # 2. تجهيز بيانات القسيمة
-                payslip_vals = {
+                # 2. تجهيز بيانات القسيمة بذكاء (فقط الحقول الموجودة)
+                vals = {
                     'employee_id': emp.id,
                     'date_from': self.date_from,
                     'date_to': self.date_to,
                     'name': f'Salary Slip - {emp.name}',
                     'company_id': emp.company_id.id or self.env.company.id,
-                    # إذا لقينا عقد بنحطه، ما لقينا بنحط False وبنخلي السيستم يجرب
-                    'contract_id': contract.id if contract else False,
                 }
+
+                # --- الفحص الديناميكي: هل يوجد حقل contract_id في القسيمة؟ ---
+                if 'contract_id' in payslip_fields and contract:
+                    vals['contract_id'] = contract.id
                 
-                # محاولة إضافة الهيكل إذا كان موجود في العقد
-                if contract and 'structure_type_id' in contract._fields and contract.structure_type_id:
+                # --- الفحص الديناميكي: هل يوجد حقل struct_id في القسيمة؟ ---
+                if 'struct_id' in payslip_fields and contract and hasattr(contract, 'structure_type_id'):
                      if contract.structure_type_id.default_struct_id:
-                         payslip_vals['struct_id'] = contract.structure_type_id.default_struct_id.id
+                         vals['struct_id'] = contract.structure_type_id.default_struct_id.id
 
                 # 3. إنشاء القسيمة
-                payslip = self.env['hr.payslip'].create(payslip_vals)
+                payslip = PayslipObj.create(vals)
 
-                # 4. محاولة الحساب (Compute)
+                # 4. محاولة الحساب
                 try:
                     payslip.compute_sheet()
                 except:
                     pass
 
-                # 5. حقن الخصم (من راتب الموظف)
+                # 5. حقن الخصم
                 metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
                 absence_days = metrics.get('absence_count', 0)
                 
-                # جلب الراتب من الموظف (آمن جداً)
+                # جلب الراتب (من الموظف أو العقد)
                 wage = getattr(emp, 'wage', 0.0)
-                
-                # إذا الموظف ما عنده راتب بملفه، بنجرب العقد (إذا كان موجود)
                 if wage == 0.0 and contract and hasattr(contract, 'wage'):
                     wage = contract.wage
                 
@@ -168,7 +165,8 @@ class HrSmartAudit(models.TransientModel):
                     daily_wage = wage / month_days
                     deduction_amount = daily_wage * absence_days
                     
-                    self.env['hr.payslip.line'].create({
+                    # تجهيز سطر الخصم (نتأكد من حقل العقد في السطر أيضاً)
+                    line_vals = {
                         'slip_id': payslip.id,
                         'name': f'خصم غياب ({absence_days} يوم)',
                         'code': 'ABS_DED',
@@ -179,8 +177,14 @@ class HrSmartAudit(models.TransientModel):
                         'amount': -deduction_amount, 
                         'total': -deduction_amount,
                         'employee_id': emp.id,
-                        'contract_id': contract.id if contract else False,
-                    })
+                    }
+                    
+                    # نتأكد أن سطر القسيمة فيه حقل contract_id قبل ما نحطه
+                    line_fields = self.env['hr.payslip.line'].fields_get().keys()
+                    if 'contract_id' in line_fields and contract:
+                        line_vals['contract_id'] = contract.id
+
+                    self.env['hr.payslip.line'].create(line_vals)
                     
                     # تحديث الصافي
                     net_line = self.env['hr.payslip.line'].search([
@@ -209,7 +213,7 @@ class HrSmartAudit(models.TransientModel):
             }
         else:
             msg = "\n".join(errors[:5])
-            if not msg: msg = "فشل غير محدد، تأكد من وجود صلاحيات."
+            if not msg: msg = "فشل غير محدد."
             return self._show_warning(f'لم يتم إنشاء قسائم.\nالأخطاء:\n{msg}')
 
     def _show_warning(self, msg):
