@@ -7,10 +7,13 @@ class ProjectProject(models.Model):
 
     # حقل "شرطي" مخفي وظيفته الوحيدة هي الحماية
     is_current_user_manager = fields.Boolean(compute='_compute_is_manager')
+    is_manager = fields.Boolean(compute='_compute_is_manager')
 
     @api.depends('user_id')
     def _compute_is_manager(self):
         for rec in self:
             # الشرط: هل المستخدم الحالي == مدير المشروع؟
             # يمكنك إضافة 'or self.env.user.has_group("base.group_system")' للسماح للآدمن أيضاً
-            rec.is_current_user_manager = (rec.user_id == self.env.user)
+            val = (rec.user_id == self.env.user)
+            rec.is_current_user_manager = val
+            rec.is_manager = val
