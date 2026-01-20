@@ -4,7 +4,7 @@
         <field name="name">Smart Audit Report</field>
         <field name="model_id" ref="model_hr_smart_audit"/>
         <field name="subject">تقرير الرقابة الذكي - {{ ctx.get('end') }}</field>
-        <field name="email_to">manager@example.com</field> <field name="body_html" type="html">
+        <field name="email_to">it@khales.ae</field> <field name="body_html" type="html">
             <div style="font-family: 'Tajawal', Arial; direction: rtl; text-align: right;">
                 <h2>تقرير الموارد البشرية الذكي</h2>
                 <p>الفترة: من {{ ctx.get('start') }} إلى {{ ctx.get('end') }}</p>
