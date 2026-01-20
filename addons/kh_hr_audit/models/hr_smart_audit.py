@@ -19,8 +19,9 @@ class HrSmartAudit(models.TransientModel):
         if self.employee_ids:
             target_employees = self.employee_ids
         else:
-            running_contracts = self.env['hr.contract'].search([('state', '=', 'open')])
-            target_employees = running_contracts.mapped('employee_id')
+            if 'hr.contract' in self.env:
+                running_contracts = self.env['hr.contract'].search([('state', '=', 'open')])
+                target_employees = running_contracts.mapped('employee_id')
             if not target_employees:
                 target_employees = self.env['hr.employee'].search([])
 
@@ -165,6 +166,19 @@ class HrSmartAudit(models.TransientModel):
 
     def action_auto_generate_payroll(self):
         pass
+        # التحقق من وجود الموديولات اللازمة لتجنب الأخطاء
+        if 'hr.contract' not in self.env or 'hr.payslip' not in self.env:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'تنبيه',
+                    'message': 'نظام العقود أو الرواتب غير مثبت في النظام.',
+                    'type': 'warning',
+                    'sticky': False,
+                }
+            }
+
         # 1. تحديد الموظفين (إما المختارين أو كل من لديه عقد ساري)
         target_employees = self.env['hr.employee']
         if self.employee_ids:
