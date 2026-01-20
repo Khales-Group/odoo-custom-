@@ -42,8 +42,6 @@ class HrSmartAudit(models.TransientModel):
         }
 
     def _get_employee_metrics(self, employee, date_from, date_to):
-        # ... (نفس دالة الحسابات السابقة) ...
-        # اختصاراً، الدالة كما كانت في الكود السابق
         start_dt = datetime.combine(date_from, time.min)
         end_dt = datetime.combine(date_to, time.max)
         attendances = self.env['hr.attendance'].search([('employee_id', '=', employee.id), ('check_in', '>=', start_dt), ('check_in', '<=', end_dt)])
@@ -101,108 +99,135 @@ class HrSmartAudit(models.TransientModel):
         pass
 
     # =========================================================
-    #  دالة الرواتب "المحاكاة الكاملة" (بدون إخفاء الأخطاء)
+    #  دالة الرواتب: التعبئة اليدوية (Manual Population)
     # =========================================================
     def action_auto_generate_payroll(self):
         if 'hr.payslip' not in self.env:
             raise UserError('نظام الرواتب غير مثبت.')
 
-        # 1. تحديد الموظفين
         employees = self.employee_ids if self.employee_ids else self.env['hr.employee'].search([])
-        if not employees:
-            raise UserError('لا يوجد موظفين محددين.')
-
         payslips = self.env['hr.payslip']
         month_days = calendar.monthrange(self.date_to.year, self.date_to.month)[1]
         
-        # للحماية: نبحث عن فئة الخصم مرة واحدة
         ded_category = self.env['hr.salary.rule.category'].search([('code', 'in', ['DED', 'DEDUCTION'])], limit=1)
+        
+        errors = []
+        created_count = 0
 
         for emp in employees:
-            # === الخطوة 1: المحاكاة (Onchange) ===
-            # نجهز البيانات الأساسية
-            val = {
-                'employee_id': emp.id,
-                'date_from': self.date_from,
-                'date_to': self.date_to,
-                'company_id': emp.company_id.id or self.env.company.id,
-            }
-            
-            # ننشئ سجل وهمي في الذاكرة
-            # ملاحظة: إذا ضرب خطأ هنا، رح يطلعلك في الشاشة وتعرف السبب
-            payslip_new = self.env['hr.payslip'].new(val)
-            
-            # نستدعي دالة "تغيير الموظف" لملء العقد والهيكل تلقائياً
-            payslip_new._onchange_employee()
-
-            # نحول البيانات الوهمية لبيانات حقيقية للكتابة
-            payslip_values = payslip_new._convert_to_write(payslip_new._cache)
-            
-            # التأكد من عدم وجود بيانات قديمة عالقة
-            if 'line_ids' in payslip_values:
-                payslip_values.pop('line_ids') # لا نريد خطوطاً قديمة
-            if 'input_line_ids' in payslip_values:
-                payslip_values.pop('input_line_ids')
-
-            payslip_values['name'] = f'Salary Slip - {emp.name}'
-            payslip_values['date_from'] = self.date_from
-            payslip_values['date_to'] = self.date_to
-
-            # === الخطوة 2: الإنشاء الفعلي ===
-            # إذا فشل هنا، يعني البيانات الناقصة (مثل العقد) لم يتم تعبئتها بـ onchange
-            payslip = self.env['hr.payslip'].create(payslip_values)
-
-            # === الخطوة 3: الحساب (Compute Sheet) ===
-            # هذا الزر هو اللي بيحسب الراتب الأساسي والبدلات
-            payslip.compute_sheet()
-
-            # === الخطوة 4: حقن الخصم (Logic) ===
-            metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
-            absence_days = metrics.get('absence_count', 0)
-            
-            # قراءة الراتب (من الموظف إذا لم يقرأه العقد)
-            wage = getattr(emp, 'wage', 0.0)
-            if wage == 0.0 and payslip.contract_id:
-                wage = payslip.contract_id.wage
-            
-            if absence_days > 0 and wage > 0:
-                daily_wage = wage / month_days
-                deduction_amount = daily_wage * absence_days
+            try:
+                # 1. البحث عن العقد (يدوياً)
+                contract = False
+                if 'contract_id' in emp._fields and emp.contract_id:
+                    contract = emp.contract_id
                 
-                # إضافة سطر الخصم مباشرة في Payslip Lines
-                self.env['hr.payslip.line'].create({
-                    'slip_id': payslip.id,
-                    'name': f'خصم غياب ({absence_days} يوم)',
-                    'code': 'ABS_DED',
-                    'category_id': ded_category.id if ded_category else False,
-                    'sequence': 99, 
-                    'quantity': absence_days,
-                    'rate': 100,
-                    'amount': -deduction_amount, # القيمة سالبة
-                    'total': -deduction_amount,
+                # إذا مافي عقد مباشر، خذ أي عقد من القائمة
+                if not contract and 'contract_ids' in emp._fields and emp.contract_ids:
+                    contract = emp.contract_ids[0]
+
+                if not contract:
+                    errors.append(f"{emp.name}: لا يوجد عقد.")
+                    continue
+
+                # 2. البحث عن الهيكل (يدوياً من العقد)
+                struct = False
+                if contract.structure_type_id and contract.structure_type_id.default_struct_id:
+                    struct = contract.structure_type_id.default_struct_id
+                
+                if not struct:
+                    # محاولة أخيرة: البحث عن أي هيكل راتب في النظام
+                    struct = self.env['hr.payroll.structure'].search([], limit=1)
+                
+                if not struct:
+                    errors.append(f"{emp.name}: العقد لا يحتوي على هيكل راتب (Salary Structure).")
+                    continue
+
+                # 3. إنشاء القسيمة (تعبئة الحقول مباشرة بدل onchange)
+                payslip_vals = {
                     'employee_id': emp.id,
-                    'contract_id': payslip.contract_id.id,
-                })
-                
-                # تحديث الصافي (Net Salary)
-                net_line = self.env['hr.payslip.line'].search([
-                    ('slip_id', '=', payslip.id),
-                    ('code', '=', 'NET')
-                ], limit=1)
-                
-                if net_line:
-                    new_net = net_line.amount - deduction_amount
-                    net_line.write({'amount': new_net, 'total': new_net})
-            
-            payslips += payslip
+                    'contract_id': contract.id,
+                    'struct_id': struct.id,
+                    'date_from': self.date_from,
+                    'date_to': self.date_to,
+                    'name': f'Salary Slip - {emp.name}',
+                    'company_id': emp.company_id.id or self.env.company.id,
+                }
 
-        # إذا وصلنا هنا يعني نجحنا
+                payslip = self.env['hr.payslip'].create(payslip_vals)
+
+                # 4. الحساب
+                try:
+                    payslip.compute_sheet()
+                except Exception as e:
+                    # اذا فشل الحساب بسبب معادلات، نكمل عشان نحط الخصم
+                    pass
+
+                # 5. حقن الخصم (Logic)
+                metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
+                absence_days = metrics.get('absence_count', 0)
+                
+                wage = getattr(emp, 'wage', 0.0)
+                if wage == 0.0 and hasattr(contract, 'wage'):
+                    wage = contract.wage
+                
+                if absence_days > 0 and wage > 0:
+                    daily_wage = wage / month_days
+                    deduction_amount = daily_wage * absence_days
+                    
+                    self.env['hr.payslip.line'].create({
+                        'slip_id': payslip.id,
+                        'name': f'خصم غياب ({absence_days} يوم)',
+                        'code': 'ABS_DED',
+                        'category_id': ded_category.id if ded_category else False,
+                        'sequence': 99, 
+                        'quantity': absence_days,
+                        'rate': 100,
+                        'amount': -deduction_amount,
+                        'total': -deduction_amount,
+                        'employee_id': emp.id,
+                        'contract_id': contract.id,
+                    })
+                    
+                    # تحديث الصافي
+                    net_line = self.env['hr.payslip.line'].search([
+                        ('slip_id', '=', payslip.id),
+                        ('code', '=', 'NET')
+                    ], limit=1)
+                    
+                    if net_line:
+                        new_net = net_line.amount - deduction_amount
+                        net_line.write({'amount': new_net, 'total': new_net})
+                
+                payslips += payslip
+                created_count += 1
+
+            except Exception as e:
+                errors.append(f"{emp.name}: {str(e)}")
+                continue
+
+        if created_count > 0:
+            return {
+                'name': 'Generated Payslips',
+                'domain': [('id', 'in', payslips.ids)],
+                'view_mode': 'list,form',
+                'res_model': 'hr.payslip',
+                'type': 'ir.actions.act_window',
+            }
+        else:
+            msg = "\n".join(errors[:5])
+            if not msg: msg = "تأكد من وجود عقود وهياكل رواتب."
+            return self._show_warning(f'لم يتم إنشاء قسائم.\nالأخطاء:\n{msg}')
+
+    def _show_warning(self, msg):
         return {
-            'name': 'Generated Payslips',
-            'domain': [('id', 'in', payslips.ids)],
-            'view_mode': 'list,form',
-            'res_model': 'hr.payslip',
-            'type': 'ir.actions.act_window',
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'نتيجة العملية',
+                'message': msg,
+                'type': 'warning',
+                'sticky': False,
+            }
         }
 
 class HrSmartAuditLine(models.TransientModel):
