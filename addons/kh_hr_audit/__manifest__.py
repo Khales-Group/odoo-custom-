@@ -10,7 +10,6 @@
         'hr_attendance', 
         'hr_holidays', 
         'hr_payroll', 
-        'hr_contract',  # <--- هذا هو السطر اللي كان ناقص وعمل المشكلة
         'mail'
     ],
     'data': [
