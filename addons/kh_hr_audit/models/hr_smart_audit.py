@@ -20,9 +20,12 @@ class HrSmartAudit(models.TransientModel):
         if self.employee_ids:
             target_employees = self.employee_ids
         else:
+            # التحقق الآمن من وجود العقود
             if 'hr.contract' in self.env:
                 running_contracts = self.env['hr.contract'].search([('state', '=', 'open')])
                 target_employees = running_contracts.mapped('employee_id')
+            
+            # إذا لم نجد موظفين بالعقود، نبحث في الكل
             if not target_employees:
                 target_employees = self.env['hr.employee'].search([])
 
@@ -104,11 +107,9 @@ class HrSmartAudit(models.TransientModel):
             att_data = attendance_by_date.get(current_day, {'hours': 0.0, 'check_ins': []})
             worked_hours = att_data['hours']
             
-            # --- منطق حساب الإجازات المأخوذة ---
             is_on_leave = current_day in leave_dates
             if is_on_leave:
                 leaves_taken_count += 1
-            # ----------------------------------
 
             if worked_hours > 0:
                 days_worked += 1
@@ -122,7 +123,6 @@ class HrSmartAudit(models.TransientModel):
                 if check_in_minutes > 9 * 60:
                     late_count += 1
             
-            # منطق الغياب (فقط إذا لم يكن في إجازة)
             if worked_hours < 4.5:
                 is_working_day = True
                 if employee.resource_calendar_id:
@@ -132,7 +132,6 @@ class HrSmartAudit(models.TransientModel):
                     if expected_hours <= 0:
                         is_working_day = False
                 
-                # يعتبر غياباً إذا كان يوم عمل ولم يكن لديه إجازة رسمية
                 if is_working_day and not is_on_leave:
                     absence_count += 1
             
@@ -162,17 +161,14 @@ class HrSmartAudit(models.TransientModel):
             'recommendation': recommendation
         }
 
-    # =========================================================
-    #  هذه الدالة كانت ناقصة وهي سبب المشكلة - تم إضافتها الآن
-    # =========================================================
     def action_send_report(self):
-        # يمكنك إضافة كود إرسال إيميل هنا لاحقاً
         pass
 
-    # ==========================================
-    #  دالة الرواتب (Force Logic)
-    # ==========================================
     def action_auto_generate_payroll(self):
+        # التحقق من وجود العقود قبل البدء لتفادي الخطأ
+        if 'hr.contract' not in self.env:
+             return self._show_warning('موديل العقود (hr.contract) غير مثبت. الرجاء تثبيت تطبيق Contracts.')
+
         if 'hr.payslip' not in self.env:
             return self._show_warning('نظام الرواتب غير مثبت.')
 
@@ -187,12 +183,13 @@ class HrSmartAudit(models.TransientModel):
 
         payslips = self.env['hr.payslip']
         
-        # 2. حساب عدد أيام الشهر (للقسمة)
+        # 2. حساب عدد أيام الشهر
         month_days = calendar.monthrange(self.date_to.year, self.date_to.month)[1]
         
         created_count = 0
 
         for emp in target_employees:
+            # البحث الآمن عن العقد
             contract = self.env['hr.contract'].search([
                 ('employee_id', '=', emp.id),
                 ('state', '=', 'open')
@@ -201,7 +198,7 @@ class HrSmartAudit(models.TransientModel):
             if not contract:
                 continue 
 
-            # 3. إنشاء القسيمة وحسابها
+            # 3. إنشاء القسيمة
             payslip_vals = {
                 'employee_id': emp.id,
                 'contract_id': contract.id,
