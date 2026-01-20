@@ -27,12 +27,16 @@ class HrSmartAudit(models.TransientModel):
         for emp in all_employees:
             # التحقق من العقد عن طريق ملف الموظف مباشرة
             # emp.contract_id هي العلاقة المباشرة في بروفايل الموظف
-            contract = emp.contract_id
+            contract = False
+            if 'contract_id' in emp._fields:
+                contract = emp.contract_id
             
-            # إذا لم نجد عقداً في الحقل المباشر، نحاول البحث في العقود المرتبطة (Just in case)
             if not contract and 'contract_ids' in emp._fields:
-                 # نأخذ أول عقد مفتوح
-                 contract = emp.contract_ids.filtered(lambda c: c.state == 'open')[:1]
+                 contracts = emp.contract_ids
+                 if contracts and 'state' in contracts[0]._fields:
+                     contract = contracts.filtered(lambda c: c.state == 'open')[:1]
+                 if not contract and contracts:
+                     contract = contracts[:1]
 
             # (اختياري) إذا أردت استبعاد الموظفين الذين ليس لديهم عقود سارية، فعل هذا الشرط:
             # if not contract or contract.state != 'open':
@@ -192,11 +196,24 @@ class HrSmartAudit(models.TransientModel):
             # ========================================================
             # التعديل هنا: استخدام العقد من بروفايل الموظف مباشرة
             # ========================================================
-            contract = emp.contract_id
+            contract = False
+            if 'contract_id' in emp._fields:
+                contract = emp.contract_id
             
-            # إذا لم يكن العقد موجوداً أو ليس في حالة "مفتوح"
-            if not contract or contract.state != 'open':
-                continue 
+            if not contract and 'contract_ids' in emp._fields:
+                 contracts = emp.contract_ids
+                 if contracts and 'state' in contracts[0]._fields:
+                     contract = contracts.filtered(lambda c: c.state == 'open')[:1]
+                 if not contract and contracts:
+                     contract = contracts[:1]
+            
+            # إذا لم نجد عقداً، نتجاوز هذا الموظف
+            if not contract:
+                continue
+            
+            # التحقق من حالة العقد إذا كان الحقل موجوداً
+            if 'state' in contract._fields and contract.state != 'open':
+                continue
 
             # الآن contract هو "أوبجيكت" جاهز، نقدر نصل للـ wage منه مباشرة
             # contract.wage  <--- هذا هو الراتب
@@ -208,7 +225,7 @@ class HrSmartAudit(models.TransientModel):
                 'date_to': self.date_to,
                 'name': f'Salary Slip - {emp.name}',
                 'company_id': emp.company_id.id or self.env.company.id,
-                'struct_id': contract.structure_type_id.default_struct_id.id,
+                'struct_id': contract.structure_type_id.default_struct_id.id if 'structure_type_id' in contract._fields and contract.structure_type_id and contract.structure_type_id.default_struct_id else False,
             }
             
             try:
@@ -219,7 +236,7 @@ class HrSmartAudit(models.TransientModel):
                 metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
                 absence_days = metrics.get('absence_count', 0)
                 
-                if absence_days > 0 and contract.wage:
+                if absence_days > 0 and getattr(contract, 'wage', 0):
                     daily_wage = contract.wage / month_days
                     deduction_amount = daily_wage * absence_days
                     
