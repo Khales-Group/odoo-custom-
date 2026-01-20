@@ -165,15 +165,14 @@ class HrSmartAudit(models.TransientModel):
         pass
 
     def action_auto_generate_payroll(self):
-        pass
-        # التحقق من وجود الموديولات اللازمة لتجنب الأخطاء
-        if 'hr.contract' not in self.env or 'hr.payslip' not in self.env:
+        # التحقق من وجود موديول الرواتب فقط
+        if 'hr.payslip' not in self.env:
             return {
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
                     'title': 'تنبيه',
-                    'message': 'نظام العقود أو الرواتب غير مثبت في النظام.',
+                    'message': 'نظام الرواتب (hr_payroll) غير مثبت.',
                     'type': 'warning',
                     'sticky': False,
                 }
@@ -184,8 +183,14 @@ class HrSmartAudit(models.TransientModel):
         if self.employee_ids:
             target_employees = self.employee_ids
         else:
-            running_contracts = self.env['hr.contract'].search([('state', '=', 'open')])
-            target_employees = running_contracts.mapped('employee_id')
+            # محاولة البحث عن طريق العقود إذا كان الموديل متاحاً
+            if self.env.get('hr.contract'):
+                running_contracts = self.env['hr.contract'].search([('state', '=', 'open')])
+                target_employees = running_contracts.mapped('employee_id')
+            
+            # إذا لم نجد موظفين (أو الموديل غير متاح)، نجلب الجميع
+            if not target_employees:
+                target_employees = self.env['hr.employee'].search([])
 
         if not target_employees:
             return {
@@ -193,7 +198,7 @@ class HrSmartAudit(models.TransientModel):
                 'tag': 'display_notification',
                 'params': {
                     'title': 'تنبيه',
-                    'message': 'لا يوجد موظفين لديهم عقود سارية للفترة المحددة.',
+                    'message': 'لا يوجد موظفين للفترة المحددة.',
                     'type': 'warning',
                     'sticky': False,
                 }
@@ -212,11 +217,21 @@ class HrSmartAudit(models.TransientModel):
             })
 
         for emp in target_employees:
-            contract = self.env['hr.contract'].search([
-                ('employee_id', '=', emp.id),
-                ('state', '=', 'open')
-            ], limit=1)
+            contract = False
             
+            # محاولة العثور على العقد بطرق متعددة
+            # 1. البحث المباشر إذا كان الموديل متاحاً في السجل
+            if self.env.get('hr.contract'):
+                contract = self.env['hr.contract'].search([
+                    ('employee_id', '=', emp.id),
+                    ('state', '=', 'open')
+                ], limit=1)
+            
+            # 2. المحاولة عن طريق حقل العقد في الموظف (كما أشرت أنه موجود في البروفايل)
+            if not contract and 'contract_id' in emp._fields and emp.contract_id:
+                contract = emp.contract_id
+
+            # إذا لم نجد عقداً، نتجاوز هذا الموظف
             if not contract:
                 continue
 
@@ -260,6 +275,17 @@ class HrSmartAudit(models.TransientModel):
                 'view_mode': 'list,form',
                 'res_model': 'hr.payslip',
                 'type': 'ir.actions.act_window',
+            }
+        else:
+             return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'تنبيه',
+                    'message': 'لم يتم إنشاء أي قسائم رواتب (تأكد من وجود عقود سارية).',
+                    'type': 'warning',
+                    'sticky': False,
+                }
             }
 
 class HrSmartAuditLine(models.TransientModel):
