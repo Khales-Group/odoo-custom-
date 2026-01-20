@@ -6,6 +6,13 @@ class ProjectProject(models.Model):
 
     contractor_email = fields.Char(string="Contractor Email")
 
+    is_manager = fields.Boolean(compute='_compute_is_manager')
+
+    @api.depends('user_id')
+    def _compute_is_manager(self):
+        for rec in self:
+            rec.is_manager = (rec.user_id == self.env.user)
+
     def write(self, vals):
         # قائمة بالحقول التي نريد حمايتها
         protected_fields = ['contractor_email', 'partner_id', 'date_start']
