@@ -14,9 +14,10 @@ class HrSmartAudit(models.TransientModel):
     audit_line_ids = fields.One2many('hr.smart.audit.line', 'audit_id', string='نتائج التحليل')
     
     def action_analyze_data(self):
+        # 1. تنظيف الجدول القديم
         self.audit_line_ids.unlink()
         
-        # استراتيجية البحث: نجلب الموظفين فقط (لأننا لا نستطيع البحث في العقود)
+        # 2. جلب الموظفين (بغض النظر عن العقود)
         if self.employee_ids:
             all_employees = self.employee_ids
         else:
@@ -24,22 +25,15 @@ class HrSmartAudit(models.TransientModel):
 
         lines = []
         for emp in all_employees:
-            # 1. محاولة الحصول على العقد من حقل الموظف مباشرة
-            contract = False
-            # نتأكد أولاً أن الموظف لديه حقل العقد (لتفادي الكراش)
-            if 'contract_id' in emp._fields and emp.contract_id:
-                contract = emp.contract_id
-            
-            # إذا لم نجد عقداً، نتجاوز هذا الموظف
-            if not contract:
-                continue
+            # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+            # التعديل الجذري: ألغينا شرط وجود العقد هنا.
+            # بدنا نحلل حضور الموظف حتى لو ما عنده عقد.
+            # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-            # (اختياري) التأكد أن العقد مفتوح
-            if 'state' in contract._fields and contract.state != 'open':
-                continue
-
+            # حساب الأرقام (حضور، غياب، إجازات)
             metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
             
+            # إضافة السطر للجدول
             lines.append((0, 0, {
                 'employee_id': emp.id,
                 'avg_check_in': metrics.get('avg_check_in', '-'),
@@ -129,6 +123,7 @@ class HrSmartAudit(models.TransientModel):
                 if check_in_minutes > 9 * 60:
                     late_count += 1
             
+            # منطق الغياب
             if worked_hours < 4.5:
                 is_working_day = True
                 if employee.resource_calendar_id:
@@ -172,10 +167,9 @@ class HrSmartAudit(models.TransientModel):
         pass
 
     # ==========================================
-    #  دالة الرواتب (بدون أي ذكر لـ hr.contract)
+    #  دالة الرواتب
     # ==========================================
     def action_auto_generate_payroll(self):
-        # التحقق من وجود موديول الرواتب
         if 'hr.payslip' not in self.env:
             return self._show_warning('نظام الرواتب غير مثبت.')
 
@@ -191,25 +185,26 @@ class HrSmartAudit(models.TransientModel):
         payslips = self.env['hr.payslip']
         month_days = calendar.monthrange(self.date_to.year, self.date_to.month)[1]
         created_count = 0
+        errors = []
 
         for emp in target_employees:
-            # 1. الحصول على العقد من الموظف مباشرة
+            # للعقود: نحاول جلب العقد، إذا ما لقيناه، ما بنقدر ننشئ راتب (هذا منطق أودو)
+            # لكن التحليل فوق راح يشتغل عادي
             contract = False
             if 'contract_id' in emp._fields and emp.contract_id:
                 contract = emp.contract_id
             
-            # إذا لم يكن هناك عقد، نتجاوز الموظف
+            if not contract and 'contract_ids' in emp._fields and emp.contract_ids:
+                 contract = emp.contract_ids[0]
+
             if not contract:
+                # نسجل خطأ ونكمل للي بعده
+                errors.append(f"الموظف {emp.name}: لا يوجد عقد (مطلوب للراتب فقط)")
                 continue
 
-            # (اختياري) التحقق من حالة العقد
-            if 'state' in contract._fields and contract.state != 'open':
-                continue
-
-            # 2. إنشاء القسيمة باستخدام ID العقد
             payslip_vals = {
                 'employee_id': emp.id,
-                'contract_id': contract.id, # استخدام الـ ID آمن دائماً
+                'contract_id': contract.id, 
                 'date_from': self.date_from,
                 'date_to': self.date_to,
                 'name': f'Salary Slip - {emp.name}',
@@ -219,25 +214,28 @@ class HrSmartAudit(models.TransientModel):
             
             try:
                 payslip = self.env['hr.payslip'].create(payslip_vals)
-                payslip.compute_sheet() 
+                # نحاول نعمل compute، لو فشل (بسبب نقص رولز) بنكمل عادي عشان الحقن يشتغل
+                try:
+                    payslip.compute_sheet() 
+                except:
+                    pass
                 
-                # 3. حساب الخصم
+                # حساب الخصم
                 metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
                 absence_days = metrics.get('absence_count', 0)
                 
-                # الحصول على الراتب (Wage)
-                # نحاول قراءته من العقد، وإذا فشل، نحاول من الموظف كما طلبت
+                # جلب الراتب (من الموظف إذا مش بالعقد)
                 wage = 0.0
-                if 'wage' in contract._fields:
-                    wage = contract.wage
-                elif 'wage' in emp._fields: # Fallback based on your request
+                if 'wage' in emp._fields and emp.wage > 0:
                     wage = emp.wage
+                elif 'wage' in contract._fields:
+                    wage = contract.wage
                 
                 if absence_days > 0 and wage > 0:
                     daily_wage = wage / month_days
                     deduction_amount = daily_wage * absence_days
                     
-                    # 4. حقن سطر الخصم
+                    # حقن سطر الخصم
                     ded_category = self.env['hr.salary.rule.category'].search([('code', 'in', ['DED', 'DEDUCTION'])], limit=1)
                     
                     self.env['hr.payslip.line'].create({
@@ -254,7 +252,7 @@ class HrSmartAudit(models.TransientModel):
                         'contract_id': contract.id,
                     })
 
-                    # 5. تعديل الصافي
+                    # تعديل الصافي
                     net_line = self.env['hr.payslip.line'].search([
                         ('slip_id', '=', payslip.id),
                         ('code', '=', 'NET')
@@ -270,8 +268,7 @@ class HrSmartAudit(models.TransientModel):
                 payslips += payslip
                 created_count += 1
             except Exception as e:
-                # تسجيل الخطأ في اللوج وتكملة الباقي
-                print(f"Error creating payslip for {emp.name}: {str(e)}")
+                errors.append(f"خطأ للموظف {emp.name}: {str(e)}")
                 continue
 
         if created_count > 0:
@@ -283,14 +280,16 @@ class HrSmartAudit(models.TransientModel):
                 'type': 'ir.actions.act_window',
             }
         else:
-            return self._show_warning('تنبيه: لم يتم إنشاء أي قسائم. تأكد من ربط عقود سارية في ملفات الموظفين.')
+            msg = "\n".join(errors[:5])
+            if not msg: msg = "تأكد من وجود عقود للموظفين."
+            return self._show_warning(f'لم يتم إنشاء قسائم.\n{msg}')
 
     def _show_warning(self, msg):
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
             'params': {
-                'title': 'System Info',
+                'title': 'نتيجة العملية',
                 'message': msg,
                 'type': 'warning',
                 'sticky': False,
