@@ -1,24 +1,16 @@
-# -*- coding: utf-8 -*-
 from odoo import models, fields, api
 
 class ProjectProject(models.Model):
     _inherit = 'project.project'
 
-    # 1. الحقل الجديد الذي تريد إضافته
     contractor_email = fields.Char(string="Contractor Email")
 
-    # 2. حقل منطقي (Boolean) لمعرفة هل المستخدم الحالي هو المدير أم لا
-    is_current_user_manager = fields.Boolean(
-        string="Is Current User Manager",
-        compute='_compute_is_current_user_manager',
-        store=False  # لا نحتاج لتخزينه في قاعدة البيانات، يتم حسابه لحظياً
-    )
+    # حقل "شرطي" مخفي وظيفته الوحيدة هي الحماية
+    is_manager = fields.Boolean(compute='_compute_is_manager')
 
     @api.depends('user_id')
-    def _compute_is_current_user_manager(self):
-        for project in self:
-            # إذا كان المستخدم الحالي (self.env.user) هو مدير المشروع (project.user_id)
-            if project.user_id == self.env.user:
-                project.is_current_user_manager = True
-            else:
-                project.is_current_user_manager = False
+    def _compute_is_manager(self):
+        for rec in self:
+            # الشرط: هل المستخدم الحالي == مدير المشروع؟
+            # يمكنك إضافة 'or self.env.user.has_group("base.group_system")' للسماح للآدمن أيضاً
+            rec.is_manager = (rec.user_id == self.env.user)

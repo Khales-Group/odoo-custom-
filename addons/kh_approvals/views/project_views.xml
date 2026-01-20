@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <data>
-        
         <record id="project_email_search_panel_view" model="ir.ui.view">
             <field name="name">project.email.search.sidebar</field>
             <field name="model">project.email</field>
@@ -18,12 +17,11 @@
             </field>
         </record>
 
-        <record id="view_project_form_inherit_custom" model="ir.ui.view">
-            <field name="name">project.project.form.inherit.custom</field>
+        <record id="view_project_form_inherit_email_ui" model="ir.ui.view">
+            <field name="name">project.form.inherit.email.ui</field>
             <field name="model">project.project</field>
             <field name="inherit_id" ref="project.edit_project"/>
             <field name="arch" type="xml">
-                
                 <xpath expr="//div[@name='button_box']" position="inside">
                     <button class="oe_stat_button" type="object" name="action_open_project_emails" icon="fa-envelope">
                         <div class="o_field_widget o_stat_info">
@@ -32,14 +30,25 @@
                         </div>
                     </button>
                 </xpath>
+            </field>
+        </record>
 
-                <xpath expr="//sheet" position="inside">
-                    <field name="is_current_user_manager" invisible="1"/>
-                </xpath>
+        <record id="view_project_form_security" model="ir.ui.view">
+            <field name="name">project.project.form.security</field>
+            <field name="model">project.project</field>
+            <field name="inherit_id" ref="project.edit_project"/>
+            <field name="arch" type="xml">
+
+                <field name="user_id" position="after">
+                    <field name="is_manager" invisible="1"/>
+                </field>
 
                 <xpath expr="//field[@name='partner_id']" position="after">
-                    <field name="contractor_email" 
-                           readonly="not is_current_user_manager"/>
+                    <field name="contractor_email" readonly="not is_manager"/>
+                </xpath>
+
+                <xpath expr="//field[@name='partner_id']" position="attributes">
+                    <attribute name="readonly">not is_manager</attribute>
                 </xpath>
 
                 </field>
