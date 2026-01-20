@@ -20,12 +20,11 @@ class HrSmartAudit(models.TransientModel):
         if self.employee_ids:
             target_employees = self.employee_ids
         else:
-            # التحقق الآمن من وجود العقود
+            # حماية: التأكد من وجود موديول العقود قبل البحث فيه
             if 'hr.contract' in self.env:
                 running_contracts = self.env['hr.contract'].search([('state', '=', 'open')])
                 target_employees = running_contracts.mapped('employee_id')
             
-            # إذا لم نجد موظفين بالعقود، نبحث في الكل
             if not target_employees:
                 target_employees = self.env['hr.employee'].search([])
 
@@ -165,21 +164,22 @@ class HrSmartAudit(models.TransientModel):
         pass
 
     def action_auto_generate_payroll(self):
-        # التحقق من وجود العقود قبل البدء لتفادي الخطأ
-        if 'hr.contract' not in self.env:
-             return self._show_warning('موديل العقود (hr.contract) غير مثبت. الرجاء تثبيت تطبيق Contracts.')
-
+        # التحقق من أن موديول الرواتب مثبت
         if 'hr.payslip' not in self.env:
             return self._show_warning('نظام الرواتب غير مثبت.')
+        
+        # التحقق من أن موديول العقود مثبت (لتفادي الكراش)
+        if 'hr.contract' not in self.env:
+             return self._show_warning('نظام العقود (Contracts) غير مثبت، لا يمكن حساب الراتب.')
 
         # 1. تحديد الموظفين
         target_employees = self.employee_ids if self.employee_ids else self.env['hr.employee'].search([])
-        if self.env.get('hr.contract') and not self.employee_ids:
+        if not self.employee_ids:
              running_contracts = self.env['hr.contract'].search([('state', '=', 'open')])
              target_employees = running_contracts.mapped('employee_id')
 
         if not target_employees:
-            return self._show_warning('لا يوجد موظفين.')
+            return self._show_warning('لا يوجد موظفين لديهم عقود سارية.')
 
         payslips = self.env['hr.payslip']
         
@@ -189,7 +189,7 @@ class HrSmartAudit(models.TransientModel):
         created_count = 0
 
         for emp in target_employees:
-            # البحث الآمن عن العقد
+            # البحث عن العقد
             contract = self.env['hr.contract'].search([
                 ('employee_id', '=', emp.id),
                 ('state', '=', 'open')
@@ -213,7 +213,7 @@ class HrSmartAudit(models.TransientModel):
                 payslip = self.env['hr.payslip'].create(payslip_vals)
                 payslip.compute_sheet() 
                 
-                # 4. حساب الخصم "برمجياً"
+                # 4. حساب الخصم
                 metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
                 absence_days = metrics.get('absence_count', 0)
                 
@@ -221,7 +221,7 @@ class HrSmartAudit(models.TransientModel):
                     daily_wage = contract.wage / month_days
                     deduction_amount = daily_wage * absence_days
                     
-                    # 5. حقن سطر الخصم يدوياً
+                    # 5. حقن سطر الخصم
                     ded_category = self.env['hr.salary.rule.category'].search([('code', 'in', ['DED', 'DEDUCTION'])], limit=1)
                     
                     self.env['hr.payslip.line'].create({
@@ -238,7 +238,7 @@ class HrSmartAudit(models.TransientModel):
                         'contract_id': contract.id,
                     })
 
-                    # 6. تعديل الصافي (Net Salary) يدوياً
+                    # 6. تعديل الصافي
                     net_line = self.env['hr.payslip.line'].search([
                         ('slip_id', '=', payslip.id),
                         ('code', '=', 'NET')
