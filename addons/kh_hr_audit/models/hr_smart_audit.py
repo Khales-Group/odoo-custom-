@@ -165,6 +165,88 @@ class HrSmartAudit(models.TransientModel):
 
     def action_auto_generate_payroll(self):
         pass
+        # 1. تحديد الموظفين (إما المختارين أو كل من لديه عقد ساري)
+        target_employees = self.env['hr.employee']
+        if self.employee_ids:
+            target_employees = self.employee_ids
+        else:
+            running_contracts = self.env['hr.contract'].search([('state', '=', 'open')])
+            target_employees = running_contracts.mapped('employee_id')
+
+        if not target_employees:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'تنبيه',
+                    'message': 'لا يوجد موظفين لديهم عقود سارية للفترة المحددة.',
+                    'type': 'warning',
+                    'sticky': False,
+                }
+            }
+
+        payslips = self.env['hr.payslip']
+        
+        # التأكد من وجود نوع المدخلات للخصم (Input Type)
+        # سنستخدم الكود ABSENCE_DEDUCTION
+        deduction_input_type = self.env['hr.payslip.input.type'].search([('code', '=', 'ABSENCE_DEDUCTION')], limit=1)
+        if not deduction_input_type:
+            deduction_input_type = self.env['hr.payslip.input.type'].create({
+                'name': 'Absence Deduction (Smart Audit)',
+                'code': 'ABSENCE_DEDUCTION',
+                'country_id': self.env.company.country_id.id
+            })
+
+        for emp in target_employees:
+            contract = self.env['hr.contract'].search([
+                ('employee_id', '=', emp.id),
+                ('state', '=', 'open')
+            ], limit=1)
+            
+            if not contract:
+                continue
+
+            # حساب أيام الغياب
+            metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
+            absence_days = metrics.get('absence_count', 0)
+            
+            # إنشاء القسيمة
+            payslip_vals = {
+                'employee_id': emp.id,
+                'contract_id': contract.id,
+                'date_from': self.date_from,
+                'date_to': self.date_to,
+                'name': f'Salary Slip - {emp.name} - {self.date_from.strftime("%Y-%m")}',
+                'company_id': emp.company_id.id or self.env.company.id,
+                'struct_id': contract.structure_type_id.default_struct_id.id or False
+            }
+            payslip = self.env['hr.payslip'].create(payslip_vals)
+            
+            # تطبيق الخصم في المدخلات (Inputs)
+            if absence_days > 0 and contract.wage:
+                daily_wage = contract.wage / 30.0
+                deduction_amount = daily_wage * absence_days
+                
+                payslip.write({
+                    'input_line_ids': [(0, 0, {
+                        'input_type_id': deduction_input_type.id,
+                        'amount': deduction_amount,
+                        'name': f'خصم غياب ({absence_days} أيام)'
+                    })]
+                })
+            
+            # حساب القسيمة (Compute Sheet) لتطبيق القواعد
+            payslip.compute_sheet()
+            payslips += payslip
+
+        if payslips:
+            return {
+                'name': 'Generated Payslips',
+                'domain': [('id', 'in', payslips.ids)],
+                'view_mode': 'list,form',
+                'res_model': 'hr.payslip',
+                'type': 'ir.actions.act_window',
+            }
 
 class HrSmartAuditLine(models.TransientModel):
     _name = 'hr.smart.audit.line'
