@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <data>
+        
         <record id="project_email_search_panel_view" model="ir.ui.view">
             <field name="name">project.email.search.sidebar</field>
             <field name="model">project.email</field>
@@ -9,9 +10,7 @@
                     <field name="subject"/>
                     <field name="email_from"/>
                     <field name="email_to"/>
-                    
                     <field name="category_ids"/>
-
                     <searchpanel>
                         <field name="folder" icon="fa-folder" enable_counters="1"/>
                     </searchpanel>
@@ -19,11 +18,12 @@
             </field>
         </record>
 
-        <record id="view_project_form_inherit_email_ui" model="ir.ui.view">
-            <field name="name">project.form.inherit.email.ui</field>
+        <record id="view_project_form_inherit_custom" model="ir.ui.view">
+            <field name="name">project.project.form.inherit.custom</field>
             <field name="model">project.project</field>
             <field name="inherit_id" ref="project.edit_project"/>
             <field name="arch" type="xml">
+                
                 <xpath expr="//div[@name='button_box']" position="inside">
                     <button class="oe_stat_button" type="object" name="action_open_project_emails" icon="fa-envelope">
                         <div class="o_field_widget o_stat_info">
@@ -32,15 +32,7 @@
                         </div>
                     </button>
                 </xpath>
-            </field>
-        </record>
 
-        <record id="view_project_form_inherit_restrictions" model="ir.ui.view">
-            <field name="name">project.project.form.inherit.restrictions</field>
-            <field name="model">project.project</field>
-            <field name="inherit_id" ref="project.edit_project"/>
-            <field name="arch" type="xml">
-                
                 <xpath expr="//sheet" position="inside">
                     <field name="is_current_user_manager" invisible="1"/>
                 </xpath>
@@ -50,7 +42,7 @@
                            readonly="not is_current_user_manager"/>
                 </xpath>
 
-            </field>
+                </field>
         </record>
 
     </data>
