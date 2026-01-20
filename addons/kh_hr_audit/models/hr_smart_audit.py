@@ -16,7 +16,6 @@ class HrSmartAudit(models.TransientModel):
     def action_analyze_data(self):
         self.audit_line_ids.unlink()
         
-        # جلب الموظفين
         if self.employee_ids:
             all_employees = self.employee_ids
         else:
@@ -24,7 +23,7 @@ class HrSmartAudit(models.TransientModel):
 
         lines = []
         for emp in all_employees:
-            # التحليل شغال للكل، ما بدنا نوقفه عشان عقد
+            # هنا التغيير: ألغينا أي شرط للعقود، التحليل للجميع
             metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
             
             lines.append((0, 0, {
@@ -53,7 +52,6 @@ class HrSmartAudit(models.TransientModel):
         start_dt = datetime.combine(date_from, time.min)
         end_dt = datetime.combine(date_to, time.max)
         
-        # جلب الحضور
         attendances = self.env['hr.attendance'].search([
             ('employee_id', '=', employee.id),
             ('check_in', '>=', start_dt),
@@ -72,7 +70,6 @@ class HrSmartAudit(models.TransientModel):
                 duration = (att.check_out - att.check_in).total_seconds() / 3600.0
                 attendance_by_date[local_date]['hours'] += duration
 
-        # جلب الإجازات
         leaves = self.env['hr.leave'].search([
             ('employee_id', '=', employee.id),
             ('state', '=', 'validate'),
@@ -158,7 +155,7 @@ class HrSmartAudit(models.TransientModel):
         pass
 
     # ==========================================
-    #  دالة الرواتب (نسخة "غصب عن السيستم")
+    #  دالة الرواتب (نسخة المحاكاة اليدوية)
     # ==========================================
     def action_auto_generate_payroll(self):
         if 'hr.payslip' not in self.env:
@@ -169,65 +166,57 @@ class HrSmartAudit(models.TransientModel):
         else:
             target_employees = self.env['hr.employee'].search([])
 
-        if not target_employees:
-            return self._show_warning('لا يوجد موظفين.')
-
         payslips = self.env['hr.payslip']
         month_days = calendar.monthrange(self.date_to.year, self.date_to.month)[1]
         created_count = 0
         errors = []
 
         for emp in target_employees:
-            contract = False
-            
-            # 1. المحاولة الأولى: الحقل المباشر
-            if 'contract_id' in emp._fields and emp.contract_id:
-                contract = emp.contract_id
-            
-            # 2. المحاولة الثانية: نبش في الأرشيف (contract_ids) وخذ أي شيء!
-            # هذا هو التعديل عشان يحل مشكلتك: بناخذ أول عقد نلاقيه حتى لو مش Open
-            if not contract and 'contract_ids' in emp._fields and emp.contract_ids:
-                 contract = emp.contract_ids[0]
-
-            # إذا عنجد ما في ولا عقد بالأرشيف، بنسجل خطأ (لأن القسيمة في أودو اجباري يكون فيها عقد)
-            if not contract:
-                errors.append(f"{emp.name}: لا يوجد أي عقد في سجلاته.")
-                continue
-
-            # تجهيز بيانات القسيمة
-            payslip_vals = {
-                'employee_id': emp.id,
-                'contract_id': contract.id,
-                'date_from': self.date_from,
-                'date_to': self.date_to,
-                'name': f'Salary Slip - {emp.name}',
-                'company_id': emp.company_id.id or self.env.company.id,
-                'struct_id': contract.structure_type_id.default_struct_id.id if 'structure_type_id' in contract._fields and contract.structure_type_id else False,
-            }
-            
             try:
+                # 1. تجهيز بيانات القسيمة الأولية
+                initial_vals = {
+                    'employee_id': emp.id,
+                    'date_from': self.date_from,
+                    'date_to': self.date_to,
+                    'company_id': emp.company_id.id or self.env.company.id,
+                }
+
+                # 2. الخدعة السحرية: محاكاة الـ UI لتعبئة العقد والهيكل تلقائياً
+                # ننشئ نسخة في الذاكرة (New) ونستدعي onchange_employee
+                payslip_memory = self.env['hr.payslip'].new(initial_vals)
+                payslip_memory._onchange_employee() # هذه الدالة ستجلب العقد والهيكل تلقائياً إن وجدوا
+                
+                # نحول البيانات من الذاكرة لبيانات جاهزة للحفظ
+                payslip_vals = payslip_memory._convert_to_write(payslip_memory._cache)
+                
+                # نتأكد من الاسم والتواريخ لأن onchange ممكن يغيرهم
+                payslip_vals.update({
+                    'name': f'Salary Slip - {emp.name}',
+                    'date_from': self.date_from,
+                    'date_to': self.date_to,
+                })
+
+                # 3. الإنشاء الحقيقي
                 payslip = self.env['hr.payslip'].create(payslip_vals)
                 
-                # نحاول نعمل حساب، لو فشل بنكمل عشان نحقن الخصم
+                # محاولة الحساب (Compute)
                 try:
-                    payslip.compute_sheet() 
+                    payslip.compute_sheet()
                 except:
-                    pass
-                
-                # حساب الخصم
+                    pass # نكمل حتى لو فشل الحساب التلقائي
+
+                # 4. حساب الخصم بناءً على طلبك (استخدام wage من الموظف)
                 metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
                 absence_days = metrics.get('absence_count', 0)
                 
-                # +++++++++++++++++++++++++++++++++++++++++++++++
-                # قراءة الراتب من ملف الموظف (الأولوية القصوى)
-                # +++++++++++++++++++++++++++++++++++++++++++++++
-                wage = 0.0
-                if 'wage' in emp._fields and emp.wage > 0:
-                    wage = emp.wage
-                elif 'wage' in contract._fields:
-                    wage = contract.wage
+                # جلب الراتب من الموظف (كما طلبت)
+                # نستخدم getattr لتفادي الايرور اذا الحقل مش موجود
+                wage = getattr(emp, 'wage', 0.0)
                 
-                # تطبيق الخصم إذا وجد غياب وراتب
+                # إذا لم نجد راتب في الموظف، نحاول من العقد اللي جابه السيستم
+                if wage == 0.0 and payslip.contract_id:
+                    wage = payslip.contract_id.wage
+
                 if absence_days > 0 and wage > 0:
                     daily_wage = wage / month_days
                     deduction_amount = daily_wage * absence_days
@@ -246,7 +235,7 @@ class HrSmartAudit(models.TransientModel):
                         'amount': -deduction_amount, 
                         'total': -deduction_amount,
                         'employee_id': emp.id,
-                        'contract_id': contract.id,
+                        'contract_id': payslip.contract_id.id, # نربطه بالعقد إذا وجد، أو نتركه فاضي
                     })
 
                     # تعديل الصافي
@@ -264,7 +253,9 @@ class HrSmartAudit(models.TransientModel):
 
                 payslips += payslip
                 created_count += 1
+
             except Exception as e:
+                # نسجل الخطأ ونكمل للموظف التالي
                 errors.append(f"{emp.name}: {str(e)}")
                 continue
 
@@ -278,8 +269,8 @@ class HrSmartAudit(models.TransientModel):
             }
         else:
             msg = "\n".join(errors[:5])
-            if not msg: msg = "تأكد من وجود عقد واحد على الأقل في سجلات الموظفين."
-            return self._show_warning(f'لم يتم إنشاء قسائم.\n{msg}')
+            if not msg: msg = "تأكد من وجود بيانات صحيحة للموظفين."
+            return self._show_warning(f'لم يتم إنشاء قسائم.\nالأخطاء:\n{msg}')
 
     def _show_warning(self, msg):
         return {
