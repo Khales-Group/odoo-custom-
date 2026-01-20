@@ -17,7 +17,6 @@ class HrSmartAudit(models.TransientModel):
         self.audit_line_ids.unlink()
         target_employees = self.env['hr.employee']
         
-        # منطق تحديد الموظفين
         if self.employee_ids:
             target_employees = self.employee_ids
         else:
@@ -30,6 +29,7 @@ class HrSmartAudit(models.TransientModel):
         lines = []
         for emp in target_employees:
             metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
+            
             lines.append((0, 0, {
                 'employee_id': emp.id,
                 'avg_check_in': metrics.get('avg_check_in', '-'),
@@ -41,6 +41,7 @@ class HrSmartAudit(models.TransientModel):
                 'recommendation': metrics.get('recommendation', ''),
                 'status': 'danger' if (metrics.get('late_after_9', 0) > 3 or metrics.get('absence_count', 0) > 0) else 'success'
             }))
+            
         self.audit_line_ids = lines
         
         return {
@@ -52,21 +53,124 @@ class HrSmartAudit(models.TransientModel):
         }
 
     def _get_employee_metrics(self, employee, date_from, date_to):
-        # (نفس دالة الحسابات السابقة - مختصرة هنا لعدم التكرار)
-        # تأكد أنك تستخدم النسخة الكاملة التي أرسلتها سابقاً لحساب الغياب بدقة
-        # سأضع قيماً افتراضية لضمان عمل الكود إذا لم تنسخ اللوجيك
+        start_dt = datetime.combine(date_from, time.min)
+        end_dt = datetime.combine(date_to, time.max)
+        
+        # 1. جلب الحضور
+        attendances = self.env['hr.attendance'].search([
+            ('employee_id', '=', employee.id),
+            ('check_in', '>=', start_dt),
+            ('check_in', '<=', end_dt)
+        ])
+
+        attendance_by_date = {}
+        for att in attendances:
+            if not att.check_in: continue
+            local_check_in = fields.Datetime.context_timestamp(self, att.check_in)
+            local_date = local_check_in.date()
+            if local_date not in attendance_by_date:
+                attendance_by_date[local_date] = {'hours': 0.0, 'check_ins': []}
+            attendance_by_date[local_date]['check_ins'].append(local_check_in)
+            if att.check_out:
+                duration = (att.check_out - att.check_in).total_seconds() / 3600.0
+                attendance_by_date[local_date]['hours'] += duration
+
+        # 2. جلب الإجازات
+        leaves = self.env['hr.leave'].search([
+            ('employee_id', '=', employee.id),
+            ('state', '=', 'validate'),
+            ('request_date_from', '<=', date_to),
+            ('request_date_to', '>=', date_from)
+        ])
+        
+        leave_dates = set()
+        for leave in leaves:
+            curr = max(leave.request_date_from, date_from)
+            end = min(leave.request_date_to, date_to)
+            while curr <= end:
+                leave_dates.add(curr)
+                curr += timedelta(days=1)
+
+        # 3. الحسابات اليومية
+        late_count = 0
+        days_worked = 0
+        absence_count = 0
+        leaves_taken_count = 0 
+        total_check_in_minutes = 0
+        check_in_days_count = 0
+
+        current_day = date_from
+        while current_day <= date_to:
+            att_data = attendance_by_date.get(current_day, {'hours': 0.0, 'check_ins': []})
+            worked_hours = att_data['hours']
+            
+            # --- منطق حساب الإجازات المأخوذة ---
+            is_on_leave = current_day in leave_dates
+            if is_on_leave:
+                leaves_taken_count += 1
+            # ----------------------------------
+
+            if worked_hours > 0:
+                days_worked += 1
+
+            if att_data['check_ins']:
+                first_check_in = min(att_data['check_ins'])
+                check_in_minutes = first_check_in.hour * 60 + first_check_in.minute
+                total_check_in_minutes += check_in_minutes
+                check_in_days_count += 1
+                
+                if check_in_minutes > 9 * 60:
+                    late_count += 1
+            
+            # منطق الغياب (فقط إذا لم يكن في إجازة)
+            if worked_hours < 4.5:
+                is_working_day = True
+                if employee.resource_calendar_id:
+                    day_start = datetime.combine(current_day, time.min)
+                    day_end = datetime.combine(current_day, time.max)
+                    expected_hours = employee.resource_calendar_id.get_work_hours_count(day_start, day_end, compute_leaves=True, domain=None)
+                    if expected_hours <= 0:
+                        is_working_day = False
+                
+                # يعتبر غياباً إذا كان يوم عمل ولم يكن لديه إجازة رسمية
+                if is_working_day and not is_on_leave:
+                    absence_count += 1
+            
+            current_day += timedelta(days=1)
+
+        avg_check_in = '-'
+        if check_in_days_count > 0:
+            avg_val = total_check_in_minutes / check_in_days_count
+            avg_check_in = '{:02d}:{:02d}'.format(int(avg_val // 60), int(avg_val % 60))
+            
+        balance = employee.remaining_leaves if 'remaining_leaves' in employee else 0.0
+        
+        if absence_count > 0:
+            recommendation = 'خصم (غياب)'
+        elif late_count > 3:
+            recommendation = 'لفت نظر'
+        else:
+            recommendation = 'ممتاز'
+
         return {
-            'avg_check_in': '09:00', 
-            'late_after_9': 0, 
-            'days_worked': 22,
-            'absence_count': 2, # مثال للتجربة
-            'leaves_taken': 0,
-            'balance': 21.0, 
-            'recommendation': 'Good'
+            'avg_check_in': avg_check_in, 
+            'late_after_9': late_count, 
+            'days_worked': days_worked,
+            'absence_count': absence_count,
+            'leaves_taken': leaves_taken_count,
+            'balance': balance, 
+            'recommendation': recommendation
         }
 
+    # =========================================================
+    #  هذه الدالة كانت ناقصة وهي سبب المشكلة - تم إضافتها الآن
+    # =========================================================
+    def action_send_report(self):
+        # يمكنك إضافة كود إرسال إيميل هنا لاحقاً
+        pass
+
     # ==========================================
-    #  دالة الرواتب (Force Logic) - بدون إعدادات
+    #  دالة الرواتب (Force Logic)
     # ==========================================
     def action_auto_generate_payroll(self):
         if 'hr.payslip' not in self.env:
@@ -97,7 +201,7 @@ class HrSmartAudit(models.TransientModel):
             if not contract:
                 continue 
 
-            # 3. إنشاء القسيمة وحسابها (Standard Calculation)
+            # 3. إنشاء القسيمة وحسابها
             payslip_vals = {
                 'employee_id': emp.id,
                 'contract_id': contract.id,
@@ -110,7 +214,7 @@ class HrSmartAudit(models.TransientModel):
             
             try:
                 payslip = self.env['hr.payslip'].create(payslip_vals)
-                payslip.compute_sheet() # هذا السطر يولد الخطوط الافتراضية (Basic, Gross, Net)
+                payslip.compute_sheet() 
                 
                 # 4. حساب الخصم "برمجياً"
                 metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
@@ -120,34 +224,30 @@ class HrSmartAudit(models.TransientModel):
                     daily_wage = contract.wage / month_days
                     deduction_amount = daily_wage * absence_days
                     
-                    # 5. حقن سطر الخصم يدوياً (Manual Injection)
-                    # نبحث عن أي Category من نوع Deduction، إذا لم نجد نستخدم الـ ID 1
+                    # 5. حقن سطر الخصم يدوياً
                     ded_category = self.env['hr.salary.rule.category'].search([('code', 'in', ['DED', 'DEDUCTION'])], limit=1)
                     
                     self.env['hr.payslip.line'].create({
                         'slip_id': payslip.id,
                         'name': f'خصم غياب ({absence_days} يوم)',
-                        'code': 'ABS_DED', # كود من عندنا
+                        'code': 'ABS_DED',
                         'category_id': ded_category.id if ded_category else False,
-                        'sequence': 99, # ترتيب الظهور
+                        'sequence': 99,
                         'quantity': absence_days,
                         'rate': 100,
-                        'amount': -deduction_amount, # بالسالب كما طلبت
+                        'amount': -deduction_amount, # بالسالب
                         'total': -deduction_amount,
                         'employee_id': emp.id,
                         'contract_id': contract.id,
                     })
 
                     # 6. تعديل الصافي (Net Salary) يدوياً
-                    # نبحث عن سطر الـ NET ونطرح منه القيمة
                     net_line = self.env['hr.payslip.line'].search([
                         ('slip_id', '=', payslip.id),
                         ('code', '=', 'NET')
                     ], limit=1)
                     
                     if net_line:
-                        # بما أن الخصم سالب، فنحن بحاجة لطرح قيمته المطلقة من الصافي
-                        # المعادلة: الصافي الجديد = الصافي القديم - قيمة الخصم
                         new_net = net_line.amount - deduction_amount
                         net_line.write({
                             'amount': new_net,
