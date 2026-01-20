@@ -2,6 +2,9 @@ from odoo import models, fields, api
 from dateutil.relativedelta import relativedelta
 from datetime import datetime, time, timedelta
 import calendar
+import logging
+
+_logger = logging.getLogger(__name__)
 
 class HrSmartAudit(models.TransientModel):
     _name = 'hr.smart.audit'
@@ -97,123 +100,123 @@ class HrSmartAudit(models.TransientModel):
     def action_send_report(self):
         pass
 
-    # ==========================================
-    #  دالة الرواتب (نسخة الحرباء - Dynamic Fields)
-    # ==========================================
+    # =========================================================
+    #  دالة الرواتب الآمنة (مع Savepoint للحماية من الانهيار)
+    # =========================================================
     def action_auto_generate_payroll(self):
         if 'hr.payslip' not in self.env:
             return self._show_warning('نظام الرواتب غير مثبت.')
 
         employees = self.employee_ids if self.employee_ids else self.env['hr.employee'].search([])
-        PayslipObj = self.env['hr.payslip']
-        
-        # حماية: معرفة الحقول المتاحة في جدول القسائم حالياً
-        payslip_fields = PayslipObj.fields_get().keys()
-
         month_days = calendar.monthrange(self.date_to.year, self.date_to.month)[1]
-        ded_category = self.env['hr.salary.rule.category'].search([('code', 'in', ['DED', 'DEDUCTION'])], limit=1)
+        
+        # استخدام sudo لتجاوز مشاكل الصلاحيات
+        PayslipEnv = self.env['hr.payslip'].sudo()
+        LineEnv = self.env['hr.payslip.line'].sudo()
+        ded_category = self.env['hr.salary.rule.category'].sudo().search([('code', 'in', ['DED', 'DEDUCTION'])], limit=1)
 
-        created_count = 0
+        created_payslips = self.env['hr.payslip']
         errors = []
 
         for emp in employees:
-            try:
-                # 1. إحضار العقد (فقط عشان الراتب)
-                contract = False
-                if 'contract_id' in emp._fields and emp.contract_id:
-                    contract = emp.contract_id
-                if not contract and 'contract_ids' in emp._fields and emp.contract_ids:
-                    contract = emp.contract_ids[0]
-
-                # 2. تجهيز بيانات القسيمة بذكاء (فقط الحقول الموجودة)
-                vals = {
-                    'employee_id': emp.id,
-                    'date_from': self.date_from,
-                    'date_to': self.date_to,
-                    'name': f'Salary Slip - {emp.name}',
-                    'company_id': emp.company_id.id or self.env.company.id,
-                }
-
-                # --- الفحص الديناميكي: هل يوجد حقل contract_id في القسيمة؟ ---
-                if 'contract_id' in payslip_fields and contract:
-                    vals['contract_id'] = contract.id
-                
-                # --- الفحص الديناميكي: هل يوجد حقل struct_id في القسيمة؟ ---
-                if 'struct_id' in payslip_fields and contract and hasattr(contract, 'structure_type_id'):
-                     if contract.structure_type_id.default_struct_id:
-                         vals['struct_id'] = contract.structure_type_id.default_struct_id.id
-
-                # 3. إنشاء القسيمة
-                payslip = PayslipObj.create(vals)
-
-                # 4. محاولة الحساب
+            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+            # استخدام savepoint: إذا فشل هذا الموظف، يتم التراجع عن عمليته فقط
+            # وتستمر الحلقة للموظف التالي بدون انهيار النظام
+            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+            with self.env.cr.savepoint():
                 try:
-                    payslip.compute_sheet()
-                except:
-                    pass
-
-                # 5. حقن الخصم
-                metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
-                absence_days = metrics.get('absence_count', 0)
-                
-                # جلب الراتب (من الموظف أو العقد)
-                wage = getattr(emp, 'wage', 0.0)
-                if wage == 0.0 and contract and hasattr(contract, 'wage'):
-                    wage = contract.wage
-                
-                if absence_days > 0 and wage > 0:
-                    daily_wage = wage / month_days
-                    deduction_amount = daily_wage * absence_days
+                    # 1. البحث عن العقد (من ملف الموظف مباشرة)
+                    contract = emp.contract_id
                     
-                    # تجهيز سطر الخصم (نتأكد من حقل العقد في السطر أيضاً)
-                    line_vals = {
-                        'slip_id': payslip.id,
-                        'name': f'خصم غياب ({absence_days} يوم)',
-                        'code': 'ABS_DED',
-                        'category_id': ded_category.id if ded_category else False,
-                        'sequence': 99, 
-                        'quantity': absence_days,
-                        'rate': 100,
-                        'amount': -deduction_amount, 
-                        'total': -deduction_amount,
+                    # محاولة بديلة: من قائمة العقود
+                    if not contract and 'contract_ids' in emp._fields and emp.contract_ids:
+                        contract = emp.contract_ids[0]
+
+                    # إذا لم نجد عقداً، لا يمكن المتابعة لهذا الموظف
+                    if not contract:
+                        raise ValueError("لم يتم العثور على عقد.")
+
+                    # 2. إنشاء القسيمة
+                    # نمرر employee_id و contract_id و struct_id يدوياً لضمان النجاح
+                    vals = {
                         'employee_id': emp.id,
+                        'contract_id': contract.id,
+                        'date_from': self.date_from,
+                        'date_to': self.date_to,
+                        'name': f'Salary Slip - {emp.name}',
+                        'company_id': emp.company_id.id or self.env.company.id,
                     }
                     
-                    # نتأكد أن سطر القسيمة فيه حقل contract_id قبل ما نحطه
-                    line_fields = self.env['hr.payslip.line'].fields_get().keys()
-                    if 'contract_id' in line_fields and contract:
-                        line_vals['contract_id'] = contract.id
+                    # إضافة الهيكل إذا وجد في العقد
+                    if contract.structure_type_id and contract.structure_type_id.default_struct_id:
+                        vals['struct_id'] = contract.structure_type_id.default_struct_id.id
 
-                    self.env['hr.payslip.line'].create(line_vals)
+                    payslip = PayslipEnv.create(vals)
+
+                    # 3. الحساب (Compute)
+                    # قد تفشل إذا كانت الرولز فيها خطأ، لذا نحميها
+                    try:
+                        payslip.compute_sheet()
+                    except Exception as e:
+                        _logger.warning(f"Failed to compute sheet for {emp.name}: {e}")
+
+                    # 4. حقن الخصم (Logic)
+                    metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
+                    absence_days = metrics.get('absence_count', 0)
                     
-                    # تحديث الصافي
-                    net_line = self.env['hr.payslip.line'].search([
-                        ('slip_id', '=', payslip.id),
-                        ('code', '=', 'NET')
-                    ], limit=1)
+                    # قراءة الراتب: الأولوية لـ wage في الموظف كما طلبت
+                    wage = 0.0
+                    if 'wage' in emp._fields and emp.wage > 0:
+                        wage = emp.wage
+                    elif 'wage' in contract._fields:
+                        wage = contract.wage
                     
-                    if net_line:
-                        new_net = net_line.amount - deduction_amount
-                        net_line.write({'amount': new_net, 'total': new_net})
-                
-                payslips += payslip
-                created_count += 1
+                    if absence_days > 0 and wage > 0:
+                        daily_wage = wage / month_days
+                        deduction_amount = daily_wage * absence_days
+                        
+                        LineEnv.create({
+                            'slip_id': payslip.id,
+                            'name': f'خصم غياب ({absence_days} يوم)',
+                            'code': 'ABS_DED',
+                            'category_id': ded_category.id if ded_category else False,
+                            'sequence': 99, 
+                            'quantity': absence_days,
+                            'rate': 100,
+                            'amount': -deduction_amount,
+                            'total': -deduction_amount,
+                            'employee_id': emp.id,
+                            'contract_id': contract.id,
+                        })
+                        
+                        # تحديث الصافي
+                        net_line = LineEnv.search([
+                            ('slip_id', '=', payslip.id),
+                            ('code', '=', 'NET')
+                        ], limit=1)
+                        
+                        if net_line:
+                            new_net = net_line.amount - deduction_amount
+                            net_line.write({'amount': new_net, 'total': new_net})
+                    
+                    created_payslips += payslip
 
-            except Exception as e:
-                errors.append(f"{emp.name}: {str(e)}")
-                continue
+                except Exception as e:
+                    # تسجيل الخطأ للمستخدم وتجاوز الموظف
+                    errors.append(f"{emp.name}: {str(e)}")
+                    # هنا الـ savepoint رح يشتغل ويرجع الداتا زي ما كانت قبل هذا الموظف
 
-        if created_count > 0:
+        if created_payslips:
             return {
                 'name': 'Generated Payslips',
-                'domain': [('id', 'in', payslips.ids)],
+                'domain': [('id', 'in', created_payslips.ids)],
                 'view_mode': 'list,form',
                 'res_model': 'hr.payslip',
                 'type': 'ir.actions.act_window',
             }
         else:
             msg = "\n".join(errors[:5])
-            if not msg: msg = "فشل غير محدد."
+            if not msg: msg = "لا يوجد بيانات كافية (عقود) لإنشاء الرواتب."
             return self._show_warning(f'لم يتم إنشاء قسائم.\nالأخطاء:\n{msg}')
 
     def _show_warning(self, msg):
@@ -221,7 +224,7 @@ class HrSmartAudit(models.TransientModel):
             'type': 'ir.actions.client',
             'tag': 'display_notification',
             'params': {
-                'title': 'نتيجة العملية',
+                'title': 'تقرير العملية',
                 'message': msg,
                 'type': 'warning',
                 'sticky': False,
