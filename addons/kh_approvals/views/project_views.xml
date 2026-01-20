@@ -33,26 +33,22 @@
             </field>
         </record>
 
-        <record id="view_project_form_security" model="ir.ui.view">
-            <field name="name">project.project.form.security</field>
-            <field name="model">project.project</field>
-            <field name="inherit_id" ref="project.edit_project"/>
+        <record id="view_project_form_security_fix" model="ir.ui.view">
+         <field name="name">project.project.form.security.fix</field>
+           <field name="model">project.project</field>
+          <field name="inherit_id" ref="project.edit_project"/>
             <field name="arch" type="xml">
+        
+        <xpath expr="//sheet" position="inside">
+            <field name="is_manager" invisible="1"/>
+        </xpath>
 
-                <field name="user_id" position="after">
-                    <field name="is_manager" invisible="1"/>
-                </field>
+        <xpath expr="//field[@name='partner_id']" position="after">
+            <field name="contractor_email" readonly="not is_manager"/>
+        </xpath>
 
-                <xpath expr="//field[@name='partner_id']" position="after">
-                    <field name="contractor_email" readonly="not is_manager"/>
-                </xpath>
-
-                <xpath expr="//field[@name='partner_id']" position="attributes">
-                    <attribute name="readonly">not is_manager</attribute>
-                </xpath>
-
-                </field>
-        </record>
+    </field>
+</record>
 
     </data>
 </odoo>
