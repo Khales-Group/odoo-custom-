@@ -191,23 +191,46 @@ class HrSmartAudit(models.TransientModel):
         payslips = self.env['hr.payslip']
         month_days = calendar.monthrange(self.date_to.year, self.date_to.month)[1]
         created_count = 0
+        
+        # مرجع لموديل العقود للبحث اليدوي إذا لزم الأمر
+        Contract = self.env.get('hr.contract')
 
         for emp in target_employees:
             # ========================================================
             # التعديل هنا: استخدام العقد من بروفايل الموظف مباشرة
+            # التعديل هنا: تحسين آلية العثور على العقد
             # ========================================================
             contract = False
             if 'contract_id' in emp._fields:
+            
+            # 1. المحاولة الأولى: الحقل المباشر في الموظف
+            if 'contract_id' in emp._fields and emp.contract_id:
                 contract = emp.contract_id
             
             if not contract and 'contract_ids' in emp._fields:
+            # 2. المحاولة الثانية: قائمة العقود في الموظف
+            if not contract and 'contract_ids' in emp._fields and emp.contract_ids:
+                 # نفضل العقد المفتوح، لكن نقبل أي عقد إذا لم يوجد مفتوح
                  contracts = emp.contract_ids
                  if contracts and 'state' in contracts[0]._fields:
                      contract = contracts.filtered(lambda c: c.state == 'open')[:1]
                  if not contract and contracts:
                      contract = contracts[:1]
+                 if 'state' in contracts[0]._fields:
+                     open_contracts = contracts.filtered(lambda c: c.state == 'open')
+                     contract = open_contracts[0] if open_contracts else contracts[0]
+                 else:
+                     contract = contracts[0]
+
+            # 3. المحاولة الثالثة: البحث المباشر في النظام (Fallback)
+            if not contract and Contract:
+                # نبحث عن أي عقد للموظف
+                found_contracts = Contract.search([('employee_id', '=', emp.id)], order='date_start desc')
+                if found_contracts:
+                    contract = found_contracts[0]
             
             # إذا لم نجد عقداً، نتجاوز هذا الموظف
+            # إذا لم نجد عقداً بعد كل هذه المحاولات، نتجاوز الموظف
             if not contract:
                 continue
             
