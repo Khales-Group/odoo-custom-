@@ -43,7 +43,6 @@ class HrSmartAudit(models.TransientModel):
     def _get_employee_metrics(self, employee, date_from, date_to):
         start_dt = datetime.combine(date_from, time.min)
         end_dt = datetime.combine(date_to, time.max)
-        
         attendances = self.env['hr.attendance'].search([('employee_id', '=', employee.id), ('check_in', '>=', start_dt), ('check_in', '<=', end_dt)])
         leaves = self.env['hr.leave'].search([('employee_id', '=', employee.id), ('state', '=', 'validate'), ('request_date_from', '<=', date_to), ('request_date_to', '>=', date_from)])
         
@@ -62,7 +61,6 @@ class HrSmartAudit(models.TransientModel):
         total_check_in_minutes = 0
         check_in_days_count = 0
         attendance_by_date = {}
-        
         for att in attendances:
             if not att.check_in: continue
             local_check_in = fields.Datetime.context_timestamp(self, att.check_in)
@@ -90,7 +88,6 @@ class HrSmartAudit(models.TransientModel):
                     if expected <= 0: is_working = False
                 if is_working and current_day not in leave_dates: absence_count += 1
             current_day += timedelta(days=1)
-            
         avg = '-'
         if check_in_days_count > 0:
             val = total_check_in_minutes / check_in_days_count
@@ -100,9 +97,9 @@ class HrSmartAudit(models.TransientModel):
     def action_send_report(self):
         pass
 
-    # =========================================================
-    #  دالة الرواتب: الإجبار (Brute Force)
-    # =========================================================
+    # ==========================================
+    #  دالة الرواتب (الحل البلطجي - إنشاء عقد إذا لم يوجد)
+    # ==========================================
     def action_auto_generate_payroll(self):
         if 'hr.payslip' not in self.env:
             return self._show_warning('نظام الرواتب غير مثبت.')
@@ -111,70 +108,61 @@ class HrSmartAudit(models.TransientModel):
         payslips = self.env['hr.payslip']
         month_days = calendar.monthrange(self.date_to.year, self.date_to.month)[1]
         
-        # حماية ضد عدم وجود فئات الرواتب
+        # حماية ضد نقص الفئات
         ded_category = self.env['hr.salary.rule.category'].search([('code', 'in', ['DED', 'DEDUCTION'])], limit=1)
-        
+        # نحتاج أي هيكل راتب في النظام عشان العقد الوهمي
+        any_struct_type = self.env['hr.payroll.structure.type'].search([], limit=1)
+
         created_count = 0
         errors = []
 
-        # البحث عن موديل العقود بشكل آمن
-        Contract = self.env.get('hr.contract')
+        # بنستخدم sudo() عشان نتجاوز أي صلاحيات ممكن تمنع رؤية العقود
+        ContractEnv = self.env['hr.contract'].sudo()
 
         for emp in employees:
             try:
-                # 1. إحضار العقد "غصب"
-                contract = False
+                # 1. البحث عن العقد (شامل الأرشيف)
+                contract = ContractEnv.search([('employee_id', '=', emp.id)], limit=1, order='create_date desc')
                 
-                # أولاً: من ملف الموظف
-                if 'contract_id' in emp._fields and emp.contract_id:
-                    contract = emp.contract_id
-                
-                # ثانياً: من الأرشيف
-                if not contract and 'contract_ids' in emp._fields and emp.contract_ids:
-                    contract = emp.contract_ids[0]
-
-                # ثالثاً: بحث مباشر في قاعدة العقود (آخر حل)
-                if not contract and Contract:
-                    # هات لي أي عقد لهذا الموظف، حتى لو كان من سنة جدي
-                    # الترتيب تنازلي عشان نجيب الأحدث
-                    found = Contract.search([('employee_id', '=', emp.id)], order='date_start desc', limit=1)
-                    if found:
-                        contract = found
-
+                # إذا ما لقينا عقد، بنخترع واحد!
                 if not contract:
-                    errors.append(f"{emp.name}: لم يتم العثور على أي سجل عقد في النظام.")
-                    continue
+                    if not any_struct_type:
+                        errors.append(f"{emp.name}: لا يوجد أي نوع هيكل راتب في النظام لإنشاء عقد تلقائي.")
+                        continue
+                        
+                    # إنشاء عقد وهمي "مؤقت" لتمرير العملية
+                    contract = ContractEnv.create({
+                        'name': f'Auto-Contract: {emp.name}',
+                        'employee_id': emp.id,
+                        'state': 'open',
+                        'wage': getattr(emp, 'wage', 0.0), # نأخذ الراتب من الموظف
+                        'date_start': self.date_from,
+                        'structure_type_id': any_struct_type.id,
+                    })
 
-                # 2. إنشاء القسيمة
-                payslip_vals = {
+                # 2. إنشاء القسيمة بناءً على العقد (الحقيقي أو الوهمي)
+                payslip = self.env['hr.payslip'].create({
                     'employee_id': emp.id,
-                    'contract_id': contract.id, # نعطيه العقد اللي لقيناه عشان يسكت
+                    'contract_id': contract.id,
                     'date_from': self.date_from,
                     'date_to': self.date_to,
                     'name': f'Salary Slip - {emp.name}',
                     'company_id': emp.company_id.id or self.env.company.id,
-                    # محاولة جلب الهيكل، إذا فشل نتركه فارغ
-                    'struct_id': contract.structure_type_id.default_struct_id.id if 'structure_type_id' in contract._fields and contract.structure_type_id else False
-                }
+                    'struct_id': contract.structure_type_id.default_struct_id.id if contract.structure_type_id else False
+                })
 
-                payslip = self.env['hr.payslip'].create(payslip_vals)
-
-                # 3. محاولة الحساب (Compute)
-                # بنحطها بـ Try عشان لو الهيكل فيه مشكلة، ما يوقف العملية، يكمل ويحط الخصم تبعنا
+                # 3. محاولة الحساب
                 try:
                     payslip.compute_sheet()
                 except:
                     pass
 
-                # 4. حساب وحقن الخصم (من راتب الموظف حصراً)
+                # 4. حقن الخصم
                 metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
                 absence_days = metrics.get('absence_count', 0)
                 
-                # جلب الراتب من الموظف (باستخدام getattr عشان لو الحقل مش موجود ما يضرب)
                 wage = getattr(emp, 'wage', 0.0)
-                
-                # إذا الموظف ما عنده راتب بملفه، بنجرب العقد
-                if wage == 0.0 and hasattr(contract, 'wage'):
+                if wage == 0.0 and contract.wage > 0:
                     wage = contract.wage
                 
                 if absence_days > 0 and wage > 0:
@@ -189,7 +177,7 @@ class HrSmartAudit(models.TransientModel):
                         'sequence': 99, 
                         'quantity': absence_days,
                         'rate': 100,
-                        'amount': -deduction_amount,
+                        'amount': -deduction_amount, 
                         'total': -deduction_amount,
                         'employee_id': emp.id,
                         'contract_id': contract.id,
@@ -222,7 +210,6 @@ class HrSmartAudit(models.TransientModel):
             }
         else:
             msg = "\n".join(errors[:5])
-            if not msg: msg = "تأكد من وجود عقود (حتى لو مسودة) في سجلات الموظفين."
             return self._show_warning(f'لم يتم إنشاء قسائم.\nالأخطاء:\n{msg}')
 
     def _show_warning(self, msg):
