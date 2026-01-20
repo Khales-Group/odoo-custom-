@@ -1,5 +1,4 @@
 from odoo import models, fields, api
-from odoo.exceptions import UserError
 from dateutil.relativedelta import relativedelta
 from datetime import datetime, time, timedelta
 import calendar
@@ -44,6 +43,7 @@ class HrSmartAudit(models.TransientModel):
     def _get_employee_metrics(self, employee, date_from, date_to):
         start_dt = datetime.combine(date_from, time.min)
         end_dt = datetime.combine(date_to, time.max)
+        
         attendances = self.env['hr.attendance'].search([('employee_id', '=', employee.id), ('check_in', '>=', start_dt), ('check_in', '<=', end_dt)])
         leaves = self.env['hr.leave'].search([('employee_id', '=', employee.id), ('state', '=', 'validate'), ('request_date_from', '<=', date_to), ('request_date_to', '>=', date_from)])
         
@@ -62,6 +62,7 @@ class HrSmartAudit(models.TransientModel):
         total_check_in_minutes = 0
         check_in_days_count = 0
         attendance_by_date = {}
+        
         for att in attendances:
             if not att.check_in: continue
             local_check_in = fields.Datetime.context_timestamp(self, att.check_in)
@@ -89,6 +90,7 @@ class HrSmartAudit(models.TransientModel):
                     if expected <= 0: is_working = False
                 if is_working and current_day not in leave_dates: absence_count += 1
             current_day += timedelta(days=1)
+            
         avg = '-'
         if check_in_days_count > 0:
             val = total_check_in_minutes / check_in_days_count
@@ -99,74 +101,79 @@ class HrSmartAudit(models.TransientModel):
         pass
 
     # =========================================================
-    #  دالة الرواتب: التعبئة اليدوية (Manual Population)
+    #  دالة الرواتب: الإجبار (Brute Force)
     # =========================================================
     def action_auto_generate_payroll(self):
         if 'hr.payslip' not in self.env:
-            raise UserError('نظام الرواتب غير مثبت.')
+            return self._show_warning('نظام الرواتب غير مثبت.')
 
         employees = self.employee_ids if self.employee_ids else self.env['hr.employee'].search([])
         payslips = self.env['hr.payslip']
         month_days = calendar.monthrange(self.date_to.year, self.date_to.month)[1]
         
+        # حماية ضد عدم وجود فئات الرواتب
         ded_category = self.env['hr.salary.rule.category'].search([('code', 'in', ['DED', 'DEDUCTION'])], limit=1)
         
-        errors = []
         created_count = 0
+        errors = []
+
+        # البحث عن موديل العقود بشكل آمن
+        Contract = self.env.get('hr.contract')
 
         for emp in employees:
             try:
-                # 1. البحث عن العقد (يدوياً)
+                # 1. إحضار العقد "غصب"
                 contract = False
+                
+                # أولاً: من ملف الموظف
                 if 'contract_id' in emp._fields and emp.contract_id:
                     contract = emp.contract_id
                 
-                # إذا مافي عقد مباشر، خذ أي عقد من القائمة
+                # ثانياً: من الأرشيف
                 if not contract and 'contract_ids' in emp._fields and emp.contract_ids:
                     contract = emp.contract_ids[0]
 
+                # ثالثاً: بحث مباشر في قاعدة العقود (آخر حل)
+                if not contract and Contract:
+                    # هات لي أي عقد لهذا الموظف، حتى لو كان من سنة جدي
+                    # الترتيب تنازلي عشان نجيب الأحدث
+                    found = Contract.search([('employee_id', '=', emp.id)], order='date_start desc', limit=1)
+                    if found:
+                        contract = found
+
                 if not contract:
-                    errors.append(f"{emp.name}: لا يوجد عقد.")
+                    errors.append(f"{emp.name}: لم يتم العثور على أي سجل عقد في النظام.")
                     continue
 
-                # 2. البحث عن الهيكل (يدوياً من العقد)
-                struct = False
-                if contract.structure_type_id and contract.structure_type_id.default_struct_id:
-                    struct = contract.structure_type_id.default_struct_id
-                
-                if not struct:
-                    # محاولة أخيرة: البحث عن أي هيكل راتب في النظام
-                    struct = self.env['hr.payroll.structure'].search([], limit=1)
-                
-                if not struct:
-                    errors.append(f"{emp.name}: العقد لا يحتوي على هيكل راتب (Salary Structure).")
-                    continue
-
-                # 3. إنشاء القسيمة (تعبئة الحقول مباشرة بدل onchange)
+                # 2. إنشاء القسيمة
                 payslip_vals = {
                     'employee_id': emp.id,
-                    'contract_id': contract.id,
-                    'struct_id': struct.id,
+                    'contract_id': contract.id, # نعطيه العقد اللي لقيناه عشان يسكت
                     'date_from': self.date_from,
                     'date_to': self.date_to,
                     'name': f'Salary Slip - {emp.name}',
                     'company_id': emp.company_id.id or self.env.company.id,
+                    # محاولة جلب الهيكل، إذا فشل نتركه فارغ
+                    'struct_id': contract.structure_type_id.default_struct_id.id if 'structure_type_id' in contract._fields and contract.structure_type_id else False
                 }
 
                 payslip = self.env['hr.payslip'].create(payslip_vals)
 
-                # 4. الحساب
+                # 3. محاولة الحساب (Compute)
+                # بنحطها بـ Try عشان لو الهيكل فيه مشكلة، ما يوقف العملية، يكمل ويحط الخصم تبعنا
                 try:
                     payslip.compute_sheet()
-                except Exception as e:
-                    # اذا فشل الحساب بسبب معادلات، نكمل عشان نحط الخصم
+                except:
                     pass
 
-                # 5. حقن الخصم (Logic)
+                # 4. حساب وحقن الخصم (من راتب الموظف حصراً)
                 metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
                 absence_days = metrics.get('absence_count', 0)
                 
+                # جلب الراتب من الموظف (باستخدام getattr عشان لو الحقل مش موجود ما يضرب)
                 wage = getattr(emp, 'wage', 0.0)
+                
+                # إذا الموظف ما عنده راتب بملفه، بنجرب العقد
                 if wage == 0.0 and hasattr(contract, 'wage'):
                     wage = contract.wage
                 
@@ -215,7 +222,7 @@ class HrSmartAudit(models.TransientModel):
             }
         else:
             msg = "\n".join(errors[:5])
-            if not msg: msg = "تأكد من وجود عقود وهياكل رواتب."
+            if not msg: msg = "تأكد من وجود عقود (حتى لو مسودة) في سجلات الموظفين."
             return self._show_warning(f'لم يتم إنشاء قسائم.\nالأخطاء:\n{msg}')
 
     def _show_warning(self, msg):
