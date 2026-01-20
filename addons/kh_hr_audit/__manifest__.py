@@ -12,5 +12,7 @@
     ],
     'installable': True,
     'application': True,
+    'license': 'LGPL-3',
     'sequence': -100,
+
 }
