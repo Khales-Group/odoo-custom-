@@ -41,6 +41,7 @@ class KhApprovalRequest(models.Model):
         tracking=True,
         domain="[('company_id', '=', company_id)]"
     )
+    partner_id = fields.Many2one('res.partner', string="Vendor", tracking=True)
 
     requester_id = fields.Many2one(
         "res.users",
@@ -205,7 +206,7 @@ class KhApprovalRequest(models.Model):
 
     def _critical_fields(self):
         """Fields that, if changed, should trigger a new approval cycle."""
-        return {'title', 'amount', 'currency_id', 'company_id', 'department_id', 'rule_id'}
+        return {'title', 'amount', 'currency_id', 'company_id', 'department_id', 'rule_id', 'partner_id'}
 
     # -------------------------------------------------------------------------
     # ORM overrides
@@ -628,6 +629,32 @@ class KhApprovalRequest(models.Model):
                     
                     if is_procurement_cycle:
                         if not rec.approval_stage: rec.write({'approval_stage': 'procurement'})
+
+                        # --- NEW: Create Empty PO if Purchase Request ---
+                        if rec.is_purchase_request and not rec.purchase_order_id:
+                            if not rec.partner_id:
+                                raise UserError(_("Please select a Vendor on the request before approval to create the Purchase Order."))
+                            
+                            po_vals = {
+                                'partner_id': rec.partner_id.id,
+                                'company_id': rec.company_id.id,
+                                'currency_id': rec.currency_id.id,
+                                'origin': rec.name,
+                                'date_order': fields.Datetime.now(),
+                            }
+                            # Create PO (sudo to ensure permissions)
+                            po = self.env['purchase.order'].sudo().create(po_vals)
+                            rec.purchase_order_id = po.id
+                            
+                            # Assign activity to Khalid on the new PO
+                            khaled = self.env['res.users'].sudo().browse(364)
+                            if khaled.exists():
+                                po.activity_schedule(
+                                    'mail.mail_activity_data_todo',
+                                    user_id=khaled.id,
+                                    summary=_("New PO from Approval: %s") % rec.name,
+                                    note=_("This PO was automatically created from Approval Request %s. Please review.") % rec.name
+                                )
                         
                         khaled = self.env['res.users'].sudo().browse(364)
                         if khaled.exists():
