@@ -9,11 +9,8 @@
                 <form string="تفاصيل الموظف" create="0" edit="0" delete="0">
                     <sheet>
                         <div class="oe_title">
-                            <h1>
-                                <field name="employee_id" readonly="1" options="{'no_open': True}"/>
-                            </h1>
+                            <h1><field name="employee_id" readonly="1"/></h1>
                         </div>
-                        
                         <group>
                             <group string="📊 ملخص الأداء">
                                 <field name="status" widget="badge" decoration-success="status == 'success'" decoration-danger="status == 'danger'"/>
@@ -24,52 +21,27 @@
                                 <field name="days_worked"/>
                                 <field name="absence_count" decoration-danger="absence_count > 0"/>
                                 <field name="late_count" decoration-warning="late_count > 0"/>
-                                <field name="avg_check_in"/>
                             </group>
                         </group>
-
                         <notebook>
-                            <page string="✅ سجل العمل والحضور" name="work_log">
-                                <group>
-                                    <field name="work_details" nolabel="1" readonly="1"/>
-                                </group>
-                            </page>
-                            
-                            <page string="❌ سجل الغياب والمخالفات" name="absence_log">
-                                <group>
-                                    <field name="absence_details" nolabel="1" readonly="1" decoration-danger="1"/>
-                                </group>
-                            </page>
-                            
-                            <page string="📅 العطل والإجازات" name="holiday_log">
-                                <group>
-                                    <field name="leaves_taken" string="عدد الإجازات المستهلكة"/>
-                                    <separator string="تفاصيل العطل الرسمية"/>
-                                    <field name="holiday_details" nolabel="1" readonly="1" decoration-info="1"/>
-                                </group>
-                            </page>
+                            <page string="✅ العمل" name="work"><field name="work_details" readonly="1"/></page>
+                            <page string="❌ الغياب" name="absence"><field name="absence_details" readonly="1" decoration-danger="1"/></page>
+                            <page string="📅 العطل" name="holiday"><field name="holiday_details" readonly="1" decoration-info="1"/></page>
                         </notebook>
                     </sheet>
                 </form>
             </field>
         </record>
 
-        <record id="view_hr_smart_audit_line_tree" model="ir.ui.view">
-            <field name="name">hr.smart.audit.line.list</field> 
-            <field name="model">hr.smart.audit.line</field>
+        <record id="view_hr_smart_audit_tree" model="ir.ui.view">
+            <field name="name">hr.smart.audit.tree</field>
+            <field name="model">hr.smart.audit</field>
             <field name="arch" type="xml">
-                <list string="النتائج" create="0" delete="0" decoration-danger="status=='danger'" decoration-success="status=='success'">
-                    <field name="employee_id" widget="many2one_avatar_user"/>
-                    <field name="days_worked" string="✅ أيام العمل" optional="show"/>
-                    <field name="absence_count" string="❌ غياب (يوم)" optional="show" decoration-danger="absence_count > 0"/>
-                    <field name="late_count" string="🐢 تأخيرات" optional="show"/>
-                    <field name="leaves_taken" string="🏖️ إجازات" optional="hide"/>
-                    <field name="leave_balance" string="💰 رصيد" optional="hide"/>
-                    <field name="recommendation" string="💡 التوصية" decoration-bf="1"/>
-                    <field name="status" string="الحالة" widget="badge" 
-                           decoration-success="status == 'success'" 
-                           decoration-danger="status == 'danger'"/>
-                    <button name="open_details" type="object" string="التفاصيل" icon="fa-list-alt" class="btn-secondary"/>
+                <list string="تقارير التحليل" decoration-muted="state == 'paid'">
+                    <field name="name"/>
+                    <field name="date_from"/>
+                    <field name="date_to"/>
+                    <field name="state" widget="badge" decoration-info="state == 'draft'" decoration-success="state == 'done'" decoration-warning="state == 'paid'"/>
                 </list>
             </field>
         </record>
@@ -78,62 +50,60 @@
             <field name="name">hr.smart.audit.form</field>
             <field name="model">hr.smart.audit</field>
             <field name="arch" type="xml">
-                <form string="Smart HR Control Center">
+                <form string="تقرير تحليل ذكي">
                     <header>
-                        <button name="action_analyze_data" string="تحليل البيانات 🚀" type="object" class="btn-primary" icon="fa-cogs"/>
-                        <button name="action_auto_generate_payroll" string="إنشاء الرواتب 💰" type="object" class="btn-success" icon="fa-money"/>
-                        <button string="إلغاء" class="btn-secondary" special="cancel"/>
+                        <button name="action_analyze_data" string="بدء التحليل 🚀" type="object" class="btn-primary" invisible="state == 'paid'"/>
+                        <button name="action_auto_generate_payroll" string="إنشاء الرواتب 💰" type="object" class="btn-success" invisible="state != 'done'"/>
+                        <field name="state" widget="statusbar"/>
                     </header>
                     <sheet>
                         <div class="oe_title">
-                            <h1>🕵️‍♂️ Smart HR Control Center</h1>
+                            <label for="name" class="oe_edit_only"/>
+                            <h1><field name="name" placeholder="مثال: رواتب شهر يناير 2026"/></h1>
                         </div>
-                        
-                        <separator string="⚙️ إعدادات الفلترة" style="margin-top: 15px;"/>
                         <group col="4">
-                            <field name="date_from" widget="daterange"/>
+                            <field name="date_from"/>
                             <field name="date_to"/>
-                            <field name="employee_ids" widget="many2many_tags_avatar" placeholder="اترك فارغاً لكل الموظفين..."/>
+                            <field name="employee_ids" widget="many2many_tags_avatar" placeholder="الكل..."/>
                         </group>
 
-                        <separator string="📊 نتائج التحليل" style="margin-top: 20px;"/>
-                        <field name="audit_line_ids" nolabel="1">
-                            <list>
-                                <field name="employee_id"/>
-                                <field name="days_worked"/>
-                                <field name="absence_count"/>
-                                <field name="late_count"/>
-                                <field name="recommendation"/>
-                                <field name="status" widget="badge" decoration-danger="status == 'danger'" decoration-success="status == 'success'"/>
-                                <button name="open_details" type="object" icon="fa-list-alt" title="التفاصيل"/>
-                            </list>
-                        </field>
-                        
-                        <div class="text-muted" style="margin-top: 10px;">
-                            <i class="fa fa-info-circle"/> <b>ملاحظة:</b> أيام العمل لا تشمل العطل الرسمية أو الويكند إلا إذا حضر الموظف. الغياب يحسب فقط في أيام العمل الرسمية.
-                        </div>
+                        <notebook>
+                            <page string="النتائج والتحليل">
+                                <field name="audit_line_ids">
+                                    <list editable="bottom" create="0">
+                                        <field name="employee_id"/>
+                                        <field name="days_worked"/>
+                                        <field name="absence_count"/>
+                                        <field name="late_count"/>
+                                        <field name="recommendation"/>
+                                        <field name="status" widget="badge" decoration-danger="status == 'danger'" decoration-success="status == 'success'"/>
+                                        <button name="open_details" type="object" icon="fa-list-alt" title="التفاصيل"/>
+                                    </list>
+                                </field>
+                            </page>
+                        </notebook>
                     </sheet>
+                    <div class="oe_chatter">
+                        <field name="message_follower_ids"/>
+                        <field name="activity_ids"/>
+                        <field name="message_ids"/>
+                    </div>
                 </form>
             </field>
         </record>
 
         <record id="action_hr_smart_audit" model="ir.actions.act_window">
-            <field name="name">Smart Audit 🕵️‍♂️</field>
+            <field name="name">Smart HR Audit</field>
             <field name="res_model">hr.smart.audit</field>
-            <field name="view_mode">form</field>
-            <field name="target">new</field>
+            <field name="view_mode">list,form</field> <field name="target">current</field> <field name="help" type="html">
+              <p class="o_view_nocontent_smiling_face">
+                أنشئ أول تقرير تحليل ذكي!
+              </p>
+            </field>
         </record>
 
-        <menuitem id="hr_smart_audit_root_menu"
-                  name="Smart Audit"
-                  sequence="-100"
-                  web_icon="kh_hr_audit,static/description/icon.png"/>
-
-        <menuitem id="menu_hr_smart_audit"
-                  name="Dashboard"
-                  parent="hr_smart_audit_root_menu"
-                  action="action_hr_smart_audit"
-                  sequence="1"/>
+        <menuitem id="hr_smart_audit_root_menu" name="Smart Audit" sequence="-100" web_icon="kh_hr_audit,static/description/icon.png"/>
+        <menuitem id="menu_hr_smart_audit" name="التقارير" parent="hr_smart_audit_root_menu" action="action_hr_smart_audit" sequence="1"/>
 
     </data>
 </odoo>
