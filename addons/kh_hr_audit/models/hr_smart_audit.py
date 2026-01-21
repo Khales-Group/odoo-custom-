@@ -47,7 +47,7 @@ class HrSmartAudit(models.TransientModel):
         start_dt = datetime.combine(date_from, time.min)
         end_dt = datetime.combine(date_to, time.max)
         
-        # 1. بيانات الحضور
+        # 1. الحضور
         attendances = self.env['hr.attendance'].search([
             ('employee_id', '=', employee.id),
             ('check_in', '>=', start_dt),
@@ -63,7 +63,7 @@ class HrSmartAudit(models.TransientModel):
             if att.check_out:
                 attendance_by_date[d]['hours'] += (att.check_out - att.check_in).total_seconds() / 3600.0
 
-        # 2. الإجازات الخاصة (hr.leave)
+        # 2. الإجازات الخاصة (Leaves)
         leaves = self.env['hr.leave'].search([
             ('employee_id', '=', employee.id),
             ('state', '=', 'validate'),
@@ -78,22 +78,20 @@ class HrSmartAudit(models.TransientModel):
                 personal_leave_dates.add(curr)
                 curr += timedelta(days=1)
 
-        # 3. الإجازات العامة (Public Holidays) - بحث يدوي مباشر
-        # نبحث عن أي إجازة عامة في النظام تتقاطع مع الفترة
-        # المورد (resource_id) يجب أن يكون فارغاً للإجازات العامة
-        public_leaves = self.env['resource.calendar.leaves'].search([
-            ('resource_id', '=', False),
+        # 3. العطل الرسمية (Global Leaves) - بحث عام لكل الشركة
+        # نبحث عن أي إجازة عامة غير مربوطة بمورد محدد (تطبق على الكل)
+        global_leaves = self.env['resource.calendar.leaves'].search([
+            ('resource_id', '=', False),  # إجازة عامة
             ('date_from', '<=', end_dt),
             ('date_to', '>=', start_dt)
         ])
-        
         public_holiday_dates = set()
-        for pub in public_leaves:
-            # تحويل التوقيت من UTC إلى Local تقريبياً للفحص اليومي
-            p_start = fields.Datetime.context_timestamp(self, pub.date_from).date()
-            p_end = fields.Datetime.context_timestamp(self, pub.date_to).date()
-            curr = max(p_start, date_from)
-            end = min(p_end, date_to)
+        for gl in global_leaves:
+            # تحويل التواريخ لمقارنة اليوم فقط
+            g_start = fields.Datetime.context_timestamp(self, gl.date_from).date()
+            g_end = fields.Datetime.context_timestamp(self, gl.date_to).date()
+            curr = max(g_start, date_from)
+            end = min(g_end, date_to)
             while curr <= end:
                 public_holiday_dates.add(curr)
                 curr += timedelta(days=1)
@@ -109,34 +107,47 @@ class HrSmartAudit(models.TransientModel):
         current_day = date_from
         while current_day <= date_to:
             
-            # أ. هل هو يوم إجازة خاصة؟
+            # أ. فحص الإجازات الخاصة (Approved Leaves)
             if current_day in personal_leave_dates:
                 leaves_taken_count += 1
                 current_day += timedelta(days=1)
-                continue # محمي
+                continue 
 
-            # ب. هل هو يوم إجازة عامة (رأس السنة وغيرها)؟
+            # ب. فحص العطل الرسمية (Public Holidays) - الأولوية الثانية
             if current_day in public_holiday_dates:
                 current_day += timedelta(days=1)
-                continue # محمي
+                continue 
 
-            # ج. هل هو ويكند (جمعة أو سبت)؟
-            # 0=Mon, ... 4=Fri, 5=Sat, 6=Sun
-            # إذا جدولك أحد-خميس، فالجمعة (4) والسبت (5) عطلة
-            if current_day.weekday() in [4, 5]: 
-                # نتأكد أنه ما داومش في الويكند
-                if attendance_by_date.get(current_day, {}).get('hours', 0) == 0:
-                    current_day += timedelta(days=1)
-                    continue # عطلة ويكند، تخطي
+            # ج. فحص العطل الأسبوعية (Weekends)
+            is_weekend = False
+            if employee.resource_calendar_id:
+                # نسأل الجدول: هل ساعات العمل اليوم > 0؟
+                day_start = datetime.combine(current_day, time.min)
+                day_end = datetime.combine(current_day, time.max)
+                # compute_leaves=False لأننا حسبنا الإجازات فوق يدوياً
+                hours = employee.resource_calendar_id.get_work_hours_count(day_start, day_end, compute_leaves=False)
+                if hours <= 0:
+                    is_weekend = True
+            else:
+                # fallback: الجمعة (4) والسبت (5) عطلة
+                if current_day.weekday() in [4, 5]:
+                    is_weekend = True
+            
+            if is_weekend:
+                # لو داوم في الويكند نحسبله يوم عمل، بس لو غاب ما نحسب غياب
+                if attendance_by_date.get(current_day, {}).get('hours', 0) > 0:
+                    days_worked += 1
+                current_day += timedelta(days=1)
+                continue
 
-            # د. فحص الدوام (الآن نحن في يوم عمل رسمي)
+            # د. فحص الدوام (يوم عمل رسمي)
             att_data = attendance_by_date.get(current_day, {'hours': 0.0, 'check_ins': []})
             worked_hours = att_data['hours']
 
             if worked_hours > 0:
                 days_worked += 1
                 
-                # تأخيرات
+                # تأخير
                 if att_data['check_ins']:
                     first = min(att_data['check_ins'])
                     mins = first.hour * 60 + first.minute
@@ -144,11 +155,11 @@ class HrSmartAudit(models.TransientModel):
                     check_in_days_count += 1
                     if mins > 9 * 60: late_count += 1
                 
-                # دوام جزئي (أقل من 4 ساعات)
+                # دوام ناقص (أقل من 4 ساعات)
                 if worked_hours < 4.0:
                     absence_count += 1
             else:
-                # يوم عمل + لا يوجد إجازة + لا يوجد عطلة + 0 ساعات = غياب
+                # يوم عمل - لا إجازة - لا عطلة - 0 ساعات = غياب
                 absence_count += 1
 
             current_day += timedelta(days=1)
@@ -177,21 +188,23 @@ class HrSmartAudit(models.TransientModel):
 
         employees = self.employee_ids if self.employee_ids else self.env['hr.employee'].search([])
         created_count = 0
+        ded_category = False
         try:
             ded_category = self.env['hr.salary.rule.category'].sudo().search([('code', 'in', ['DED', 'DEDUCTION'])], limit=1)
-        except:
-            ded_category = False
+        except: pass
 
         for emp in employees:
             try:
-                # استراتيجية العقد الآمنة
+                # محاولة الحصول على عقد
                 contract_id = False
+                # 1. مباشر
                 c_id = getattr(emp, 'contract_id', False)
                 if c_id: contract_id = c_id.id
+                # 2. أرشيف
                 if not contract_id:
                     c_ids = getattr(emp, 'contract_ids', False)
                     if c_ids: contract_id = c_ids[0].id
-                
+                # 3. بحث
                 if not contract_id:
                     ContractEnv = self.env.get('hr.contract')
                     if ContractEnv:
@@ -216,7 +229,7 @@ class HrSmartAudit(models.TransientModel):
                 except:
                     pass
             except Exception as e:
-                _logger.error(f"Error for {emp.name}: {e}")
+                _logger.error(f"Error creating slip for {emp.name}: {e}")
                 continue
 
         if created_count > 0:
