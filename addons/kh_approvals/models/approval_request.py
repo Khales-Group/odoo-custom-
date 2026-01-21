@@ -632,16 +632,22 @@ class KhApprovalRequest(models.Model):
 
                         # --- NEW: Create Empty PO if Purchase Request ---
                         if rec.is_purchase_request and not rec.purchase_order_id:
-                            if not rec.partner_id:
-                                raise UserError(_("Please select a Vendor on the request before approval to create the Purchase Order."))
+                            # Use selected vendor or fallback to a dummy 'Pending Vendor'
+                            partner = rec.partner_id
+                            if not partner:
+                                partner = self.env['res.partner'].sudo().search([('name', '=', 'Pending Vendor')], limit=1)
+                                if not partner:
+                                    partner = self.env['res.partner'].sudo().create({
+                                        'name': 'Pending Vendor',
+                                        'is_company': True,
+                                    })
                             
                             po_vals = {
-                                'partner_id': rec.partner_id.id,
+                                'partner_id': partner.id,
                                 'company_id': rec.company_id.id,
                                 'currency_id': rec.currency_id.id,
                                 'origin': rec.name,
                                 'date_order': fields.Datetime.now(),
-                                'kh_approval_id': rec.id,
                             }
                             # Create PO (sudo to ensure permissions)
                             po = self.env['purchase.order'].sudo().create(po_vals)
