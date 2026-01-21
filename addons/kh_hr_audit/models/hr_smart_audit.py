@@ -2,9 +2,10 @@
 from odoo import models, fields, api
 from odoo.exceptions import UserError
 from dateutil.relativedelta import relativedelta
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, date
 import calendar
 import logging
+import pytz
 
 _logger = logging.getLogger(__name__)
 
@@ -12,28 +13,18 @@ class HrSmartAudit(models.TransientModel):
     _name = 'hr.smart.audit'
     _description = 'Smart HR Control Panel'
 
-    # =========================================================
-    #  1. الحقول الأساسية
-    # =========================================================
     date_from = fields.Date(string='من تاريخ', default=lambda self: fields.Date.today() - relativedelta(months=1))
     date_to = fields.Date(string='إلى تاريخ', default=fields.Date.today())
     employee_ids = fields.Many2many('hr.employee', string='تحديد موظفين')
     
     audit_line_ids = fields.One2many('hr.smart.audit.line', 'audit_id', string='نتائج التحليل')
 
-    # =========================================================
-    #  2. زر تحليل البيانات (Logic Engine)
-    # =========================================================
     def action_analyze_data(self):
-        # مسح النتائج القديمة
         self.audit_line_ids.unlink()
-        
-        # جلب الموظفين
         employees = self.employee_ids if self.employee_ids else self.env['hr.employee'].search([])
 
         lines = []
         for emp in employees:
-            # استدعاء دالة الحسابات المركزية
             metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
             
             lines.append((0, 0, {
@@ -58,30 +49,29 @@ class HrSmartAudit(models.TransientModel):
             'target': 'current',
         }
 
-    # =========================================================
-    #  3. دالة الحسابات التفصيلية (تصحيح الأيام والعطل)
-    # =========================================================
     def _get_employee_metrics(self, employee, date_from, date_to):
-        start_dt = datetime.combine(date_from, time.min)
-        end_dt = datetime.combine(date_to, time.max)
+        # توحيد المنطقة الزمنية
+        tz = pytz.timezone(employee.resource_calendar_id.tz or 'UTC')
         
-        # أ. جلب الحضور
+        # 1. جلب الحضور (Attendance)
+        # نوسع النطاق قليلاً لتفادي مشاكل فروق التوقيت
+        search_start = datetime.combine(date_from, time.min) - timedelta(days=1)
+        search_end = datetime.combine(date_to, time.max) + timedelta(days=1)
+        
         attendances = self.env['hr.attendance'].search([
             ('employee_id', '=', employee.id),
-            ('check_in', '>=', start_dt),
-            ('check_in', '<=', end_dt)
+            ('check_in', '>=', search_start),
+            ('check_in', '<=', search_end)
         ])
-        attendance_by_date = {}
+        
+        attendance_dates = set()
         for att in attendances:
-            if not att.check_in: continue
-            local_check_in = fields.Datetime.context_timestamp(self, att.check_in)
-            d_date = local_check_in.date()
-            if d_date not in attendance_by_date: attendance_by_date[d_date] = {'hours': 0.0, 'check_ins': []}
-            attendance_by_date[d_date]['check_ins'].append(local_check_in)
-            if att.check_out:
-                attendance_by_date[d_date]['hours'] += (att.check_out - att.check_in).total_seconds() / 3600.0
+            if att.check_in:
+                # تحويل وقت الدخول لتوقيت الموظف المحلي وأخذ التاريخ فقط
+                local_dt = pytz.utc.localize(att.check_in).astimezone(tz)
+                attendance_dates.add(local_dt.date())
 
-        # ب. جلب الإجازات الخاصة (Leaves)
+        # 2. جلب الإجازات الخاصة (Leaves)
         leaves = self.env['hr.leave'].search([
             ('employee_id', '=', employee.id),
             ('state', '=', 'validate'),
@@ -90,24 +80,31 @@ class HrSmartAudit(models.TransientModel):
         ])
         personal_leave_dates = set()
         for leave in leaves:
-            curr = max(leave.request_date_from, date_from)
-            end = min(leave.request_date_to, date_to)
+            curr = leave.request_date_from
+            end = leave.request_date_to
             while curr <= end:
                 personal_leave_dates.add(curr)
                 curr += timedelta(days=1)
 
-        # ج. جلب العطل الرسمية (Public Holidays) - بحث شامل
-        global_leaves = self.env['resource.calendar.leaves'].search([
+        # 3. جلب العطل الرسمية (Public Holidays)
+        # نستخدم sudo() لضمان قراءة كل الإجازات
+        # ونبحث عن الإجازات العامة (resource_id = False)
+        global_leaves = self.env['resource.calendar.leaves'].sudo().search([
             ('resource_id', '=', False),
-            ('date_from', '<=', end_dt),
-            ('date_to', '>=', start_dt)
+            ('date_from', '<=', search_end),
+            ('date_to', '>=', search_start)
         ])
+        
         public_holiday_dates = set()
         for gl in global_leaves:
-            g_start = fields.Datetime.context_timestamp(self, gl.date_from).date()
-            g_end = fields.Datetime.context_timestamp(self, gl.date_to).date()
-            curr = max(g_start, date_from)
-            end = min(g_end, date_to)
+            # تحويل تواريخ العطلة إلى تواريخ فقط (بدون وقت) لتسهيل المقارنة
+            # نستخدم التوقيت المحلي للموظف للتأكد
+            g_start_dt = pytz.utc.localize(gl.date_from).astimezone(tz).date()
+            g_end_dt = pytz.utc.localize(gl.date_to).astimezone(tz).date()
+            
+            curr = max(g_start_dt, date_from)
+            end = min(g_end_dt, date_to)
+            
             while curr <= end:
                 public_holiday_dates.add(curr)
                 curr += timedelta(days=1)
@@ -117,79 +114,75 @@ class HrSmartAudit(models.TransientModel):
         days_worked = 0
         absence_count = 0
         leaves_taken_count = 0 
-        total_check_in_minutes = 0
         check_in_days_count = 0
 
         # --- الحلقة اليومية ---
         current_day = date_from
         while current_day <= date_to:
             
-            # 1. هل هي إجازة خاصة؟ (تجاهل الغياب)
+            # A. هل هو إجازة خاصة؟
             if current_day in personal_leave_dates:
                 leaves_taken_count += 1
                 current_day += timedelta(days=1)
                 continue 
 
-            # 2. هل هي عطلة رسمية؟ (تجاهل الغياب)
+            # B. هل هو عطلة رسمية (رأس السنة)؟
             if current_day in public_holiday_dates:
-                # إذا داوم بالعطلة نحسبله يوم عمل
-                if attendance_by_date.get(current_day, {}).get('hours', 0) > 0:
+                # لو داوم بالعطلة نحسبله يوم عمل
+                if current_day in attendance_dates:
                     days_worked += 1
                 current_day += timedelta(days=1)
                 continue 
 
-            # 3. هل هي ويكند؟ (تجاهل الغياب)
+            # C. هل هو ويكند (جمعة/سبت)؟
             is_weekend = False
-            if employee.resource_calendar_id:
+            # الطريقة المضمونة: الفحص اليدوي للأيام
+            # 4 = الجمعة، 5 = السبت
+            if current_day.weekday() in [4, 5]:
+                is_weekend = True
+            
+            # تأكيد إضافي من الجدول (إذا كان موجوداً)
+            if not is_weekend and employee.resource_calendar_id:
                 day_start = datetime.combine(current_day, time.min)
                 day_end = datetime.combine(current_day, time.max)
-                # نحصل على ساعات الجدول الخام
-                hours = employee.resource_calendar_id.get_work_hours_count(day_start, day_end, compute_leaves=False)
-                if hours <= 0:
-                    is_weekend = True
-            else:
-                # افتراضي: الجمعة والسبت
-                if current_day.weekday() in [4, 5]:
-                    is_weekend = True
-            
+                try:
+                    # compute_leaves=False ليعطينا ساعات الجدول الصافية
+                    hours = employee.resource_calendar_id.get_work_hours_count(day_start, day_end, compute_leaves=False)
+                    if hours < 1: # إذا الساعات 0، فهو ويكند
+                        is_weekend = True
+                except:
+                    pass
+
             if is_weekend:
-                if attendance_by_date.get(current_day, {}).get('hours', 0) > 0:
+                # لو داوم في الويكند
+                if current_day in attendance_dates:
                     days_worked += 1
                 current_day += timedelta(days=1)
                 continue
 
-            # 4. يوم عمل رسمي (هنا نحسب الغياب)
-            att_data = attendance_by_date.get(current_day, {'hours': 0.0, 'check_ins': []})
-            worked_hours = att_data['hours']
-
-            if worked_hours > 0:
+            # D. يوم عمل عادي (ليس إجازة، ليس عطلة رسمية، ليس ويكند)
+            if current_day in attendance_dates:
                 days_worked += 1
+                check_in_days_count += 1
                 
-                # حساب التأخير
-                if att_data['check_ins']:
-                    first = min(att_data['check_ins'])
-                    mins = first.hour * 60 + first.minute
-                    total_check_in_minutes += mins
-                    check_in_days_count += 1
-                    if mins > 9 * 60: late_count += 1 # بعد الساعة 9 صباحاً
-                
-                # غياب جزئي (أقل من 4 ساعات)
-                if worked_hours < 4.0:
-                    absence_count += 1
+                # حساب التأخير (تقريبي)
+                # نحتاج الدخول لهذا اليوم بالتحديد
+                today_att = attendances.filtered(lambda a: a.check_in and pytz.utc.localize(a.check_in).astimezone(tz).date() == current_day)
+                if today_att:
+                    # نأخذ أول دخول
+                    first_in = min(today_att.mapped('check_in'))
+                    local_in = pytz.utc.localize(first_in).astimezone(tz)
+                    # بعد 9:00 صباحاً يعتبر متأخر
+                    if local_in.hour > 9 or (local_in.hour == 9 and local_in.minute > 0):
+                        late_count += 1
             else:
-                # غياب كامل
+                # يوم عمل + لم يحضر = غياب
                 absence_count += 1
 
             current_day += timedelta(days=1)
 
-        # حساب المتوسط
-        avg = '-'
-        if check_in_days_count > 0:
-            val = total_check_in_minutes / check_in_days_count
-            avg = '{:02d}:{:02d}'.format(int(val // 60), int(val % 60))
-            
         return {
-            'avg_check_in': avg, 
+            'avg_check_in': '-', 
             'late_after_9': late_count, 
             'days_worked': days_worked, 
             'absence_count': absence_count, 
@@ -199,7 +192,7 @@ class HrSmartAudit(models.TransientModel):
         }
 
     # =========================================================
-    #  4. إنشاء الرواتب + حقن الخصم (Payroll Engine)
+    #  إنشاء الرواتب + حقن الخصم (بدون أخطاء)
     # =========================================================
     def action_auto_generate_payroll(self):
         if 'hr.payslip' not in self.env:
@@ -208,7 +201,6 @@ class HrSmartAudit(models.TransientModel):
         employees = self.employee_ids if self.employee_ids else self.env['hr.employee'].search([])
         created_count = 0
         
-        # البحث عن فئة الخصم
         try:
             ded_category = self.env['hr.salary.rule.category'].sudo().search([('code', 'in', ['DED', 'DEDUCTION'])], limit=1)
         except:
@@ -216,22 +208,20 @@ class HrSmartAudit(models.TransientModel):
 
         for emp in employees:
             try:
-                # أ. البحث عن العقد (بشكل آمن)
+                # البحث عن العقد
                 contract_id = False
                 c_id = getattr(emp, 'contract_id', False)
                 if c_id: contract_id = c_id.id
-                
                 if not contract_id:
                     c_ids = getattr(emp, 'contract_ids', False)
                     if c_ids: contract_id = c_ids[0].id
-                
                 if not contract_id:
                     ContractEnv = self.env.get('hr.contract')
                     if ContractEnv:
                         found = ContractEnv.search([('employee_id', '=', emp.id)], limit=1, order='date_start desc')
                         if found: contract_id = found.id
 
-                # ب. إنشاء القسيمة
+                # إنشاء القسيمة
                 vals = {
                     'employee_id': emp.id,
                     'date_from': self.date_from,
@@ -244,16 +234,15 @@ class HrSmartAudit(models.TransientModel):
                 payslip = self.env['hr.payslip'].create(vals)
                 created_count += 1
 
-                # ج. الحساب والخصم
+                # الحساب والخصم
                 try:
                     payslip.compute_sheet()
                     self._inject_deduction(emp, payslip, ded_category)
                 except Exception as e:
-                    _logger.warning(f"Error computing/injecting for {emp.name}: {e}")
-                    pass
+                    _logger.warning(f"Error computing slip for {emp.name}: {e}")
 
             except Exception as e:
-                _logger.error(f"Payroll creation failed for {emp.name}: {e}")
+                _logger.error(f"Failed for {emp.name}: {e}")
                 continue
 
         if created_count > 0:
@@ -267,27 +256,22 @@ class HrSmartAudit(models.TransientModel):
         else:
             return self._show_warning('لم يتم إنشاء قسائم.')
 
-    # =========================================================
-    #  5. دالة مساعدة لحقن الخصم (Deduction Injection)
-    # =========================================================
     def _inject_deduction(self, emp, payslip, ded_category):
-        # حساب أيام الغياب مرة أخرى للتأكد
+        # نعيد الحساب للتأكد من عدد أيام الغياب الحالية
         metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
         absence_days = metrics.get('absence_count', 0)
         
         if absence_days <= 0: return
 
-        # تحديد الراتب اليومي
         wage = getattr(emp, 'wage', 0.0)
         if wage == 0.0 and payslip.contract_id and hasattr(payslip.contract_id, 'wage'):
             wage = payslip.contract_id.wage
             
         if wage > 0:
-            month_days = calendar.monthrange(self.date_to.year, self.date_to.month)[1]
+            month_days = 30 # اعتماد 30 يوم قياسي للرواتب (أو استخدم calendar.monthrange)
             daily_wage = wage / month_days
             deduction_amount = daily_wage * absence_days
             
-            # إنشاء سطر الخصم
             self.env['hr.payslip.line'].create({
                 'slip_id': payslip.id,
                 'name': f'خصم غياب ({absence_days} يوم)',
@@ -302,7 +286,6 @@ class HrSmartAudit(models.TransientModel):
                 'contract_id': payslip.contract_id.id if payslip.contract_id else False,
             })
             
-            # تحديث الصافي (Net)
             net_line = self.env['hr.payslip.line'].search([('slip_id', '=', payslip.id), ('code', '=', 'NET')], limit=1)
             if net_line:
                 new_net = net_line.amount - deduction_amount
@@ -318,9 +301,6 @@ class HrSmartAudit(models.TransientModel):
     def action_send_report(self):
         pass
 
-# =========================================================
-#  موديل العرض (View Model)
-# =========================================================
 class HrSmartAuditLine(models.TransientModel):
     _name = 'hr.smart.audit.line'
     _description = 'Audit Result Line'
