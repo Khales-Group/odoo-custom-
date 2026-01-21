@@ -43,24 +43,28 @@ class HrSmartAudit(models.TransientModel):
             'target': 'current',
         }
 
+    # =========================================================
+    #  الدالة التي تم تعديلها جذرياً لحل مشكلة الإجازات
+    # =========================================================
     def _get_employee_metrics(self, employee, date_from, date_to):
         start_dt = datetime.combine(date_from, time.min)
         end_dt = datetime.combine(date_to, time.max)
         
-        # 1. جلب الحضور
+        # 1. جلب الحضور الفعلي
         attendances = self.env['hr.attendance'].search([
             ('employee_id', '=', employee.id),
             ('check_in', '>=', start_dt),
             ('check_in', '<=', end_dt)
         ])
         
-        # 2. جلب الإجازات
+        # 2. جلب الإجازات الشخصية (Time Off)
         leaves = self.env['hr.leave'].search([
             ('employee_id', '=', employee.id),
             ('state', '=', 'validate'),
             ('request_date_from', '<=', date_to),
             ('request_date_to', '>=', date_from)
         ])
+        
         leave_dates = set()
         for leave in leaves:
             curr = max(leave.request_date_from, date_from)
@@ -69,7 +73,7 @@ class HrSmartAudit(models.TransientModel):
                 leave_dates.add(curr)
                 curr += timedelta(days=1)
 
-        # تجهيز البيانات للمرور عليها
+        # تجميع ساعات الحضور
         attendance_by_date = {}
         for att in attendances:
             if not att.check_in: continue
@@ -82,7 +86,6 @@ class HrSmartAudit(models.TransientModel):
                 duration = (att.check_out - att.check_in).total_seconds() / 3600.0
                 attendance_by_date[check_in_date]['hours'] += duration
 
-        # المتغيرات
         late_count = 0
         days_worked = 0
         absence_count = 0
@@ -90,66 +93,66 @@ class HrSmartAudit(models.TransientModel):
         total_check_in_minutes = 0
         check_in_days_count = 0
 
-        # +++++++++++++++++++++++++++++++++++++++++++++++
-        #  حلقة الفحص اليومي (مع إصلاح العطل الأسبوعية)
-        # +++++++++++++++++++++++++++++++++++++++++++++++
+        # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        #  حلقة التكرار اليومية (المنطق الجديد)
+        # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         current_day = date_from
         while current_day <= date_to:
-            att_data = attendance_by_date.get(current_day, {'hours': 0.0, 'check_ins': []})
-            worked_hours = att_data['hours']
-
-            # 1. هل الموظف في إجازة (Time Off)؟
+            # 1. فحص الإجازات الشخصية (Time Off)
             if current_day in leave_dates:
                 leaves_taken_count += 1
                 current_day += timedelta(days=1)
-                continue # تخطي (محمي بإجازة)
+                continue # تخطي، هذا اليوم مغطى بإجازة
 
-            # 2. هل هذا اليوم عطلة أسبوعية (Off Day)؟
-            is_off_day = False
+            # 2. فحص: هل هذا اليوم مطلوب العمل فيه؟ (شامل الويكند + العطل الرسمية)
+            is_expected_to_work = False
             
             if employee.resource_calendar_id:
-                # نسأل جدول العمل: كم عدد الساعات المطلوبة في هذا اليوم؟
-                # نستخدم compute_leaves=False لأننا فحصنا الإجازات يدوياً فوق
-                day_start = datetime.combine(current_day, time.min)
-                day_end = datetime.combine(current_day, time.max)
-                expected_hours = employee.resource_calendar_id.get_work_hours_count(day_start, day_end, compute_leaves=False)
-                
-                # إذا الساعات المتوقعة 0، معناها هذا اليوم عطلة (جمعة/سبت) حسب الجدول
-                if expected_hours <= 0:
-                    is_off_day = True
+                # نستخدم compute_leaves=True ليقوم Odoo بخصم العطل الرسمية (Global Leaves) تلقائياً
+                # إذا كان اليوم جمعة/سبت أو رأس السنة، ستعود النتيجة بـ 0 ساعات
+                expected_hours = employee.resource_calendar_id.get_work_hours_count(
+                    datetime.combine(current_day, time.min),
+                    datetime.combine(current_day, time.max),
+                    compute_leaves=True 
+                )
+                if expected_hours > 0:
+                    is_expected_to_work = True
             else:
-                # إذا الموظف ما عنده جدول، نعتبر الجمعة (4) والسبت (5) عطلة افتراضياً
-                # 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun
-                if current_day.weekday() in [4, 5]: 
-                    is_off_day = True
+                # إذا لم يكن للموظف جدول، نفترض الدوام من الاثنين للجمعة (0-4)
+                if current_day.weekday() < 5: 
+                    is_expected_to_work = True
 
-            # إذا كان يوم عطلة، نتجاوزه ولا نحسبه غياب
-            if is_off_day:
-                # لكن لو داوم في العطلة، نحسبله أيام عمل (اختياري)
-                if worked_hours > 0:
+            # إذا لم يكن مطلوباً للعمل (عطلة/ويكند)، نتجاوز اليوم ولا نحسب غياب
+            if not is_expected_to_work:
+                # لكن لو حضر في يوم عطلة، نحسب له أيام العمل (اختياري)
+                att_data = attendance_by_date.get(current_day, {'hours': 0.0})
+                if att_data['hours'] > 0:
                     days_worked += 1
                 current_day += timedelta(days=1)
                 continue
 
-            # 3. حساب الحضور (لأيام العمل الفعلية فقط)
+            # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+            #  وصلنا هنا يعني: اليوم دوام رسمي وليس عطلة وليس إجازة
+            # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+            att_data = attendance_by_date.get(current_day, {'hours': 0.0, 'check_ins': []})
+            worked_hours = att_data['hours']
+
             if worked_hours > 0:
                 days_worked += 1
                 
-                # حساب التأخير
+                # حساب التأخير (فقط في أيام العمل الفعلية)
                 if att_data['check_ins']:
                     first = min(att_data['check_ins'])
                     mins = first.hour * 60 + first.minute
                     total_check_in_minutes += mins
                     check_in_days_count += 1
-                    # تأخير بعد الساعة 9:00
-                    if mins > 9 * 60: 
-                        late_count += 1
+                    if mins > 9 * 60: late_count += 1
                 
-                # دوام ناقص (أقل من 4 ساعات في يوم عمل) -> يعتبر غياب
+                # إذا داوم أقل من 4 ساعات في يوم عمل رسمي -> غياب
                 if worked_hours < 4.0:
                     absence_count += 1
             else:
-                # 4. يوم عمل + لا يوجد إجازة + ساعات العمل 0 = غياب
+                # يوم عمل رسمي + لم يحضر = غياب غير مبرر
                 absence_count += 1
 
             current_day += timedelta(days=1)
@@ -166,7 +169,7 @@ class HrSmartAudit(models.TransientModel):
             'absence_count': absence_count, 
             'leaves_taken': leaves_taken_count, 
             'balance': employee.remaining_leaves if 'remaining_leaves' in employee else 0.0, 
-            'recommendation': ''
+            'recommendation': 'خصم' if absence_count > 0 else 'جيد'
         }
 
     def action_send_report(self):
@@ -189,7 +192,7 @@ class HrSmartAudit(models.TransientModel):
 
         for emp in employees:
             try:
-                # البحث عن عقد (اختياري، لتفادي الأخطاء)
+                # البحث عن عقد (اختياري)
                 contract_id = False
                 c_id = getattr(emp, 'contract_id', False)
                 if c_id: contract_id = c_id.id
@@ -220,7 +223,6 @@ class HrSmartAudit(models.TransientModel):
                     payslip.compute_sheet()
                     self._inject_deduction(emp, payslip, ded_category)
                 except Exception as e:
-                    _logger.warning(f"Skipped calc for {emp.name}: {e}")
                     pass
 
             except Exception as e:
@@ -239,7 +241,6 @@ class HrSmartAudit(models.TransientModel):
             return self._show_warning('لم يتم إنشاء قسائم.')
 
     def _inject_deduction(self, emp, payslip, ded_category):
-        # حقن الخصم بناءً على الحسابات الجديدة (التي تستثني العطل)
         metrics = self._get_employee_metrics(emp, self.date_from, self.date_to)
         absence_days = metrics.get('absence_count', 0)
         
