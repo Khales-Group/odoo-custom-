@@ -123,11 +123,16 @@
             <field name="target">new</field>
         </record>
 
-        <menuitem id="menu_hr_smart_audit"
+        <menuitem id="hr_smart_audit_root_menu"
                   name="Smart Audit"
-                  parent="hr.menu_hr_root"
+                  sequence="-100"
+                  web_icon="kh_hr_audit,static/description/icon.png"/>
+
+        <menuitem id="menu_hr_smart_audit"
+                  name="Dashboard"
+                  parent="hr_smart_audit_root_menu"
                   action="action_hr_smart_audit"
-                  sequence="99"/>
+                  sequence="1"/>
 
     </data>
 </odoo>
