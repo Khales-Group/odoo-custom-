@@ -1,76 +1,132 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <record id="action_smart_audit" model="ir.actions.act_window">
-        <field name="name">Smart Audit Control</field>
-        <field name="res_model">hr.smart.audit</field>
-        <field name="view_mode">form</field>
-        <field name="target">current</field>
-    </record>
+    <data>
 
-    <record id="view_hr_smart_audit_form" model="ir.ui.view">
-        <field name="name">hr.smart.audit.form</field>
-        <field name="model">hr.smart.audit</field>
-        <field name="arch" type="xml">
-            <form string="لوحة التحكم الذكية">
-                <header>
-                    <button name="action_analyze_data" string="🔍 تحليل البيانات" type="object" class="oe_highlight"/>
-                    <button name="action_send_report" string="📩 إرسال التقرير" type="object"/>
-                    <button name="action_auto_generate_payroll" string="💰 إنشاء الرواتب" type="object"/>
-                </header>
-                <sheet>
-                    <div class="oe_title">
-                        <h1>Smart HR Control Center</h1>
-                    </div>
-                    
-                    <group string="إعدادات الفلترة">
-                        <group>
-                            <field name="date_from"/>
-                            <field name="date_to"/>
-                        </group>
-                        <group>
-                            <field name="employee_ids" widget="many2many_tags" options="{'no_create': True}" placeholder="الكل..."/>
-                        </group>
-                    </group>
-
-                    <notebook>
-                        <page string="نتائج التحليل">
-                            <field name="audit_line_ids">
-                                <list create="0" delete="0" decoration-danger="status=='danger'">
-                                    <field name="employee_id"/>
-                                    <field name="avg_check_in"/>
-                                    <field name="late_count"/>
-                                    <field name="days_worked"/>
-                                    
-                                    <field name="absence_count" decoration-danger="absence_count > 0" string="غياب (غير مبرر)"/>
-                                    <field name="leaves_taken" string="إجازات (رسمية)"/>
-                                    
-                                    <field name="leave_balance"/>
-                                    <field name="recommendation"/>
-                                    <field name="status" widget="badge" decoration-danger="status == 'danger'" decoration-success="status == 'success'"/>
-                                </list>
-                            </field>
-                        </page>
+        <record id="view_hr_smart_audit_line_form" model="ir.ui.view">
+            <field name="name">hr.smart.audit.line.form</field>
+            <field name="model">hr.smart.audit.line</field>
+            <field name="arch" type="xml">
+                <form string="تفاصيل الموظف" create="0" edit="0" delete="0">
+                    <sheet>
+                        <div class="oe_title">
+                            <h1>
+                                <field name="employee_id" readonly="1" options="{'no_open': True}"/>
+                            </h1>
+                        </div>
                         
-                        <page string="إعدادات الرواتب">
-                             <div class="text-muted" style="padding: 20px;">
-                                <p>سيتم إنشاء الرواتب للفترة المحددة أعلاه.</p>
-                             </div>
-                        </page>
-                    </notebook>
-                </sheet>
-            </form>
-        </field>
-    </record>
+                        <group>
+                            <group string="📊 ملخص الأداء">
+                                <field name="status" widget="badge" decoration-success="status == 'success'" decoration-danger="status == 'danger'"/>
+                                <field name="recommendation" decoration-bf="1"/>
+                                <field name="leave_balance"/>
+                            </group>
+                            <group string="⏰ إحصائيات الوقت">
+                                <field name="days_worked"/>
+                                <field name="absence_count" decoration-danger="absence_count > 0"/>
+                                <field name="late_count" decoration-warning="late_count > 0"/>
+                                <field name="avg_check_in"/>
+                            </group>
+                        </group>
 
-    <menuitem id="root_menu_smart_audit"
-              name="Smart Audit"
-              web_icon="kh_hr_audit,static/description/icon.png"
-              sequence="10"
-              groups="base.group_system"/>
+                        <notebook>
+                            <page string="✅ سجل العمل والحضور" name="work_log">
+                                <group>
+                                    <field name="work_details" nolabel="1" readonly="1"/>
+                                </group>
+                            </page>
+                            
+                            <page string="❌ سجل الغياب والمخالفات" name="absence_log">
+                                <group>
+                                    <field name="absence_details" nolabel="1" readonly="1" decoration-danger="1"/>
+                                </group>
+                            </page>
+                            
+                            <page string="📅 العطل والإجازات" name="holiday_log">
+                                <group>
+                                    <field name="leaves_taken" string="عدد الإجازات المستهلكة"/>
+                                    <separator string="تفاصيل العطل الرسمية"/>
+                                    <field name="holiday_details" nolabel="1" readonly="1" decoration-info="1"/>
+                                </group>
+                            </page>
+                        </notebook>
+                    </sheet>
+                </form>
+            </field>
+        </record>
 
-    <menuitem id="menu_smart_audit_dashboard"
-              name="Dashboard"
-              parent="root_menu_smart_audit"
-              action="action_smart_audit"
-              sequence="1"/>
+        <record id="view_hr_smart_audit_line_tree" model="ir.ui.view">
+            <field name="name">hr.smart.audit.line.tree</field>
+            <field name="model">hr.smart.audit.line</field>
+            <field name="arch" type="xml">
+                <tree string="النتائج" create="0" delete="0" decoration-danger="status=='danger'" decoration-success="status=='success'">
+                    <field name="employee_id" widget="many2one_avatar_user"/>
+                    <field name="days_worked" string="✅ أيام العمل" optional="show"/>
+                    <field name="absence_count" string="❌ غياب (يوم)" optional="show" decoration-danger="absence_count > 0"/>
+                    <field name="late_count" string="🐢 تأخيرات" optional="show"/>
+                    <field name="leaves_taken" string="🏖️ إجازات" optional="hide"/>
+                    <field name="leave_balance" string="💰 رصيد" optional="hide"/>
+                    <field name="recommendation" string="💡 التوصية" decoration-bf="1"/>
+                    <field name="status" string="الحالة" widget="badge" 
+                           decoration-success="status == 'success'" 
+                           decoration-danger="status == 'danger'"/>
+                    <button name="open_details" type="object" string="التفاصيل" icon="fa-list-alt" class="btn-secondary"/>
+                </tree>
+            </field>
+        </record>
+
+        <record id="view_hr_smart_audit_form" model="ir.ui.view">
+            <field name="name">hr.smart.audit.form</field>
+            <field name="model">hr.smart.audit</field>
+            <field name="arch" type="xml">
+                <form string="Smart HR Control Center">
+                    <header>
+                        <button name="action_analyze_data" string="تحليل البيانات 🚀" type="object" class="btn-primary" icon="fa-cogs"/>
+                        <button name="action_auto_generate_payroll" string="إنشاء الرواتب 💰" type="object" class="btn-success" icon="fa-money"/>
+                        <button string="إلغاء" class="btn-secondary" special="cancel"/>
+                    </header>
+                    <sheet>
+                        <div class="oe_title">
+                            <h1>🕵️‍♂️ Smart HR Control Center</h1>
+                        </div>
+                        
+                        <separator string="⚙️ إعدادات الفلترة" style="margin-top: 15px;"/>
+                        <group col="4">
+                            <field name="date_from" widget="daterange"/>
+                            <field name="date_to"/>
+                            <field name="employee_ids" widget="many2many_tags_avatar" placeholder="اترك فارغاً لكل الموظفين..."/>
+                        </group>
+
+                        <separator string="📊 نتائج التحليل" style="margin-top: 20px;"/>
+                        <field name="audit_line_ids" nolabel="1">
+                            <tree>
+                                <field name="employee_id"/>
+                                <field name="days_worked"/>
+                                <field name="absence_count"/>
+                                <field name="late_count"/>
+                                <field name="recommendation"/>
+                                <field name="status" widget="badge" decoration-danger="status == 'danger'" decoration-success="status == 'success'"/>
+                            </tree>
+                        </field>
+                        
+                        <div class="text-muted" style="margin-top: 10px;">
+                            <i class="fa fa-info-circle"/> <b>ملاحظة:</b> أيام العمل لا تشمل العطل الرسمية أو الويكند إلا إذا حضر الموظف. الغياب يحسب فقط في أيام العمل الرسمية.
+                        </div>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <record id="action_hr_smart_audit" model="ir.actions.act_window">
+            <field name="name">Smart Audit 🕵️‍♂️</field>
+            <field name="res_model">hr.smart.audit</field>
+            <field name="view_mode">form</field>
+            <field name="target">new</field> </record>
+
+        <menuitem id="menu_hr_smart_audit"
+                  name="Smart Audit"
+                  parent="hr.menu_hr_root"
+                  action="action_hr_smart_audit"
+                  sequence="99"/>
+
+    </data>
 </odoo>

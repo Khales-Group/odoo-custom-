@@ -285,3 +285,12 @@ class HrSmartAuditLine(models.TransientModel):
     leave_balance = fields.Float(string='رصيد إجازات')
     recommendation = fields.Char(string='توصية')
     status = fields.Selection([('success', 'Good'), ('danger', 'Bad')], string='الحالة')
+    def open_details(self):
+        return {
+            'type': 'ir.actions.act_window',
+            'res_model': 'hr.smart.audit.line',
+            'res_id': self.id,
+            'view_mode': 'form',
+            'target': 'new',
+            'name': f'تفاصيل الموظف: {self.employee_id.name}'
+        }
