@@ -2,6 +2,7 @@
 import logging
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, AccessError
+from odoo.tools import Markup
 
 _logger = logging.getLogger(__name__)
 
@@ -746,7 +747,7 @@ class KhApprovalRequest(models.Model):
 
             # 4. Log in Chatter
             rec.message_post(
-                body=_("❌ <b>Request Rejected</b> by %s.<br/><b>Reason:</b> %s") % (self.env.user.name, reason),
+                body=Markup(_("❌ <b>Request Rejected</b> by %s.<br/><b>Reason:</b> %s")) % (self.env.user.name, reason),
                 message_type="comment",
                 subtype_xmlid="mail.mt_note",
             )
@@ -755,7 +756,7 @@ class KhApprovalRequest(models.Model):
             if rec.requester_id.partner_id:
                 rec._notify_partner(
                     partner=rec.requester_id.partner_id,
-                    body_html=_("Your request <b>%s</b> has been rejected by %s.<br/><b>Reason:</b> %s") % (rec.name, self.env.user.name, reason),
+                    body_html=Markup(_("Your request <b>%s</b> has been rejected by %s.<br/><b>Reason:</b> %s")) % (rec.name, self.env.user.name, reason),
                     subject=_("Request Rejected: %s") % rec.title
                 )
         return True
