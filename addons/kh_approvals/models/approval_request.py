@@ -642,6 +642,12 @@ class KhApprovalRequest(models.Model):
                                         'is_company': True,
                                     })
                             
+                            # Find picking type (Deliver To) - Required by Purchase Order
+                            picking_type = self.env['stock.picking.type'].sudo().search([
+                                ('code', '=', 'incoming'),
+                                ('company_id', '=', rec.company_id.id)
+                            ], limit=1)
+
                             po_vals = {
                                 'partner_id': partner.id,
                                 'company_id': rec.company_id.id,
@@ -649,6 +655,9 @@ class KhApprovalRequest(models.Model):
                                 'origin': rec.name,
                                 'date_order': fields.Datetime.now(),
                             }
+                            if picking_type:
+                                po_vals['picking_type_id'] = picking_type.id
+
                             # Create PO (sudo to ensure permissions)
                             po = self.env['purchase.order'].sudo().create(po_vals)
                             rec.purchase_order_id = po.id
