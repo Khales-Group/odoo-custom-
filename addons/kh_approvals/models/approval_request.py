@@ -2,7 +2,10 @@
 import logging
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, AccessError
-from odoo.tools import Markup
+try:
+    from odoo.tools import Markup
+except ImportError:
+    from markupsafe import Markup
 
 _logger = logging.getLogger(__name__)
 
