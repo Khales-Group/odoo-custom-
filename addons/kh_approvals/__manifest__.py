@@ -11,6 +11,7 @@
         'security/kh_approvals_security.xml',
         'security/ir.model.access.csv',
         'security/kh_approvals_rules.xml',
+        'security/wizard_access.xml',
         'views/menu.xml',
         'views/approval_request_views.xml',
         'views/approval_rule_views.xml',
