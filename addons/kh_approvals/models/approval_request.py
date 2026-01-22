@@ -489,6 +489,11 @@ class KhApprovalRequest(models.Model):
         for rec in self:
             if rec.state != "draft":
                 continue
+            
+            # Validation: Rule is mandatory for standard requests
+            if rec.approval_type == 'standard' and not rec.rule_id:
+                raise UserError(_("Please select an Approval Rule before submitting."))
+
             rec._build_approval_lines()
             with rec.env.cr.savepoint():
                 rec._ensure_followers()
