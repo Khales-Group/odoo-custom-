@@ -647,6 +647,16 @@ class KhApprovalRequest(models.Model):
                                 ('code', '=', 'incoming'),
                                 ('company_id', '=', rec.company_id.id)
                             ], limit=1)
+                            
+                            # Fallback: Search via warehouse if direct match fails
+                            if not picking_type:
+                                picking_type = self.env['stock.picking.type'].sudo().search([
+                                    ('code', '=', 'incoming'),
+                                    ('warehouse_id.company_id', '=', rec.company_id.id)
+                                ], limit=1)
+
+                            if not picking_type:
+                                raise UserError(_("Cannot create Purchase Order: No 'Incoming Shipment' picking type found for company %s.") % rec.company_id.name)
 
                             po_vals = {
                                 'partner_id': partner.id,
@@ -654,9 +664,8 @@ class KhApprovalRequest(models.Model):
                                 'currency_id': rec.currency_id.id,
                                 'origin': rec.name,
                                 'date_order': fields.Datetime.now(),
+                                'picking_type_id': picking_type.id,
                             }
-                            if picking_type:
-                                po_vals['picking_type_id'] = picking_type.id
 
                             # Create PO (sudo to ensure permissions)
                             po = self.env['purchase.order'].sudo().create(po_vals)
