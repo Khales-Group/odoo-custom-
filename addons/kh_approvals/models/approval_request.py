@@ -665,6 +665,7 @@ class KhApprovalRequest(models.Model):
                                 'origin': rec.name,
                                 'date_order': fields.Datetime.now(),
                                 'picking_type_id': picking_type.id,
+                                'kh_approval_id': rec.id,
                             }
 
                             # Create PO (sudo to ensure permissions)
