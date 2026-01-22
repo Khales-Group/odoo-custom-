@@ -15,6 +15,7 @@
         'views/approval_request_views.xml',
         'views/approval_rule_views.xml',
         'views/department_views.xml',
+        'views/approval_reject_wizard.xml',  # <--- Add this line
         'views/project_email_views.xml',
         'views/project_views.xml',
         'views/mail_activity_views.xml',

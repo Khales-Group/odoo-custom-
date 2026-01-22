@@ -717,11 +717,47 @@ class KhApprovalRequest(models.Model):
         return True
 
     def action_reject_request(self):
-        """ Mark activity as done with 'Rejected' feedback """
+        """ Open wizard to enter rejection reason. """
+        self.ensure_one()
+        return {
+            'name': _('Reject Request'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'kh.approval.reject.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {'default_request_id': self.id},
+        }
+
+    def _reject_with_reason(self, reason):
+        """ Perform rejection with logged reason. """
         for rec in self.sudo():
-            rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid).sudo().action_feedback(feedback=_("Rejected"))
+            # 1. Log feedback on activity (Close To-Do)
+            rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid).sudo().action_feedback(
+                feedback=_("Rejected. Reason: %s") % reason
+            )
+            
+            # 2. Update Request State
             rec.write({'state': 'rejected'})
-            rec.approval_line_ids.filtered(lambda l: l.state == 'pending' and l.approver_id.id == self.env.uid).write({'state': 'rejected'})
+            
+            # 3. Update Approval Line State
+            rec.approval_line_ids.filtered(
+                lambda l: l.state == 'pending' and l.approver_id.id == self.env.uid
+            ).write({'state': 'rejected', 'note': reason})
+
+            # 4. Log in Chatter
+            rec.message_post(
+                body=_("❌ <b>Request Rejected</b> by %s.<br/><b>Reason:</b> %s") % (self.env.user.name, reason),
+                message_type="comment",
+                subtype_xmlid="mail.mt_note",
+            )
+            
+            # 5. Notify Requester
+            if rec.requester_id.partner_id:
+                rec._notify_partner(
+                    partner=rec.requester_id.partner_id,
+                    body_html=_("Your request <b>%s</b> has been rejected by %s.<br/><b>Reason:</b> %s") % (rec.name, self.env.user.name, reason),
+                    subject=_("Request Rejected: %s") % rec.title
+                )
         return True
 
     def action_opt_out_as_approver(self):
@@ -870,3 +906,19 @@ class KhApprovalPettyCashLine(models.Model):
     qty = fields.Float(string='Quantity', default=1.0)
     unit_price = fields.Float(string='Unit Price')
     unit = fields.Char(string='Unit')
+
+
+# ============================================================================
+# Reject Wizard
+# ============================================================================
+class KhApprovalRejectWizard(models.TransientModel):
+    _name = "kh.approval.reject.wizard"
+    _description = "Reject Request Wizard"
+
+    request_id = fields.Many2one('kh.approval.request', required=True)
+    reason = fields.Text(string="Reason for Rejection", required=True)
+
+    def action_confirm(self):
+        self.ensure_one()
+        self.request_id._reject_with_reason(self.reason)
+        return {'type': 'ir.actions.act_window_close'}
