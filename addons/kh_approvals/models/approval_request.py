@@ -672,6 +672,10 @@ class KhApprovalRequest(models.Model):
                             po = self.env['purchase.order'].sudo().create(po_vals)
                             rec.purchase_order_id = po.id
                             
+                            # Populate Studio field if it exists (Legacy Support)
+                            if 'x_studio_purchase_order' in rec._fields:
+                                rec.write({'x_studio_purchase_order': po.id})
+                            
                             # Assign activity to Khalid on the new PO
                             khaled = self.env['res.users'].sudo().browse(364)
                             if khaled.exists():
