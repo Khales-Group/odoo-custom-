@@ -25,6 +25,9 @@ class KhApprovalRequest(models.Model):
     x_studio_project = fields.Many2one('project.project', string='Project', ondelete='cascade', index=True)
     purchase_order_id = fields.Many2one('purchase.order', string='Purchase Order', ondelete='cascade', index=True)
     crm_lead_id = fields.Many2one('crm.lead', string='Related Lead', ondelete='cascade', index=True)
+    
+    # حقل مؤقت: يربط الاسم القديم بالاسم الجديد لمنع انهيار النظام بسبب العرض القديم
+    project_id = fields.Many2one('project.project', related='x_studio_project', string='Project (Legacy)')
 
     name = fields.Char(string="Request ID", required=True, tracking=True, default=lambda self: _("New"), copy=False)
     title = fields.Char(
@@ -210,7 +213,7 @@ class KhApprovalRequest(models.Model):
 
     def _critical_fields(self):
         """Fields that, if changed, should trigger a new approval cycle."""
-        return {'title', 'amount', 'currency_id', 'company_id', 'department_id', 'rule_id', 'partner_id'}
+        return {'title', 'amount', 'currency_id', 'company_id', 'department_id', 'rule_id', 'partner_id', 'x_studio_project'}
 
     # -------------------------------------------------------------------------
     # ORM overrides
