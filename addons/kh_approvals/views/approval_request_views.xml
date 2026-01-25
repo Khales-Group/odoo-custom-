@@ -147,7 +147,7 @@
                   <i class="fa fa-building-o text-muted me-2" title="Company"/>
                   <field name="company_id" readonly="state != 'draft'"/>
                 </div>
-                <field name="project_id" string="📂 Project" readonly="state != 'draft'" options="{'no_create': True}"/>
+                <field name="x_studio_project" string="📂 Project" readonly="state != 'draft'" options="{'no_create': True}"/>
                 <label for="department_id" string="🏢 Department"/>
                 <div class="o_row">
                   <i class="fa fa-sitemap text-muted me-2" title="Department"/>

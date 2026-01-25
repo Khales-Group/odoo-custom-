@@ -22,7 +22,7 @@ class KhApprovalRequest(models.Model):
     # Fields
     # -------------------------------------------------------------------------
     # --- Relations to external documents (added for compatibility after migration) ---
-    project_id = fields.Many2one('project.project', string='Project', ondelete='cascade', index=True)
+    x_studio_project = fields.Many2one('project.project', string='Project', ondelete='cascade', index=True)
     purchase_order_id = fields.Many2one('purchase.order', string='Purchase Order', ondelete='cascade', index=True)
     crm_lead_id = fields.Many2one('crm.lead', string='Related Lead', ondelete='cascade', index=True)
 
@@ -462,17 +462,17 @@ class KhApprovalRequest(models.Model):
             
             # --- Dynamic Project Approval (Khales Project Management) ---
             # Inject Majed (369) or Mamon (385) based on Project Tags
-            if rec.project_id and rec.company_id and 'khales project management' in rec.company_id.name.lower():
-                tags = rec.project_id.sudo().tag_ids.mapped('name')
+            if rec.x_studio_project and rec.company_id and 'khales project management' in rec.company_id.name.lower():
+                tags = rec.x_studio_project.sudo().tag_ids.mapped('name')
                 tags_lower = [t.lower() for t in tags]
                 
                 # Check for Sharjah (shrajah) or Fujairah
                 if any(t in tags_lower for t in ['sharjah', 'shrajah', 'fujairah']):
                     approver_id = 369  # Majed
-                    step_name = "Project Approval (Majed)"
+                    step_name = "Flexible Project Approval - Sharjah/Fujairah"
                 else:
                     approver_id = 385  # Mamon
-                    step_name = "Project Approval (Mamon)"
+                    step_name = "Flexible Project Approval  - Other Locations"
                 
                 vals_list.append({
                     "request_id": rec.id,
@@ -522,7 +522,7 @@ class KhApprovalRequest(models.Model):
             
             # Validation: Rule is mandatory for standard requests
             # Relax validation for Khales Project Management if Project is set (Dynamic Approval)
-            is_dynamic_project = rec.project_id and rec.company_id and 'khales project management' in rec.company_id.name.lower()
+            is_dynamic_project = rec.x_studio_project and rec.company_id and 'khales project management' in rec.company_id.name.lower()
 
             if rec.approval_type == 'standard' and not rec.rule_id and not is_dynamic_project:
                 raise UserError(_("Please select an Approval Rule before submitting."))
