@@ -462,7 +462,7 @@ class KhApprovalRequest(models.Model):
             
             # --- Dynamic Project Approval (Khales Project Management) ---
             # Inject Majed (369) or Mamon (385) based on Project Tags
-            if rec.project_id and rec.company_id and 'Khales Project Management' in rec.company_id.name:
+            if rec.project_id and rec.company_id and 'khales project management' in rec.company_id.name.lower():
                 tags = rec.project_id.sudo().tag_ids.mapped('name')
                 tags_lower = [t.lower() for t in tags]
                 
@@ -521,7 +521,10 @@ class KhApprovalRequest(models.Model):
                 continue
             
             # Validation: Rule is mandatory for standard requests
-            if rec.approval_type == 'standard' and not rec.rule_id:
+            # Relax validation for Khales Project Management if Project is set (Dynamic Approval)
+            is_dynamic_project = rec.project_id and rec.company_id and 'khales project management' in rec.company_id.name.lower()
+
+            if rec.approval_type == 'standard' and not rec.rule_id and not is_dynamic_project:
                 raise UserError(_("Please select an Approval Rule before submitting."))
 
             rec._build_approval_lines()
