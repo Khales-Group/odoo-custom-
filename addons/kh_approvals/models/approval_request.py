@@ -462,7 +462,7 @@ class KhApprovalRequest(models.Model):
             
             # --- Dynamic Project Approval (Khales Project Management) ---
             # Inject Majed (369) or Mamon (385) based on Project Tags
-            if current_stage == 'procurement' and rec.project_id and rec.company_id and 'Khales Project Management' in rec.company_id.name:
+            if rec.project_id and rec.company_id and 'Khales Project Management' in rec.company_id.name:
                 tags = rec.project_id.sudo().tag_ids.mapped('name')
                 tags_lower = [t.lower() for t in tags]
                 
