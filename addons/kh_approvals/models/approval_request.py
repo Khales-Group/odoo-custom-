@@ -460,21 +460,47 @@ class KhApprovalRequest(models.Model):
             vals_list = []
             rule = rec.rule_id if current_stage == 'procurement' else rec.payment_rule_id
             
-            if not rule:
-                continue
-
-            # 1. Create all lines as 'waiting' by default
-            for step in rule.step_ids.sorted('sequence'):
+            # --- Dynamic Project Approval (Khales Project Management) ---
+            # Inject Majed (369) or Mamon (385) based on Project Tags
+            if current_stage == 'procurement' and rec.project_id and rec.company_id and 'Khales Project Management' in rec.company_id.name:
+                tags = rec.project_id.sudo().tag_ids.mapped('name')
+                tags_lower = [t.lower() for t in tags]
+                
+                # Check for Sharjah (shrajah) or Fujairah
+                if any(t in tags_lower for t in ['sharjah', 'shrajah', 'fujairah']):
+                    approver_id = 369  # Majed
+                    step_name = "Project Approval (Majed)"
+                else:
+                    approver_id = 385  # Mamon
+                    step_name = "Project Approval (Mamon)"
+                
                 vals_list.append({
                     "request_id": rec.id,
-                    "name": step.name or step.approver_id.name,
-                    "approver_id": step.approver_id.id,
+                    "name": step_name,
+                    "approver_id": approver_id,
                     "required": True,
                     "state": "waiting",
                     "company_id": rec.company_id.id,
-                    "sequence": step.sequence,
+                    "sequence": 1,  # Ensure this is the first step
                     "approval_stage": current_stage,
                 })
+
+            if not rule and not vals_list:
+                continue
+
+            if rule:
+                # 1. Create all lines as 'waiting' by default
+                for step in rule.step_ids.sorted('sequence'):
+                    vals_list.append({
+                        "request_id": rec.id,
+                        "name": step.name or step.approver_id.name,
+                        "approver_id": step.approver_id.id,
+                        "required": True,
+                        "state": "waiting",
+                        "company_id": rec.company_id.id,
+                        "sequence": step.sequence,
+                        "approval_stage": current_stage,
+                    })
 
             if vals_list:
                 # 2. Find the lowest sequence number in this new set
