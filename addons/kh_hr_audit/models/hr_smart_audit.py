@@ -38,8 +38,6 @@ class HrSmartAudit(models.TransientModel):
                 'absence_details': metrics.get('absence_log', ''), # تواريخ الغياب
                 'holiday_details': metrics.get('holiday_log', ''), # تواريخ العطل
                 'leave_balance': metrics.get('balance', 0.0),
-                'recommendation': metrics.get('recommendation', ''),
-                'status': 'danger' if (metrics.get('late_after_9', 0) > 3 or metrics.get('absence_count', 0) > 0) else 'success'
             }))
         self.audit_line_ids = lines
         return {
@@ -130,6 +128,7 @@ class HrSmartAudit(models.TransientModel):
         work_log = []
         absence_log = []
         holiday_log = []
+        check_in_minutes_list = []
 
         # الحلقة اليومية
         current_day = date_from
@@ -183,6 +182,7 @@ class HrSmartAudit(models.TransientModel):
                 daily_data = attendance_details.get(current_day)
                 if daily_data and daily_data['check_ins']:
                     first_in = min(daily_data['check_ins'])
+                    check_in_minutes_list.append(first_in.hour * 60 + first_in.minute)
                     if first_in.hour > 9 or (first_in.hour == 9 and first_in.minute > 0):
                         late_count += 1
             else:
@@ -191,8 +191,13 @@ class HrSmartAudit(models.TransientModel):
 
             current_day += timedelta(days=1)
 
+        avg_check_in_str = '-'
+        if check_in_minutes_list:
+            avg_minutes = sum(check_in_minutes_list) / len(check_in_minutes_list)
+            avg_check_in_str = "{:02d}:{:02d}".format(int(avg_minutes // 60), int(avg_minutes % 60))
+
         return {
-            'avg_check_in': '-', 
+            'avg_check_in': avg_check_in_str, 
             'late_after_9': late_count, 
             'days_worked': days_worked, 
             'absence_count': absence_count, 
@@ -201,7 +206,6 @@ class HrSmartAudit(models.TransientModel):
             'absence_log': ', '.join(absence_log),
             'holiday_log': ', '.join(holiday_log),
             'balance': employee.remaining_leaves if 'remaining_leaves' in employee else 0.0, 
-            'recommendation': 'خصم' if absence_count > 0 else 'جيد'
         }
 
     # 4. الرواتب (نفس الكود السابق)
@@ -283,8 +287,6 @@ class HrSmartAuditLine(models.TransientModel):
     leaves_taken = fields.Integer(string='إجازات (أيام)')
     holiday_details = fields.Text(string='تواريخ العطل')
     leave_balance = fields.Float(string='رصيد إجازات')
-    recommendation = fields.Char(string='توصية')
-    status = fields.Selection([('success', 'Good'), ('danger', 'Bad')], string='الحالة')
     def open_details(self):
         return {
             'type': 'ir.actions.act_window',
