@@ -287,6 +287,11 @@ class HrSmartAuditLine(models.TransientModel):
     leaves_taken = fields.Integer(string='إجازات (أيام)')
     holiday_details = fields.Text(string='تواريخ العطل')
     leave_balance = fields.Float(string='رصيد إجازات')
+    
+    # تمت إعادتها مؤقتاً لإصلاح خطأ العرض (يجب حذفها من ملف XML أولاً)
+    recommendation = fields.Char(string='توصية')
+    status = fields.Selection([('success', 'Good'), ('danger', 'Bad')], string='الحالة')
+
     def open_details(self):
         return {
             'type': 'ir.actions.act_window',
