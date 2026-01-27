@@ -1,13 +1,14 @@
 <odoo>
     <record id="view_boq_submission_tree" model="ir.ui.view">
-        <field name="name">kh.boq.submission.tree</field>
+        <field name="name">kh.boq.submission.list</field>
         <field name="model">kh.boq.submission</field>
         <field name="arch" type="xml">
-            <tree string="BOQ Submissions">
+            <list string="BOQ Submissions">
                 <field name="applicant_name"/>
-                <field name="total_amount"/>
+                <field name="project_id"/>
+                <field name="total_amount" sum="Total"/>
                 <field name="state" widget="badge" decoration-success="state == 'submitted'"/>
-            </tree>
+            </list>
         </field>
     </record>
 
@@ -30,12 +31,12 @@
                     <notebook>
                         <page string="BOQ Lines">
                             <field name="line_ids">
-                                <tree editable="bottom">
+                                <list editable="bottom">
                                     <field name="product_id"/>
                                     <field name="quantity"/>
                                     <field name="price_unit"/>
                                     <field name="total" sum="Total"/>
-                                </tree>
+                                </list>
                             </field>
                         </page>
                     </notebook>
@@ -43,4 +44,15 @@
             </form>
         </field>
     </record>
+
+    <record id="action_boq_submissions" model="ir.actions.act_window">
+        <field name="name">BOQ Submissions</field>
+        <field name="res_model">kh.boq.submission</field>
+        <field name="view_mode">list,form</field> </record>
+
+    <menuitem id="menu_boq_submissions"
+              name="BOQ Submissions"
+              parent="project.menu_main_pm"
+              action="action_boq_submissions"
+              sequence="50"/>
 </odoo>

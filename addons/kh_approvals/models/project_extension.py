@@ -56,22 +56,14 @@ class ProjectProject(models.Model):
     def _compute_is_manager(self):
         for rec in self:
             rec.is_manager = (rec.user_id == self.env.user)
-    def action_open_boq_website(self):
+    def action_view_boq_submissions(self):
         self.ensure_one()
-        base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
-        boq_url = f"{base_url}/boq/fill/{self.id}"
         return {
-            'type': 'ir.actions.act_url',
-            'url': boq_url,
-            'target': 'new', # Opens in a new tab
+            'name': 'BOQ Submissions',
+            'type': 'ir.actions.act_window',
+            'res_model': 'kh.boq.submission',
+            'view_mode': 'list,form',  # Changed 'tree' to 'list'
+            'views': [(False, 'list'), (False, 'form')], # Changed 'tree' to 'list'
+            'domain': [('project_id', '=', self.id)],
+            'context': {'default_project_id': self.id},
         }
-    def write(self, vals):
-        protected_fields = ['contractor_email', 'partner_id', 'date_start']
-        for project in self:
-            is_manager = project.user_id == self.env.user
-            trying_to_edit_protected = any(field in vals for field in protected_fields)
-
-            if not is_manager and trying_to_edit_protected:
-                raise UserError("عذراً! لا يمكنك تعديل هذه البيانات لأنك لست مدير المشروع.")
-
-        return super(ProjectProject, self).write(vals)
