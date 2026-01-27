@@ -1,5 +1,4 @@
 from odoo import models, fields, api
-from odoo.exceptions import UserError
 
 class ProjectProject(models.Model):
     _inherit = 'project.project'
@@ -7,286 +6,230 @@ class ProjectProject(models.Model):
     # --- Existing Fields ---
     contractor_email = fields.Char(string="Contractor Email")
     is_manager = fields.Boolean(compute='_compute_is_manager')
-
-    # --- NEW BOQ Fields ---
     boq_submission_count = fields.Integer(compute='_compute_boq_submission_count')
 
-    # --- BOQ Logic: Count Submissions ---
+    # --- NEW: BOQ PLANNING FIELDS ---
+    # هذا الجدول يعبئه الموظف الداخلي بالكميات
+    boq_plan_ids = fields.One2many('kh.project.boq.plan', 'project_id', string="Master BOQ Plan")
+    
+    # حالة الـ BOQ
+    boq_state = fields.Selection([
+        ('draft', 'Draft (Editing Quantities)'),
+        ('published', 'Published (Ready for Pricing)')
+    ], default='draft', string="BOQ Status", tracking=True)
+
+    # --- ACTIONS ---
+    def action_publish_boq(self):
+        """ يمنع التعديل وينشر الرابط """
+        self.boq_state = 'published'
+
+    def action_reset_boq(self):
+        """ إعادة للوضع المسودة للتعديل """
+        self.boq_state = 'draft'
+
+    def action_load_default_boq_template(self):
+        """ زر لتحميل جميع بنود الإكسل الـ 15 قسم وتفريغ الكميات """
+        self.ensure_one()
+        if self.boq_plan_ids:
+            return # لا تفعل شيئاً إذا كان هناك بنود بالفعل لكي لا نكررها
+        
+        # القائمة الكاملة بناءً على ملف الإكسل
+        default_items = [
+            # (1) PRELIMINARIES/MOBILIZATION
+            ('(1) PRELIMINARIES', 'Site Preparation, Temp Fencing, Site Sign Board', 'Unit'),
+            ('(1) PRELIMINARIES', 'Site Administration Facilities & Engg Supervision', 'Unit'),
+            ('(1) PRELIMINARIES', 'Arrangement Of Temporary Electricity & Water', 'Unit'),
+            ('(1) PRELIMINARIES', 'Others (Please specify)', 'Unit'),
+
+            # (2) SITE WORKS / EARTH WORKS
+            ('(2) SITE WORKS', 'Excavation works up to required level', 'Unit'),
+            ('(2) SITE WORKS', 'Leveling & Compaction', 'Unit'),
+            ('(2) SITE WORKS', 'Backfilling works', 'Unit'),
+            ('(2) SITE WORKS', 'Disposal of debris or others', 'Unit'),
+            ('(2) SITE WORKS', 'Anti-Termite treatment (20 year guarantee)', 'Unit'),
+            ('(2) SITE WORKS', 'Others (Please specify)', 'Unit'),
+
+            # (3) SUB STRUCTURE CONCRETE WORKS
+            ('(3) SUB STRUCTURE', 'Polythene Sheet 1000 Gauge', 'Unit'),
+            ('(3) SUB STRUCTURE', 'P.C.C Under Footings', 'Unit'),
+            ('(3) SUB STRUCTURE', 'P.C.C under solid blocks', 'Unit'),
+            ('(3) SUB STRUCTURE', 'Applying Bitumen paint (2 coats)', 'Unit'),
+            ('(3) SUB STRUCTURE', 'Footings', 'Unit'),
+            ('(3) SUB STRUCTURE', 'Neck Columns', 'Unit'),
+            ('(3) SUB STRUCTURE', 'Solid block', 'Unit'),
+            ('(3) SUB STRUCTURE', 'Retaining Wall (IF ANY)', 'Unit'),
+            ('(3) SUB STRUCTURE', 'Shoring (IF ANY)', 'Unit'),
+            ('(3) SUB STRUCTURE', 'Tie Beam', 'Unit'),
+            ('(3) SUB STRUCTURE', 'Grade slab rcc with mesh', 'Unit'),
+            ('(3) SUB STRUCTURE', 'Others (Please specify)', 'Unit'),
+
+            # (4) SUPER STRUCTURE CONCRETE WORKS
+            ('(4) SUPER STRUCTURE', 'R.C.C columns', 'Unit'),
+            ('(4) SUPER STRUCTURE', 'R.C.C columns Ground Floor', 'Unit'),
+            ('(4) SUPER STRUCTURE', 'R.C.C For Lintels & Sills', 'Unit'),
+            ('(4) SUPER STRUCTURE', 'R.C.C Slab & Beams', 'Unit'),
+            ('(4) SUPER STRUCTURE', 'R.C.C Slab (Roof Slab)', 'Unit'),
+            ('(4) SUPER STRUCTURE', 'Parapet (If Concrete)', 'Unit'),
+            ('(4) SUPER STRUCTURE', 'R.C.C Coping Beam', 'Unit'),
+            ('(4) SUPER STRUCTURE', 'Elevator Shaft', 'Unit'),
+            ('(4) SUPER STRUCTURE', 'Concrete Work For Services (AC & RW)', 'Unit'),
+            ('(4) SUPER STRUCTURE', 'RCC Stairs', 'Unit'),
+
+            # (5) BLOCK WORKS
+            ('(5) BLOCK WORKS', '20cm insulated / Thermal blocks', 'Unit'),
+            ('(5) BLOCK WORKS', '20cm Hollow Blocks', 'Unit'),
+            ('(5) BLOCK WORKS', '10cm Hollow Blocks', 'Unit'),
+            ('(5) BLOCK WORKS', '10cm Solid Blocks', 'Unit'),
+            ('(5) BLOCK WORKS', '20cm Parapet', 'Unit'),
+
+            # (6) PLASTER WORKS
+            ('(6) PLASTER WORKS', 'INTERNAL: 20 mm thk smooth plaster for walls', 'Unit'),
+            ('(6) PLASTER WORKS', 'EXTERNAL: Smooth plaster for elevation', 'Unit'),
+            ('(6) PLASTER WORKS', 'EXTERNAL: Smooth plaster for compound wall', 'Unit'),
+            ('(6) PLASTER WORKS', 'CEILING: Smooth plaster for roof (If Required)', 'Unit'),
+            ('(6) PLASTER WORKS', 'Others (Please specify)', 'Unit'),
+
+            # (7) RCC WATER PROOFING WORKS
+            ('(7) RCC WATER PROOFING', 'FOUNDATION: Bitumen membrane', 'Unit'),
+            ('(7) RCC WATER PROOFING', 'Bitumen membrane sheets (if required)', 'Unit'),
+            ('(7) RCC WATER PROOFING', '1 inch thick protection board (if required)', 'Unit'),
+            ('(7) RCC WATER PROOFING', 'Others (Please specify)', 'Unit'),
+
+            # (8) WET AREA WATER PROOFING WORKS
+            ('(8) WET AREA PROOFING', 'Wet area waterproofing work (10 Year Warranty)', 'Unit'),
+            ('(8) WET AREA PROOFING', 'ROOF: Combo roof waterproofing (25 Year Warranty)', 'Unit'),
+            ('(8) WET AREA PROOFING', 'Others (Please specify)', 'Unit'),
+
+            # (9) PAINTING WORKS
+            ('(9) PAINTING WORKS', 'INTERNAL: PVA Primer + Stucco + Fenomastic Washable', 'Unit'),
+            ('(9) PAINTING WORKS', 'EXTERNAL: Acrylic Primer + Texo Compound + Jotunshield', 'Unit'),
+            ('(9) PAINTING WORKS', 'Others (Please specify)', 'Unit'),
+
+            # (10) PLUMBING WORKS
+            ('(10) PLUMBING', 'Water Supply: Meters (DEWA Standards)', 'Unit'),
+            ('(10) PLUMBING', 'PPR and PPX Pipes (Internal & External)', 'Unit'),
+            ('(10) PLUMBING', 'Ground and Overhead Water Tanks', 'Unit'),
+            ('(10) PLUMBING', 'Transfer & Booster Pumps (1 duty + 1 standby)', 'Unit'),
+            ('(10) PLUMBING', 'Electric and Solar Water Heater System', 'Unit'),
+            ('(10) PLUMBING', 'Water Cooling System', 'Unit'),
+            ('(10) PLUMBING', 'Testing & Commissioning (Water Supply)', 'Unit'),
+            ('(10) PLUMBING', 'Drainage: Internal & External UPVC Pipe', 'Unit'),
+            ('(10) PLUMBING', 'Sanitary Wares Installation', 'Unit'),
+            ('(10) PLUMBING', 'Gully Traps and Manhole Covers', 'Unit'),
+            ('(10) PLUMBING', 'Vent Pipes & Rainwater Pipes', 'Unit'),
+            ('(10) PLUMBING', 'Septic Tank & soak away (if required)', 'Unit'),
+            ('(10) PLUMBING', 'Submission of Shop Drawings', 'Unit'),
+            ('(10) PLUMBING', 'Testing & Commissioning (Drainage)', 'Unit'),
+
+            # (11) ELECTRICAL & ETISALAT WORKS
+            ('(11) ELECTRICAL', 'Shop Drawings & As Built Drawings', 'Unit'),
+            ('(11) ELECTRICAL', 'Meter Cabinets, MDB, DBs (DEWA Standards)', 'Unit'),
+            ('(11) ELECTRICAL', 'Cables For Power Distribution', 'Unit'),
+            ('(11) ELECTRICAL', 'Conduits, Wires, Low Current, Fire Alarm', 'Unit'),
+            ('(11) ELECTRICAL', 'Earth Pits (Grounding)', 'Unit'),
+            ('(11) ELECTRICAL', 'Light Fittings, Sockets, Isolators', 'Unit'),
+            ('(11) ELECTRICAL', 'Testing & Commissioning (Electrical)', 'Unit'),
+            ('(11) ELECTRICAL', 'Electrical Manholes', 'Unit'),
+            ('(11) ELECTRICAL', 'Power Point For Car Charger', 'Unit'),
+
+            # (12) MECHANICAL WORKS
+            ('(12) MECHANICAL', 'AC System: Carrier Saudi Arabia DX ducted', 'Unit'),
+            ('(12) MECHANICAL', 'Grill, Diffuser, Refrigerant pipes', 'Unit'),
+            ('(12) MECHANICAL', 'Inline Exhaust fan', 'Unit'),
+
+            # (13) CCTV WORKS
+            ('(13) CCTV', 'CCTV System (Supply, Install, Program, Test)', 'Unit'),
+            ('(13) CCTV', 'IP Security Cameras (6 Cameras)', 'Unit'),
+            ('(13) CCTV', '25mm UPVC conduit with CAT6', 'Unit'),
+            ('(13) CCTV', 'Network video recorder', 'Unit'),
+            ('(13) CCTV', 'Calling bell screen with speaker', 'Unit'),
+            ('(13) CCTV', 'Intercom system panel at main entrance', 'Unit'),
+
+            # (14) COMPOUND WALLS
+            ('(14) COMPOUND WALLS', 'Compound wall with Decoration', 'Unit'),
+            ('(14) COMPOUND WALLS', 'Compound wall (750/RM)', 'Unit'),
+
+            # (15) PROVISIONAL SUM
+            ('(15) PROVISIONAL', 'Gypsum Ceiling: Bath Rooms & WCs (MR)', 'Unit'),
+            ('(15) PROVISIONAL', 'Gypsum Ceiling: Kitchen (FR)', 'Unit'),
+            ('(15) PROVISIONAL', 'Gypsum Ceiling: Rest of Villa (FR)', 'Unit'),
+            ('(15) PROVISIONAL', 'Floor Tiles: Dry Areas (60x60 Basic Concrete)', 'm2'),
+            ('(15) PROVISIONAL', 'Skirting For All Area', 'Unit'),
+            ('(15) PROVISIONAL', 'Floor Tiles: Wet Areas (60x60 Attractive White)', 'Unit'),
+            ('(15) PROVISIONAL', 'Wall Tiles: Wet Areas Upto Ceiling', 'Unit'),
+            ('(15) PROVISIONAL', 'Threshold (Marble/Granite)', 'Unit'),
+            ('(15) PROVISIONAL', 'Interlock & Kerbstone (Inside & Outside)', 'Unit'),
+            ('(15) PROVISIONAL', 'Carpentry: Doors (D1, D2, D3, D4)', 'Unit'),
+            ('(15) PROVISIONAL', 'Kitchen Cabinet (Granite Top, Sinks)', 'Unit'),
+            ('(15) PROVISIONAL', 'Pantry & Dressing Cabinets', 'Unit'),
+            ('(15) PROVISIONAL', 'Aluminium Works (W1-W9, D1, D5)', 'Unit'),
+            ('(15) PROVISIONAL', 'Sanitary Ware (RAK): WCs, Basins', 'Unit'),
+            ('(15) PROVISIONAL', 'Bath Room Mirrors', 'Unit'),
+            ('(15) PROVISIONAL', 'Toilet Cabinets', 'Unit'),
+            ('(15) PROVISIONAL', 'Light Fittings Supply', 'Unit'),
+            ('(15) PROVISIONAL', 'Boundary Wall Lights', 'Unit'),
+            ('(15) PROVISIONAL', 'Handrail On Terrace', 'Unit'),
+            ('(15) PROVISIONAL', 'Car parking Shed', 'Unit'),
+            ('(15) PROVISIONAL', 'Automatic Electrical Main Gate', 'Unit'),
+            ('(15) PROVISIONAL', 'Small Gate with Electrical Lock', 'Unit'),
+            ('(15) PROVISIONAL', 'Spiral ladder With Safety Lock', 'Unit'),
+            ('(15) PROVISIONAL', 'Roof Tiles / Shower Partition / Pergolas', 'Unit'),
+            ('(15) PROVISIONAL', 'Planters With Water Proofing', 'Unit'),
+            ('(15) PROVISIONAL', 'Exterior Tiles for Elevation', 'Unit'),
+            ('(15) PROVISIONAL', 'Interior Work Additional', 'Unit'),
+        ]
+        
+        lines = []
+        for section, name, uom in default_items:
+            lines.append((0, 0, {
+                'section_name': section,
+                'item_description': name,
+                'uom_id': self.env.ref('uom.product_uom_unit').id, # افتراضياً Unit
+                'quantity': 0.0, # الكمية صفر ليبدأ الموظف بتعبئتها
+            }))
+        
+        self.write({'boq_plan_ids': lines})
+    # --- Computes & Helpers ---
     def _compute_boq_submission_count(self):
         for project in self:
-            # Counts how many submissions differ for this project ID
             project.boq_submission_count = self.env['kh.boq.submission'].search_count([
                 ('project_id', '=', project.id)
             ])
 
-    # --- BOQ Logic: Smart Button Action ---
     def action_view_boq_submissions(self):
         self.ensure_one()
         return {
             'name': 'BOQ Submissions',
             'type': 'ir.actions.act_window',
             'res_model': 'kh.boq.submission',
-            'view_mode': 'tree,form',
+            'view_mode': 'list,form',
             'domain': [('project_id', '=', self.id)],
             'context': {'default_project_id': self.id},
         }
 
-    # --- BOQ Logic: Website Helper ---
-    def _get_boq_sections_for_website(self):
+    def action_open_boq_website(self):
         self.ensure_one()
-        # This returns the structure for the website form.
-        # Ideally, fetch this from real product categories.
-        return [
-            {
-                'id': 1, 'name': 'PRELIMINARIES / MOBILIZATION', 'items': [
-                    {'product_id': 1, 'name': 'Site Preparation', 'description': 'Temp fencing, signage', 'qty': 1, 'uom_name': 'Unit', 'qty_available': 0, 'price': 0.0},
-                    {'product_id': 2, 'name': 'Site Admin Facilities', 'description': 'Offices & Supervision', 'qty': 1, 'uom_name': 'Unit', 'qty_available': 0, 'price': 0.0},
-                ]
-            },
-            {
-                'id': 2, 'name': 'SITE WORKS / EARTH WORKS', 'items': [
-                    {'product_id': 3, 'name': 'Excavation', 'description': 'Up to required level', 'qty': 500, 'uom_name': 'm3', 'qty_available': 0, 'price': 0.0},
-                ]
-            },
-            # You can add the rest of the 15 sections here
-        ]
-
-    # --- Existing Security Logic ---
+        base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+        return {
+            'type': 'ir.actions.act_url',
+            'url': f"{base_url}/boq/fill/{self.id}",
+            'target': 'new',
+        }
+    
     @api.depends('user_id')
     def _compute_is_manager(self):
         for rec in self:
             rec.is_manager = (rec.user_id == self.env.user)
-    def action_view_boq_submissions(self):
-        self.ensure_one()
-        return {
-            'name': 'BOQ Submissions',
-            'type': 'ir.actions.act_window',
-            'res_model': 'kh.boq.submission',
-            'view_mode': 'list,form',  # Changed 'tree' to 'list'
-            'views': [(False, 'list'), (False, 'form')], # Changed 'tree' to 'list'
-            'domain': [('project_id', '=', self.id)],
-            'context': {'default_project_id': self.id},
-        }
-    def action_open_boq_website(self):
-        """ Opens the public BOQ website link for this project in a new tab. """
-        self.ensure_one()
-        # Get the base URL (e.g., https://your-odoo.com)
-        base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
-        # Create the link: /boq/fill/PROJECT_ID
-        boq_url = f"{base_url}/boq/fill/{self.id}"
-        
-        return {
-            'type': 'ir.actions.act_url',
-            'url': boq_url,
-            'target': 'new', # Opens in a new tab
-        }
-    def _get_boq_sections_for_website(self):
-        """
-        Returns the hardcoded BOQ structure for the website.
-        In a real scenario, you would fetch these from 'product.product' records.
-        """
-        self.ensure_one()
-        
-        # Helper to create item structure
-        def item(name, desc=""):
-            # Try to find existing product or return dummy ID for display
-            return {
-                'product_id': 0, # In real logic, search for product.id
-                'name': name,
-                'description': desc,
-                'qty': 1.0,
-                'uom_name': 'Unit',
-                'qty_available': 0,
-                'price': 0.0
-            }
 
-        return [
-            {
-                'id': 1, 
-                'name': '(1) PRELIMINARIES / MOBILIZATION', 
-                'items': [
-                    item('Site Preparation', 'Temporary Fencing with consultant logo, site sign board, etc.'),
-                    item('Site Administration Facilities', 'Engineering Supervision, etc.'),
-                    item('Arrangement Of Temporary Electricity & Water', ''),
-                    item('Others (Please specify)', 'Included'),
-                ]
-            },
-            {
-                'id': 2, 
-                'name': '(2) SITE WORKS / EARTH WORKS', 
-                'items': [
-                    item('Excavation works', 'Up to required level'),
-                    item('Leveling & Compaction', ''),
-                    item('Backfilling works', ''),
-                    item('Disposal of debris', 'Or others if any'),
-                    item('Anti-Termite treatment', '20 year guarantee, under all PCC, slabs on grade, and building perimeter'),
-                    item('Others (Please specify)', ''),
-                ]
-            },
-            {
-                'id': 3, 
-                'name': '(3) SUB STRUCTURE CONCRETE WORKS', 
-                'items': [
-                    item('Polythene Sheet 1000 Gauge', ''),
-                    item('P.C.C Under Footings', ''),
-                    item('P.C.C under solid blocks', ''),
-                    item('Applying Bitumen paint', '2 coats'),
-                    item('Footings', ''),
-                    item('Neck Columns', ''),
-                    item('Solid block', ''),
-                    item('Retaining Wall', 'IF ANY'),
-                    item('Shoring', 'IF ANY'),
-                    item('Tie Beam', ''),
-                    item('Grade slab rcc with mesh', ''),
-                    item('Others (Please specify)', ''),
-                ]
-            },
-            {
-                'id': 4, 
-                'name': '(4) SUPER STRUCTURE CONCRETE WORKS', 
-                'items': [
-                    item('R.C.C columns', ''),
-                    item('R.C.C columns Ground Floor', ''),
-                    item('R.C.C For Lintels & Sills', ''),
-                    item('R.C.C Slab & Beams', ''),
-                    item('R.C.C Slab (Roof Slab)', ''),
-                    item('Parapet', 'If Concrete'),
-                    item('R.C.C Coping Beam', ''),
-                    item('Elevator Shaft', 'N/A'),
-                    item('Concrete Work For Services', 'AC & RW'),
-                    item('RCC Stairs', ''),
-                ]
-            },
-            {
-                'id': 5, 
-                'name': '(5) BLOCK WORKS', 
-                'items': [
-                    item('20cm insulated / Thermal blocks', ''),
-                    item('20cm Hollow Blocks', ''),
-                    item('10cm Hollow Blocks', ''),
-                    item('10cm Solid Blocks', ''),
-                    item('20cm Parapet', ''),
-                ]
-            },
-            {
-                'id': 6, 
-                'name': '(6) PLASTER WORKS', 
-                'items': [
-                    item('INTERNAL: 20 mm thk smooth plaster', 'For walls'),
-                    item('EXTERNAL: Smooth plaster for elevation', ''),
-                    item('EXTERNAL: Smooth plaster for compound wall', ''),
-                    item('CEILING: Smooth plaster for roof', 'If required'),
-                    item('Others (Please specify)', ''),
-                ]
-            },
-            {
-                'id': 7, 
-                'name': '(7) RCC WATER PROOFING WORKS', 
-                'items': [
-                    item('Bitumen membrane', 'Foundation Water Proofing'),
-                    item('Bitumen membrane sheets', 'If required'),
-                    item('1" thick protection board', 'If required'),
-                    item('Others (Please specify)', ''),
-                ]
-            },
-            {
-                'id': 8, 
-                'name': '(8) WET AREA WATER PROOFING', 
-                'items': [
-                    item('Wet area waterproofing work', '10 Year Warranty'),
-                    item('Combo roof waterproofing', '25 Year Warranty'),
-                    item('Others (Please specify)', ''),
-                ]
-            },
-            {
-                'id': 9, 
-                'name': '(9) PAINTING WORKS', 
-                'items': [
-                    item('INTERNAL PAINT', '1x PVA Primer, 1x Stucco, 2x Fenomastic Washable Paint'),
-                    item('EXTERNAL PAINT', '1x Acrylic Primer, 1x Texo Compound, 1x Jotunshield Topcoat'),
-                    item('Others (Please specify)', ''),
-                ]
-            },
-            {
-                'id': 10, 
-                'name': '(10) PLUMBING WORKS', 
-                'items': [
-                    item('Water Meters', 'Supply & Install (DEWA Standards)'),
-                    item('PPR and PPX Pipes', 'Internal & External'),
-                    item('Water Tanks', 'Ground and Overhead with fittings'),
-                    item('Transfer & Booster Pumps', '1 duty + 1 standby, with control panels'),
-                    item('Water Heater System', 'Electric and Solar'),
-                    item('Water Cooling System', ''),
-                    item('Testing & Commissioning', 'Complete Water Supply System'),
-                    item('Drainage: UPVC Pipe Connections', 'Internal & External'),
-                    item('Sanitary Wares', 'Installation as per specs'),
-                    item('Gully Traps and Manhole Covers', ''),
-                    item('Vent & Rainwater Pipes', ''),
-                    item('Septic Tank & soak away', 'If required'),
-                ]
-            },
-            {
-                'id': 11, 
-                'name': '(11) ELECTRICAL & ETISALAT WORKS', 
-                'items': [
-                    item('Shop Drawings & Approvals', 'DEWA Documentation'),
-                    item('MDB and DBs', 'Supply & Install (DEWA Standards)'),
-                    item('Cables', 'For Power Distribution'),
-                    item('Conduits, Wires & Accessories', 'Electrical, Low Current, Fire Alarm'),
-                    item('Earth Pits', 'Grounding System'),
-                    item('Light Fittings & Sockets', 'Installation'),
-                    item('Testing & Commissioning', 'Entire Electrical System'),
-                    item('Electrical Manholes', ''),
-                    item('Power Point', 'Car Charger'),
-                ]
-            },
-            {
-                'id': 12, 
-                'name': '(12) MECHANICAL WORKS', 
-                'items': [
-                    item('Carrier Saudi Arabia DX ducted AC', 'Supply and installation'),
-                    item('Grill, Diffuser, Refrigerant pipes', 'All accessories'),
-                    item('Inline Exhaust fan', ''),
-                ]
-            },
-            {
-                'id': 13, 
-                'name': '(13) CCTV WORKS', 
-                'items': [
-                    item('CCTV System', 'Supply, install, program, test (DPS/SIRA compliant)'),
-                    item('IP Security Cameras', 'Weather proof, wall/pole mounted (6 Cameras)'),
-                    item('25mm UPVC conduit', 'With CAT6 cable to POE switch'),
-                    item('Network video recorder', ''),
-                    item('Calling bell screen', 'With speaker'),
-                    item('Audio Intercom Panel', 'At main entrance'),
-                ]
-            },
-            {
-                'id': 14, 
-                'name': '(14) COMPOUND WALLS', 
-                'items': [
-                    item('Compound wall with Decoration', ''),
-                    item('Compound wall (750/RM)', ''),
-                    item('Others', ''),
-                ]
-            },
-            {
-                'id': 15, 
-                'name': '(15) PROVISIONAL SUM', 
-                'items': [
-                    item('Gypsum Ceiling: Bathrooms', 'MR Gypsum'),
-                    item('Gypsum Ceiling: Kitchen', 'FR Gypsum'),
-                    item('Gypsum Ceiling: Rest of Villa', 'FR Gypsum'),
-                    item('Floor Tiles: Dry Areas', '60x60 Basic Concrete Saint Grey'),
-                    item('Floor Tiles: Wet Areas', '60x60 Attractive White'),
-                    item('Wall Tiles: Wet Areas', 'Up to Ceiling'),
-                    item('Interlock & External Works', '150mm to 250mm Kerbstone'),
-                    item('Carpentry: Doors D1, D2, D3, D4', 'Oak Wood'),
-                    item('Kitchen Cabinet', 'Granite Top, Sinks, Mixer'),
-                    item('Aluminium Windows & Doors', 'W1-W9, D1, D5'),
-                    item('Sanitary Ware (RAK)', 'WCs, Wash Basins'),
-                    item('Automatic Electrical Main Gate', ''),
-                    item('Spiral ladder', 'With Safety Lock'),
-                ]
-            }
-        ]
+
+# --- NEW MODEL: INTERNAL BOQ PLAN ---
+class ProjectBoqPlan(models.Model):
+    _name = 'kh.project.boq.plan'
+    _description = 'Internal BOQ Items'
+    _order = 'id asc'
+
+    project_id = fields.Many2one('project.project', ondelete='cascade')
+    section_name = fields.Char(string="Section", required=True)
+    item_description = fields.Char(string="Description", required=True)
+    quantity = fields.Float(string="Planned Qty", required=True)
+    uom_id = fields.Char(string="Unit", default="Unit")
