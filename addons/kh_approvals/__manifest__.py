@@ -23,6 +23,7 @@
         'views/dashboard_views.xml',
         'views/hr_employee_views_extension.xml',
         'views/payslip_views.xml',
+        'views/website_boq_template.xml',
         'views/qweb_templates.xml',
         'data/sequence.xml',
         'data/email_categories.xml',
