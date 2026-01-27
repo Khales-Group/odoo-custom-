@@ -1,0 +1,6 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_kh_project_boq_plan_user,kh.project.boq.plan.user,model_kh_project_boq_plan,base.group_user,1,1,1,1
+access_kh_project_boq_plan_portal,kh.project.boq.plan.portal,model_kh_project_boq_plan,base.group_portal,1,0,0,0
+access_kh_project_boq_plan_public,kh.project.boq.plan.public,model_kh_project_boq_plan,base.group_public,1,0,0,0
+access_kh_boq_submission_user,kh.boq.submission.user,model_kh_boq_submission,base.group_user,1,1,1,1
+access_kh_boq_line_user,kh.boq.line.user,model_kh_boq_line,base.group_user,1,1,1,1

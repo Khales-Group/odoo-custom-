@@ -10,6 +10,7 @@
     'data': [
         'security/kh_approvals_security.xml',
         'security/ir.model.access.csv',
+        'security/boq_access.csv',
         'security/kh_approvals_rules.xml',
         'security/wizard_access.xml',
         'views/menu.xml',
