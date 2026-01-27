@@ -10,5 +10,3 @@ access_kh_request_accountant,access_kh_request_accountant,model_kh_approval_requ
 access_kh_petty_cash_line,kh.approval.petty.cash.line,model_kh_approval_petty_cash_line,base.group_user,1,1,1,1
 access_project_email_full,project.email.full,model_project_email,base.group_user,1,1,1,1
 access_project_email_category,project.email.category,model_project_email_category,base.group_user,1,1,1,1
-access_kh_boq_submission_internal,kh.boq.submission.internal,model_kh_boq_submission,base.group_user,1,1,1,1
-access_kh_boq_line_internal,kh.boq.line.internal,model_kh_boq_line,base.group_user,1,1,1,1

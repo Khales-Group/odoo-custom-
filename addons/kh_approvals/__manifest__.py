@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
-{
-    'name': 'Khales Approvals',
+{    'name': 'Khales Approvals',
     'summary': 'Approvals and workflow integrations (compatibility patch for v19)',
     'description': 'Compatibility layer for Studio fields and links to CRM/Project/Purchase after migration to Odoo 19.',
     'author': 'Prepared by ChatGPT for Khales',
     'website': 'https://khales.ae',
     'category': 'Uncategorized',
     'version': '19.0.1.0.0',
-    'depends': ['base', 'mail', 'hr', 'project', 'purchase', 'hr_payroll', 'website'], # Added 'website' to depends
+    'depends': ['base', 'mail', 'hr', 'project', 'purchase', 'hr_payroll'],
     'data': [
         'security/kh_approvals_security.xml',
         'security/ir.model.access.csv',
@@ -17,7 +16,7 @@
         'views/approval_request_views.xml',
         'views/approval_rule_views.xml',
         'views/department_views.xml',
-        'views/approval_reject_wizard.xml',
+        'views/approval_reject_wizard.xml',  # <--- Add this line
         'views/project_email_views.xml',
         'views/project_views.xml',
         'views/mail_activity_views.xml',
@@ -28,11 +27,6 @@
         'data/sequence.xml',
         'data/email_categories.xml',
     ],
-    # --- THIS IS THE NEW PART YOU NEED ---
-    'assets': {
-     
-    },
-    # -------------------------------------
     'installable': True,
     'application': True,
     'license': 'LGPL-3',

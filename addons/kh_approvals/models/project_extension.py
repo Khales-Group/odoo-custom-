@@ -5,16 +5,8 @@ class ProjectProject(models.Model):
     _inherit = 'project.project'
 
     contractor_email = fields.Char(string="Contractor Email")
-    email_count = fields.Integer(string="Emails", compute='_compute_email_count')
 
     is_manager = fields.Boolean(compute='_compute_is_manager')
-
-    def _compute_email_count(self):
-        for rec in self:
-            rec.email_count = 0
-
-    def action_open_project_emails(self):
-        pass
 
     @api.depends('user_id')
     def _compute_is_manager(self):
