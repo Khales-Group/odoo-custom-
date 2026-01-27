@@ -1,94 +1,38 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-    <data>
-        <record id="project_email_search_panel_view" model="ir.ui.view">
-            <field name="name">project.email.search.sidebar</field>
-            <field name="model">project.email</field>
-            <field name="arch" type="xml">
-                <search string="Search Emails">
-                    <field name="subject"/>
-                    <field name="email_from"/>
-                    <field name="category_ids"/>
-                    <searchpanel>
-                        <field name="folder" icon="fa-folder" enable_counters="1"/>
-                    </searchpanel>
-                </search>
-            </field>
-        </record>
+    <record id="view_project_form_inherit_boq_logic" model="ir.ui.view">
+        <field name="name">project.form.inherit.boq.logic</field>
+        <field name="model">project.project</field>
+        <field name="inherit_id" ref="project.edit_project"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_view_boq_submissions" type="object" class="oe_stat_button" icon="fa-list-alt"
+                    invisible="boq_submission_count == 0">
+                    <field name="boq_submission_count" widget="statinfo" string="Submissions"/>
+                </button>
+            </xpath>
 
-        <record id="view_project_form_inherit_boq_logic" model="ir.ui.view">
-            <field name="name">project.form.inherit.boq.logic</field>
-            <field name="model">project.project</field>
-            <field name="inherit_id" ref="project.edit_project"/>
-            <field name="arch" type="xml">
-                
-                <xpath expr="//header" position="inside">
-                    <button string="🌐 Open BOQ Link" 
-                            name="action_open_boq_website" 
-                            type="object" 
-                            class="btn-secondary"
-                            invisible="boq_state != 'published'"/>
-                            
-                    <button string="✅ Publish BOQ" 
-                            name="action_publish_boq" 
-                            type="object" 
-                            class="oe_highlight"
-                            invisible="boq_state == 'published'"/>
-                            
-                    <button string="↩️ Reset to Draft" 
-                            name="action_reset_boq" 
-                            type="object" 
-                            invisible="boq_state == 'draft'"
-                            groups="project.group_project_manager"/>
-                            
-                    <field name="boq_state" widget="statusbar"/>
-                </xpath>
-
-                <xpath expr="//div[@name='button_box']" position="inside">
-                    <button class="oe_stat_button" type="object" name="action_open_project_emails" icon="fa-envelope">
-                        <div class="o_field_widget o_stat_info">
-                            <span class="o_stat_value"><field name="email_count"/></span>
-                            <span class="o_stat_text">Emails</span>
-                        </div>
-                    </button>
-                    <button class="oe_stat_button" type="object" name="action_view_boq_submissions" icon="fa-list-alt">
-                        <div class="o_field_widget o_stat_info">
-                            <span class="o_stat_value"><field name="boq_submission_count"/></span>
-                            <span class="o_stat_text">Quotes</span>
-                        </div>
-                    </button>
-                </xpath>
-
-                <xpath expr="//notebook" position="inside">
-                    <page string="🏗️ Master BOQ (Quantities)">
-                        <group invisible="boq_state == 'published'">
-                            <button name="action_load_default_boq_template" 
-                                    string="📥 Load Default Items" 
-                                    type="object" 
-                                    class="btn-info"
-                                    confirm="This will load default items. Continue?"/>
-                            <div class="text-muted">
-                                Step 1: Click Load Default Items. Step 2: Fill Quantities. Step 3: Click Publish above.
-                            </div>
-                        </group>
-                        
-                        <field name="boq_plan_ids" readonly="boq_state == 'published'">
-                            <tree editable="bottom">
-                                <field name="section_name"/>
-                                <field name="item_description"/>
-                                <field name="uom_id"/>
-                                <field name="quantity"/> </tree>
-                        </field>
-                    </page>
-                </xpath>
-                
-                <xpath expr="//sheet" position="inside">
-                    <field name="is_manager" invisible="1"/>
-                </xpath>
-                 <xpath expr="//field[@name='partner_id']" position="after">
-                    <field name="contractor_email" readonly="not is_manager"/>
-                </xpath>
-            </field>
-        </record>
-    </data>
+            <xpath expr="//notebook" position="inside">
+                <page string="BOQ Planning" name="boq_planning">
+                    <header>
+                        <button name="action_load_default_boq_template" string="Load Default Template" type="object" class="btn-secondary"
+                                invisible="boq_plan_ids"/>
+                        <button name="action_publish_boq" string="Publish BOQ" type="object" class="btn-primary"
+                                invisible="boq_state != 'draft'"/>
+                        <button name="action_reset_boq" string="Reset to Draft" type="object" class="btn-warning"
+                                invisible="boq_state == 'draft'"/>
+                        <button name="action_open_boq_website" string="Preview Website" type="object" class="btn-link"/>
+                        <field name="boq_state" widget="statusbar"/>
+                    </header>
+                    <field name="boq_plan_ids" readonly="boq_state == 'published'">
+                        <tree editable="bottom">
+                            <field name="section_name"/>
+                            <field name="item_description"/>
+                            <field name="quantity"/>
+                            <field name="uom_id"/>
+                        </tree>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
 </odoo>

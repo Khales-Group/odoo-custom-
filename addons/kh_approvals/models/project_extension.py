@@ -184,7 +184,7 @@ class ProjectProject(models.Model):
             lines.append((0, 0, {
                 'section_name': section,
                 'item_description': name,
-                'uom_id': self.env.ref('uom.product_uom_unit').id, # افتراضياً Unit
+                'uom_id': uom,
                 'quantity': 0.0, # الكمية صفر ليبدأ الموظف بتعبئتها
             }))
         
