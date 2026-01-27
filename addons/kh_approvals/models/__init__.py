@@ -12,3 +12,4 @@ from . import purchase_order_extension
 from . import rule_step
 from . import res_users  # <--- MAKE SURE THIS LINE EXISTS
 from . import fix_project_task
+from . import boq_website
