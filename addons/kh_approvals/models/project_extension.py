@@ -56,7 +56,15 @@ class ProjectProject(models.Model):
     def _compute_is_manager(self):
         for rec in self:
             rec.is_manager = (rec.user_id == self.env.user)
-
+    def action_open_boq_website(self):
+        self.ensure_one()
+        base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+        boq_url = f"{base_url}/boq/fill/{self.id}"
+        return {
+            'type': 'ir.actions.act_url',
+            'url': boq_url,
+            'target': 'new', # Opens in a new tab
+        }
     def write(self, vals):
         protected_fields = ['contractor_email', 'partner_id', 'date_start']
         for project in self:

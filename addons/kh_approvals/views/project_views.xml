@@ -24,10 +24,10 @@
             <field name="arch" type="xml">
                 
                 <xpath expr="//header" position="inside">
-                    <button string="🔗 Copy BOQ Link" 
-                            class="btn-secondary"
-                            onclick="navigator.clipboard.writeText(window.location.origin + '/boq/fill/' + this.dataset.projectId).then(() => alert('Link Copied!'))"
-                            t-att-data-project-id="id"/>
+                    <button string="🌐 Open BOQ Page" 
+                            name="action_open_boq_website" 
+                            type="object" 
+                            class="btn-secondary"/>
                 </xpath>
 
                 <xpath expr="//div[@name='button_box']" position="inside">
