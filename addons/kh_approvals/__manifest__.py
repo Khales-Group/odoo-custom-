@@ -25,18 +25,12 @@
         'views/hr_employee_views_extension.xml',
         'views/payslip_views.xml',
         'views/qweb_templates.xml',
-        'views/boq_submission_views.xml',  # <--- MAKE SURE THIS IS HERE
-        'views/website_boq_template.xml', # Ensure this is in the data list
         'data/sequence.xml',
         'data/email_categories.xml',
     ],
     # --- THIS IS THE NEW PART YOU NEED ---
     'assets': {
-        'web.assets_frontend': [
-            'kh_approvals/static/src/js/boq_website.js',
-            # If you add a CSS file later, put it here too:
-            # 'kh_approvals/static/src/css/boq_style.css',
-        ],
+     
     },
     # -------------------------------------
     'installable': True,
