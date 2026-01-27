@@ -67,3 +67,16 @@ class ProjectProject(models.Model):
             'domain': [('project_id', '=', self.id)],
             'context': {'default_project_id': self.id},
         }
+    def action_open_boq_website(self):
+        """ Opens the public BOQ website link for this project in a new tab. """
+        self.ensure_one()
+        # Get the base URL (e.g., https://your-odoo.com)
+        base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+        # Create the link: /boq/fill/PROJECT_ID
+        boq_url = f"{base_url}/boq/fill/{self.id}"
+        
+        return {
+            'type': 'ir.actions.act_url',
+            'url': boq_url,
+            'target': 'new', # Opens in a new tab
+        }
