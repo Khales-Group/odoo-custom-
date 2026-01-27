@@ -16,6 +16,23 @@ class ProjectProject(models.Model):
     # === BOQ FIELDS ===
     boq_plan_ids = fields.One2many('kh.project.boq.plan', 'project_id', string="Master BOQ Plan")
     boq_state = fields.Selection([('draft', 'Draft'), ('published', 'Published')], default='draft', string="BOQ Status")
+    
+    # Link to see received bids directly in the project
+    boq_submission_ids = fields.One2many('kh.boq.submission', 'project_id', string="Received Bids")
+    boq_submission_count = fields.Integer(compute='_compute_boq_submission_count', string="Bids Count")
+    
+    # Helper to easily copy the link
+    boq_public_url = fields.Char(compute='_compute_boq_public_url', string="Public BOQ Link")
+
+    @api.depends('boq_submission_ids')
+    def _compute_boq_submission_count(self):
+        for rec in self:
+            rec.boq_submission_count = len(rec.boq_submission_ids)
+
+    def _compute_boq_public_url(self):
+        base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+        for rec in self:
+            rec.boq_public_url = f"{base_url}/boq/fill/{rec.id}"
 
     def action_publish_boq(self):
         self.boq_state = 'published'
