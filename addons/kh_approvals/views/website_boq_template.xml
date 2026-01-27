@@ -1,0 +1,101 @@
+<odoo>
+    <template id="boq_public_template" name="Construction BOQ Form">
+        <t t-call="website.layout">
+            <div id="wrap" class="o_kh_boq_wrapper bg-gray-50 pb-5">
+                
+                <div class="s_title pt32 pb32 bg-white shadow-sm border-bottom">
+                    <div class="container">
+                        <div class="row align-items-center">
+                            <div class="col-lg-8">
+                                <h1 class="font-weight-bold text-dark mb-1">Project BOQ Submission</h1>
+                                <p class="text-muted mb-0">Project Reference: <span class="text-primary font-weight-bold" t-esc="project.name"/></p>
+                            </div>
+                            <div class="col-lg-4 text-lg-right text-center mt-3 mt-lg-0">
+                                <div class="p-3 bg-light rounded border">
+                                    <small class="text-uppercase text-muted font-weight-bold">Grand Total</small>
+                                    <div class="h2 text-primary font-weight-bold mb-0">
+                                        <span id="js_grand_total">0.00</span> <small>AED</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="container mt-5">
+                    
+                    <div class="card border-0 shadow-sm mb-5">
+                        <div class="card-body p-4">
+                            <h5 class="font-weight-bold mb-3">Applicant Information</h5>
+                            <div class="form-group">
+                                <label class="font-weight-bold text-muted small text-uppercase">Company / Contractor Name</label>
+                                <input type="text" id="applicant_name" class="form-control form-control-lg" placeholder="e.g. Al-Futtaim Construction" required="required"/>
+                            </div>
+                        </div>
+                    </div>
+
+                    <t t-foreach="sections" t-as="section">
+                        <div class="card border-0 shadow-sm mb-4 o_boq_section">
+                            <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center" 
+                                 data-toggle="collapse" t-att-data-target="'#sec_' + str(section['id'])" style="cursor: pointer;">
+                                <h5 class="m-0 text-dark">
+                                    <span class="badge badge-dark mr-2" t-esc="section_index + 1"/> 
+                                    <t t-esc="section['name']"/>
+                                </h5>
+                                <i class="fa fa-chevron-down text-muted"></i>
+                            </div>
+                            
+                            <div t-att-id="'sec_' + str(section['id'])" class="collapse show">
+                                <div class="card-body p-0 table-responsive">
+                                    <table class="table table-hover mb-0 align-middle">
+                                        <thead class="bg-light text-uppercase small text-muted">
+                                            <tr>
+                                                <th class="pl-4">Item Description</th>
+                                                <th class="text-center" width="150">Required Qty</th>
+                                                <th width="150">Your Unit Price</th>
+                                                <th width="150" class="text-right pr-4">Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <t t-foreach="section['items']" t-as="item">
+                                                <tr>
+                                                    <td class="pl-4">
+                                                        <strong class="text-dark" t-esc="item['name']"/>
+                                                        <div class="small text-muted" t-esc="item['description']"/>
+                                                    </td>
+                                                    <td class="text-center">
+                                                        <span class="badge badge-pill badge-info px-3 py-2" style="font-size: 0.9rem;">
+                                                            <t t-esc="item['qty']"/>
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <input type="number" class="form-control js_unit_price" 
+                                                               t-att-data-id="item['product_id']"
+                                                               t-att-data-qty="item['qty']"
+                                                               placeholder="0.00"/>
+                                                    </td>
+                                                    <td class="text-right pr-4 font-weight-bold text-dark js_line_total">
+                                                        0.00
+                                                    </td>
+                                                </tr>
+                                            </t>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+
+                    <div class="d-flex justify-content-end pb-5 mt-4">
+                        <button id="btn_submit_boq" class="btn btn-primary btn-lg px-5 shadow font-weight-bold text-uppercase">
+                            Submit Quote <i class="fa fa-arrow-right ml-2"></i>
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+            
+            <script type="text/javascript" src="/kh_approvals/static/src/js/boq_website.js"></script>
+        </t>
+    </template>
+</odoo>
