@@ -24,7 +24,7 @@ class ProjectEmail(models.Model):
     body_html = fields.Html(string="Full Email Body", readonly=True, sanitize=True)
     
     attachment_ids = fields.Many2many("ir.attachment", string="Attachments", readonly=True, bypass_search_access=True)
-    category_ids = fields.Many2one("project.email.category", string="Category")
+    category_ids = fields.Many2many("project.email.category", string="Categories")
 
     # UPDATED: Added Old Contractor/Consultant folders
     folder = fields.Selection([
