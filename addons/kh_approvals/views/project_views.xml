@@ -38,7 +38,7 @@
                             <field name="email_from"/>
                             <field name="subject"/>
                             <field name="folder"/>
-                            <field name="category_ids" widget="many2many_tags" options="{'color_field': 'color'}"/>
+                            <field name="category_id" widget="badge" options="{'color_field': 'color'}"/>
                         </list>
                     </field>
                 </page>
