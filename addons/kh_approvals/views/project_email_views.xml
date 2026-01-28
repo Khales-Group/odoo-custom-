@@ -16,7 +16,7 @@
 
                     <!-- THE SIDEBAR (Filter by Category) -->
                     <searchpanel>
-                        <field name="category_ids" icon="fa-folder" enable_counters="0"/>
+                        <field name="category_id" icon="fa-folder" enable_counters="0"/>
                     </searchpanel>
                 </search>
             </field>
@@ -35,7 +35,7 @@
                     <field name="email_from"/>
                     <field name="subject"/>
                     <field name="preview"/>
-                    <field name="category_ids" widget="many2many_tags"/>
+                    <field name="category_id" widget="badge"/>
                 </list>
             </field>
         </record>
