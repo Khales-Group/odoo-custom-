@@ -16,7 +16,8 @@
 
                     <!-- THE SIDEBAR (Filter by Category) -->
                     <searchpanel>
-                        <field name="category_id" icon="fa-folder" enable_counters="0"/>
+                        <field name="folder" icon="fa-folder" enable_counters="1" string="Folders"/>
+                        <field name="category_id" icon="fa-tag" enable_counters="0" string="Categories"/>
                     </searchpanel>
                 </search>
             </field>
@@ -34,6 +35,7 @@
                     <field name="date"/>
                     <field name="email_from"/>
                     <field name="subject"/>
+                    <field name="folder" widget="badge" decoration-info="folder == 'internal'" decoration-warning="folder == 'owner'" decoration-success="folder == 'contractor'"/>
                     <field name="preview"/>
                     <field name="category_id" widget="badge"/>
                 </list>
