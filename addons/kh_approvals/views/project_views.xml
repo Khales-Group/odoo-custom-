@@ -4,6 +4,11 @@
         <field name="model">project.project</field>
         <field name="inherit_id" ref="project.edit_project"/>
         <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_open_project_emails" type="object" class="oe_stat_button" icon="fa-envelope">
+                    <field name="email_count" widget="statinfo" string="Emails"/>
+                </button>
+            </xpath>
             <xpath expr="//header" position="inside">
                 <button name="action_publish_boq" string="Publish BOQ" type="object" class="btn-primary"
                         invisible="boq_state == 'published'"/>
@@ -23,6 +28,17 @@
                             <field name="item_description"/>
                             <field name="uom_id"/>
                             <field name="quantity"/>
+                        </list>
+                    </field>
+                </page>
+                <page string="Emails" name="project_emails">
+                    <field name="email_ids">
+                        <list decoration-info="folder=='internal'">
+                            <field name="date"/>
+                            <field name="email_from"/>
+                            <field name="subject"/>
+                            <field name="folder"/>
+                            <field name="category_ids" widget="many2many_tags" options="{'color_field': 'color'}"/>
                         </list>
                     </field>
                 </page>
