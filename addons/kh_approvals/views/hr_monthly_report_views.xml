@@ -51,6 +51,31 @@
             </field>
         </record>
 
+        <!-- GRAPH VIEW: Visual Analytics -->
+        <record id="view_kh_hr_monthly_report_graph" model="ir.ui.view">
+            <field name="name">kh.hr.monthly.report.graph</field>
+            <field name="model">kh.hr.monthly.report</field>
+            <field name="arch" type="xml">
+                <graph string="Monthly Reports Analytics" sample="1">
+                    <field name="manager_id"/>
+                    <field name="state"/>
+                </graph>
+            </field>
+        </record>
+
+        <!-- PIVOT VIEW: The "Check if Sent" Dashboard -->
+        <record id="view_kh_hr_monthly_report_pivot" model="ir.ui.view">
+            <field name="name">kh.hr.monthly.report.pivot</field>
+            <field name="model">kh.hr.monthly.report</field>
+            <field name="arch" type="xml">
+                <pivot string="Monthly Reports Analytics" sample="1">
+                    <field name="date_generated" type="row" interval="month"/>
+                    <field name="manager_id" type="col"/>
+                    <field name="state" type="col"/>
+                </pivot>
+            </field>
+        </record>
+
         <!-- SEARCH VIEW -->
         <record id="view_kh_hr_monthly_report_search" model="ir.ui.view">
             <field name="name">kh.hr.monthly.report.search</field>
@@ -62,6 +87,9 @@
                     <field name="month_label"/>
                     <filter string="My Reports" name="my_reports" domain="[('user_id', '=', uid)]"/>
                     <filter string="My Team's Reports" name="my_team_reports" domain="[('manager_user_id', '=', uid)]"/>
+                    <separator/>
+                    <filter string="Sent (Draft)" name="filter_draft" domain="[('state', '=', 'draft')]"/>
+                    <filter string="Reviewed" name="filter_reviewed" domain="[('state', '=', 'reviewed')]"/>
                     <group expand="0" string="Group By">
                         <filter string="Manager" name="group_manager" context="{'group_by': 'manager_id'}"/>
                         <filter string="Month" name="group_month" context="{'group_by': 'month_label'}"/>
@@ -74,7 +102,7 @@
         <record id="action_kh_hr_monthly_report" model="ir.actions.act_window">
             <field name="name">Monthly Reports</field>
             <field name="res_model">kh.hr.monthly.report</field>
-            <field name="view_mode">list,form</field>
+            <field name="view_mode">list,form,graph,pivot</field>
             <field name="context">{'search_default_my_team_reports': 1}</field>
         </record>
 
