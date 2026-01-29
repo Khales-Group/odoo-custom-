@@ -1,0 +1,3 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_kh_hr_audit,kh.hr.audit,model_kh_hr_audit,base.group_user,1,1,1,1
+access_kh_hr_audit_line,kh.hr.audit.line,model_kh_hr_audit_line,base.group_user,1,1,1,1

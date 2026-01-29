@@ -1,0 +1,49 @@
+<odoo>
+    <record id="view_kh_hr_audit_tree" model="ir.ui.view">
+        <field name="name">kh.hr.audit.list</field>
+        <field name="model">kh.hr.audit</field>
+        <field name="arch" type="xml">
+            <list decoration-info="state == 'draft'" decoration-success="state == 'sent'">
+                <field name="name"/>
+                <field name="manager_id"/>
+                <field name="department_id"/>
+                <field name="audit_date"/>
+                <field name="avg_performance" widget="progressbar"/>
+                <field name="state" widget="badge" decoration-info="state == 'draft'" decoration-success="state == 'sent'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_kh_hr_audit_graph" model="ir.ui.view">
+        <field name="name">kh.hr.audit.graph</field>
+        <field name="model">kh.hr.audit</field>
+        <field name="arch" type="xml">
+            <graph string="Department Performance Analysis" type="bar">
+                <field name="department_id" type="row"/>
+                <field name="avg_performance" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <record id="view_kh_hr_audit_pivot" model="ir.ui.view">
+        <field name="name">kh.hr.audit.pivot</field>
+        <field name="model">kh.hr.audit</field>
+        <field name="arch" type="xml">
+            <pivot string="Audit Statistics">
+                <field name="department_id" type="row"/>
+                <field name="audit_date" interval="month" type="col"/>
+                <field name="avg_performance" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="action_kh_hr_audit" model="ir.actions.act_window">
+        <field name="name">HR Audit Reports</field>
+        <field name="res_model">kh.hr.audit</field>
+        <field name="view_mode">list,form,graph,pivot</field>
+    </record>
+
+    <!-- Menu Items -->
+    <menuitem id="menu_kh_hr_audit_root" name="HR Audit" sequence="10" parent="hr.menu_hr_root"/>
+    <menuitem id="menu_kh_hr_audit_reports" name="Monthly Audits" parent="menu_kh_hr_audit_root" action="action_kh_hr_audit"/>
+</odoo>

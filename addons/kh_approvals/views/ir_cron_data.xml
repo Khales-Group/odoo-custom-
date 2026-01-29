@@ -1,0 +1,14 @@
+<odoo>
+    <data noupdate="1">
+        <record id="ir_cron_hr_monthly_audit" model="ir.cron">
+            <field name="name">HR: Generate and Send Monthly Audits (29th)</field>
+            <field name="model_id" ref="model_kh_hr_audit"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_generate_monthly_reports()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">months</field>
+            <field name="numbercall">-1</field>
+            <field name="nextcall" eval="(DateTime.now().replace(day=29, hour=8, minute=0)).strftime('%Y-%m-%d %H:%M:%S')"/>
+        </record>
+    </data>
+</odoo>
