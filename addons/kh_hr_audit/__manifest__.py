@@ -9,8 +9,8 @@
     'depends': ['base', 'hr', 'hr_attendance', 'hr_payroll', 'hr_holidays'], # تأكد أن الموديولات المعتمدة صحيحة
     'data': [
         'security/ir.model.access.csv',
-        'data/ir_cron_data.xml',
-        'data/mail_template_data.xml',
+        'ir_cron_data.xml',
+        'mail_template_data.xml',
         'views/audit_view.xml',
         'views/hr_audit_views.xml',
     ],
