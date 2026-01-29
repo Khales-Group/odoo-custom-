@@ -1,0 +1,97 @@
+<odoo>
+    <data>
+        <!-- LIST VIEW -->
+        <record id="view_kh_hr_monthly_report_tree" model="ir.ui.view">
+            <field name="name">kh.hr.monthly.report.list</field>
+            <field name="model">kh.hr.monthly.report</field>
+            <field name="arch" type="xml">
+                <list string="Monthly Reports" decoration-info="state == 'draft'" decoration-success="state == 'reviewed'">
+                    <field name="name"/>
+                    <field name="date_generated"/>
+                    <field name="month_label"/>
+                    <field name="employee_id" widget="many2one_avatar_user"/>
+                    <field name="manager_id"/>
+                    <field name="state" widget="badge" decoration-info="state == 'draft'" decoration-success="state == 'reviewed'"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- FORM VIEW -->
+        <record id="view_kh_hr_monthly_report_form" model="ir.ui.view">
+            <field name="name">kh.hr.monthly.report.form</field>
+            <field name="model">kh.hr.monthly.report</field>
+            <field name="arch" type="xml">
+                <form string="Monthly Report">
+                    <header>
+                        <button name="action_mark_reviewed" string="Mark as Reviewed" type="object" class="btn-primary" invisible="state != 'draft'" groups="kh_approvals.group_kh_approvals_manager"/>
+                        <field name="state" widget="statusbar"/>
+                    </header>
+                    <sheet>
+                        <div class="oe_title">
+                            <h1><field name="name"/></h1>
+                        </div>
+                        <group>
+                            <group>
+                                <field name="employee_id"/>
+                                <field name="manager_id"/>
+                            </group>
+                            <group>
+                                <field name="date_generated"/>
+                                <field name="month_label"/>
+                            </group>
+                        </group>
+                        <notebook>
+                            <page string="Report Content">
+                                <field name="summary" widget="html"/>
+                            </page>
+                        </notebook>
+                    </sheet>
+                    <chatter/>
+                </form>
+            </field>
+        </record>
+
+        <!-- SEARCH VIEW -->
+        <record id="view_kh_hr_monthly_report_search" model="ir.ui.view">
+            <field name="name">kh.hr.monthly.report.search</field>
+            <field name="model">kh.hr.monthly.report</field>
+            <field name="arch" type="xml">
+                <search>
+                    <field name="employee_id"/>
+                    <field name="manager_id"/>
+                    <field name="month_label"/>
+                    <filter string="My Reports" name="my_reports" domain="[('user_id', '=', uid)]"/>
+                    <filter string="My Team's Reports" name="my_team_reports" domain="[('manager_user_id', '=', uid)]"/>
+                    <group expand="0" string="Group By">
+                        <filter string="Manager" name="group_manager" context="{'group_by': 'manager_id'}"/>
+                        <filter string="Month" name="group_month" context="{'group_by': 'month_label'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+
+        <!-- ACTION -->
+        <record id="action_kh_hr_monthly_report" model="ir.actions.act_window">
+            <field name="name">Monthly Reports</field>
+            <field name="res_model">kh.hr.monthly.report</field>
+            <field name="view_mode">list,form</field>
+            <field name="context">{'search_default_my_team_reports': 1}</field>
+        </record>
+
+        <!-- MENU ITEM (Under HR) -->
+        <menuitem id="menu_kh_hr_monthly_report" name="Monthly Reports" parent="hr.menu_hr_root" action="action_kh_hr_monthly_report" sequence="20"/>
+
+        <!-- CRON JOB: Runs on the 29th of every month -->
+        <record id="ir_cron_generate_monthly_reports" model="ir.cron">
+            <field name="name">HR: Generate Monthly Employee Reports</field>
+            <field name="model_id" ref="model_kh_hr_monthly_report"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_generate_monthly_reports()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">months</field>
+            <field name="numbercall">-1</field>
+            <!-- Note: You may need to manually adjust the Next Execution Date in Settings > Technical > Scheduled Actions to ensure it starts on the correct 29th -->
+            <field name="nextcall" eval="(DateTime.now().replace(day=29) if DateTime.now().day &lt; 29 else (DateTime.now() + relativedelta(months=1)).replace(day=29)).strftime('%Y-%m-%d 06:00:00')"/>
+        </record>
+    </data>
+</odoo>

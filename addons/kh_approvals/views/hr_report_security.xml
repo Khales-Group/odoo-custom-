@@ -1,0 +1,33 @@
+<odoo>
+    <!-- Rule 1: Employees can only see their own reports -->
+    <record id="rule_kh_hr_report_employee_own" model="ir.rule">
+        <field name="name">Monthly Report: Employee sees own</field>
+        <field name="model_id" ref="model_kh_hr_monthly_report"/>
+        <field name="domain_force">[('user_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+        <field name="perm_read" eval="1"/>
+        <field name="perm_write" eval="0"/>
+        <field name="perm_create" eval="0"/>
+        <field name="perm_unlink" eval="0"/>
+    </record>
+
+    <!-- Rule 2: Managers can see reports of their team members -->
+    <record id="rule_kh_hr_report_manager_team" model="ir.rule">
+        <field name="name">Monthly Report: Manager sees team</field>
+        <field name="model_id" ref="model_kh_hr_monthly_report"/>
+        <field name="domain_force">['|', ('manager_user_id', '=', user.id), ('user_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('kh_approvals.group_kh_approvals_manager'))]"/>
+        <field name="perm_read" eval="1"/>
+        <field name="perm_write" eval="1"/>
+        <field name="perm_create" eval="0"/>
+        <field name="perm_unlink" eval="0"/>
+    </record>
+    
+    <!-- Rule 3: HR Managers see everything -->
+    <record id="rule_kh_hr_report_all" model="ir.rule">
+        <field name="name">Monthly Report: HR Manager sees all</field>
+        <field name="model_id" ref="model_kh_hr_monthly_report"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('hr.group_hr_manager'))]"/>
+    </record>
+</odoo>
