@@ -6,6 +6,9 @@
         <field name="arch" type="xml">
             
             <xpath expr="//div[@name='button_box']" position="inside">
+                 <button name="action_open_project_emails" type="object" class="oe_stat_button" icon="fa-envelope">
+                    <field name="email_count" widget="statinfo" string="Emails"/>
+                </button>
                 <button name="action_view_submissions" 
                         type="object" 
                         class="oe_stat_button" 
@@ -18,12 +21,19 @@
             <xpath expr="//header" position="inside">
                 <button name="action_publish_boq" string="Publish BOQ" type="object" class="oe_highlight"
                         invisible="boq_state == 'published'"/>
+                <button name="action_reset_boq" string="Reset to Draft" type="object"
+                        invisible="boq_state == 'draft'"/>
                 <button name="action_submit_boq_from_contractor" string="Submit My Bid" type="object" class="btn-primary"
                         invisible="boq_state != 'published'"/>
             </xpath>
 
             <xpath expr="//notebook" position="inside">
-                <page string="Master BOQ" name="master_boq">
+                <page string="Master BOQ" name="master_boq" priority="1">
+                    <header>
+                       <button name="action_load_default_boq_template" string="Load Default Items" type="object" class="btn-secondary"/>
+                       <field name="boq_state" widget="statusbar"/>
+                       <field name="tender_url" widget="url" readonly="1" invisible="not tender_url"/>
+                    </header>
                     <field name="boq_plan_ids" readonly="boq_state == 'published'">
                         <list editable="bottom">
                             <field name="section_name"/>
@@ -33,8 +43,7 @@
                         </list>
                     </field>
                 </page>
-
-                <page string="Fill Pricing" name="boq_fill" invisible="boq_state != 'published'">
+                <page string="Fill Pricing" name="boq_fill" invisible="boq_state != 'published'" priority="2">
                     <div class="alert alert-info">
                         الرجاء تعبئة أسعارك في العمود "Your Price" ثم الضغط على زر "Submit My Bid" في الأعلى.
                     </div>
@@ -46,6 +55,17 @@
                             <field name="contractor_unit_price" style="background-color: #e6f2ff; font-weight: bold;"/>
                         </list>
                     </field>
+                </page>
+                <page string="Emails" name="project_emails" priority="99">
+                   <field name="email_ids">
+                       <list decoration-info="folder=='internal'">
+                           <field name="date"/>
+                           <field name="email_from"/>
+                           <field name="subject"/>
+                           <field name="folder"/>
+                           <field name="category_id" widget="badge" options="{'color_field': 'color'}"/>
+                       </list>
+                   </field>
                 </page>
             </xpath>
         </field>
