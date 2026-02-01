@@ -124,7 +124,6 @@
             </list>
         </field>
     </record>
-    
     <record id="action_kh_boq_submissions" model="ir.actions.act_window">
         <field name="name">BOQ Submissions</field>
         <field name="res_model">kh.boq.submission</field>
