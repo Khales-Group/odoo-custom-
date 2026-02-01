@@ -26,9 +26,22 @@ class ProjectProject(models.Model):
     boq_public_url = fields.Char(compute='_compute_boq_public_url', string="Public BOQ Link")
 
     # === TENDER FIELDS ===
-    tender_token = fields.Char("Tender Token", copy=False)
+    tender_token = fields.Char("Tender Token", copy=False, readonly=True)
     is_tender_published = fields.Boolean("Tender Published", default=False)
     tender_submission_ids = fields.One2many('tender.submission', 'project_id', string="Bids/Offers")
+    
+    # New computed field for the full link
+    tender_url = fields.Char(string="Tender Link", compute="_compute_tender_url")
+
+    @api.depends('tender_token')
+    def _compute_tender_url(self):
+        # Website domain
+        website_base_url = "https://www.khales.ae" 
+        for record in self:
+            if record.tender_token:
+                record.tender_url = f"{website_base_url}/tender/{record.tender_token}"
+            else:
+                record.tender_url = False
 
     @api.depends('boq_submission_ids')
     def _compute_boq_submission_count(self):
