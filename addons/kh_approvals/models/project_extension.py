@@ -36,10 +36,11 @@ class ProjectProject(models.Model):
     @api.depends('tender_token')
     def _compute_tender_url(self):
         # Website domain
-        website_base_url = "https://www.khales.ae" 
+        website_base_url = "https://khales-next-25yo.vercel.app"
         for record in self:
             if record.tender_token:
                 record.tender_url = f"{website_base_url}/tender/{record.tender_token}"
+                print(f"DEBUG: Generated URL: {record.tender_url}") # Look for this in your log
             else:
                 record.tender_url = False
 
@@ -64,6 +65,12 @@ class ProjectProject(models.Model):
             if not record.tender_token:
                 record.tender_token = str(uuid.uuid4()) # Generate unique ID
             record.is_tender_published = True
+            
+        # Add this return statement to force the page to refresh instantly
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'reload',
+        }
 
     def action_load_default_boq_template(self):
         self.ensure_one()
