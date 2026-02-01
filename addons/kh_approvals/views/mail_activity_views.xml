@@ -1,3 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <data>
+        <record id="kh_mail_activity_schedule_view_form_inherit" model="ir.ui.view">
+            <field name="name">kh.mail.activity.schedule.view.form.inherit</field>
+            <field name="model">mail.activity.schedule</field>
+            <field name="inherit_id" ref="mail.mail_activity_schedule_view_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='note']" position="after">
+                    <field name="x_attachment_ids" widget="many2many_binary" string="إرفاق ملفات للعرض"/>
+                </xpath>
+            </field>
+        </record>
+    </data>
 </odoo>
