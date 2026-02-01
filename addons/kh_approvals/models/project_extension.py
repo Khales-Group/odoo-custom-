@@ -26,23 +26,9 @@ class ProjectProject(models.Model):
     boq_public_url = fields.Char(compute='_compute_boq_public_url', string="Public BOQ Link")
 
     # === TENDER FIELDS ===
-    tender_token = fields.Char("Tender Token", copy=False, readonly=True)
+    tender_token = fields.Char("Tender Token", copy=False)
     is_tender_published = fields.Boolean("Tender Published", default=False)
     tender_submission_ids = fields.One2many('tender.submission', 'project_id', string="Bids/Offers")
-    
-    # New computed field for the full link
-    tender_url = fields.Char(string="Tender Link", compute="_compute_tender_url")
-
-    @api.depends('tender_token')
-    def _compute_tender_url(self):
-        # Website domain
-        website_base_url = "https://khales-next-25yo.vercel.app"
-        for record in self:
-            if record.tender_token:
-                record.tender_url = f"{website_base_url}/tender/{record.tender_token}"
-                print(f"DEBUG: Generated URL: {record.tender_url}") # Look for this in your log
-            else:
-                record.tender_url = False
 
     @api.depends('boq_submission_ids')
     def _compute_boq_submission_count(self):
@@ -63,14 +49,8 @@ class ProjectProject(models.Model):
     def action_publish_tender(self):
         for record in self:
             if not record.tender_token:
-                record.tender_token = str(uuid.uuid4())
+                record.tender_token = str(uuid.uuid4()) # Generate unique ID
             record.is_tender_published = True
-        
-        # This forces the page to reload so the blue box appears instantly
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'reload',
-        }
 
     def action_load_default_boq_template(self):
         self.ensure_one()
