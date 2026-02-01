@@ -46,6 +46,41 @@ class ProjectProject(models.Model):
     def action_reset_boq(self):
         self.boq_state = 'draft'
 
+    def action_submit_boq_from_contractor(self):
+        self.ensure_one()
+
+        if not self.env.user.partner_id:
+            raise UserError("The current user is not linked to a Partner. Please link the user to a partner to submit a BOQ.")
+
+        if not any(self.boq_plan_ids.mapped('contractor_unit_price')):
+            raise UserError("Please fill in at least one price before submitting.")
+
+        # Create Submission
+        submission = self.env['kh.boq.submission'].create({
+            'project_id': self.id,
+            'partner_id': self.env.user.partner_id.id,
+        })
+
+        # Create submission lines
+        for line in self.boq_plan_ids:
+            if line.contractor_unit_price > 0:
+                self.env['kh.boq.line'].create({
+                    'submission_id': submission.id,
+                    'plan_line_id': line.id,
+                    'quantity': line.quantity,
+                    'unit_price': line.contractor_unit_price,
+                })
+
+        # Return an action to show the new submission
+        return {
+            'name': 'BOQ Submission',
+            'type': 'ir.actions.act_window',
+            'res_model': 'kh.boq.submission',
+            'view_mode': 'form',
+            'res_id': submission.id,
+            'target': 'current',
+        }
+
     def action_publish_tender(self):
         for record in self:
             if not record.tender_token:
@@ -204,3 +239,4 @@ class ProjectBoqPlan(models.Model):
     item_description = fields.Char(required=True)
     quantity = fields.Float(string="Planned Qty", required=True)
     uom_id = fields.Char(string="Unit", default="Unit")
+    contractor_unit_price = fields.Float(string="Contractor Unit Price")

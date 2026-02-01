@@ -14,6 +14,8 @@
                         invisible="boq_state == 'published'"/>
                 <button name="action_reset_boq" string="Reset BOQ" type="object" class="btn-secondary"
                         invisible="boq_state == 'draft'"/>
+                <button name="action_submit_boq_from_contractor" string="Submit BOQ" type="object" class="btn-primary"
+                        invisible="boq_state != 'published'"/>
             </xpath>
             
             <xpath expr="//notebook" position="inside">
@@ -31,6 +33,19 @@
                         </list>
                     </field>
                 </page>
+
+                <page string="BOQ Submission" name="boq_submission" invisible="boq_state != 'published'">
+                    <field name="boq_plan_ids" mode="list">
+                        <list editable="bottom">
+                            <field name="section_name" readonly="1"/>
+                            <field name="item_description" readonly="1"/>
+                            <field name="uom_id" readonly="1"/>
+                            <field name="quantity" readonly="1"/>
+                            <field name="contractor_unit_price"/>
+                        </list>
+                    </field>
+                </page>
+
                 <page string="Emails" name="project_emails">
                     <field name="email_ids">
                         <list decoration-info="folder=='internal'">
