@@ -56,6 +56,7 @@
                         </list>
                     </field>
                 </page>
+                
                 <page string="Emails" name="project_emails" priority="99">
                    <field name="email_ids">
                        <list decoration-info="folder=='internal'">
@@ -78,19 +79,17 @@
             <form string="Bid Submission" create="0" edit="0">
                 <sheet>
                     <div class="oe_title">
-                        <h1>
-                            <field name="contractor_id" readonly="1"/>
-                        </h1>
-                        <h3>
-                            <field name="project_id" readonly="1"/>
-                        </h3>
+                        <h1><field name="contractor_name" readonly="1"/></h1>
+                        <h3><field name="project_id" readonly="1"/></h3>
                     </div>
                     <group>
-                        <group>
-                            <field name="submission_date"/>
+                        <group string="Contact Info">
+                            <field name="contractor_email" widget="email" readonly="1"/>
+                            <field name="contractor_phone" widget="phone" readonly="1"/>
                         </group>
-                        <group>
-                            <field name="total_amount" widget="monetary"/>
+                        <group string="Submission Details">
+                            <field name="submission_date" readonly="1"/>
+                            <field name="total_amount" widget="monetary" decoration-bf="1"/>
                         </group>
                     </group>
                     <notebook>
@@ -101,8 +100,8 @@
                                     <field name="item_description"/>
                                     <field name="uom_id"/>
                                     <field name="quantity"/>
-                                    <field name="unit_price"/>
-                                    <field name="subtotal" sum="Total"/>
+                                    <field name="unit_price" widget="monetary"/>
+                                    <field name="subtotal" widget="monetary" sum="Total" decoration-bf="1"/>
                                 </list>
                             </field>
                         </page>
@@ -116,11 +115,12 @@
         <field name="name">kh.boq.submission.list</field>
         <field name="model">kh.boq.submission</field>
         <field name="arch" type="xml">
-            <list string="Received Bids">
+            <list string="Received Bids" default_order="submission_date desc">
+                <field name="contractor_name"/>
+                <field name="contractor_phone"/>
                 <field name="project_id"/>
-                <field name="contractor_id"/>
                 <field name="submission_date"/>
-                <field name="total_amount" sum="Total"/>
+                <field name="total_amount" sum="Total" widget="monetary" decoration-bf="1"/>
             </list>
         </field>
     </record>
