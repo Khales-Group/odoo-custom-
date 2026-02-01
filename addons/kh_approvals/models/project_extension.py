@@ -63,10 +63,10 @@ class ProjectProject(models.Model):
     def action_publish_tender(self):
         for record in self:
             if not record.tender_token:
-                record.tender_token = str(uuid.uuid4()) # Generate unique ID
+                record.tender_token = str(uuid.uuid4())
             record.is_tender_published = True
-            
-        # Add this return statement to force the page to refresh instantly
+        
+        # This forces the page to reload so the blue box appears instantly
         return {
             'type': 'ir.actions.client',
             'tag': 'reload',

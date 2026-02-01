@@ -14,9 +14,21 @@
             </xpath>
 
             <xpath expr="//sheet/div[@name='button_box']" position="after">
-                <div class="alert alert-info" role="alert">
-                    <strong>Tender Link: </strong>
-                    <field name="tender_url" widget="CopyClipboardChar" readonly="1"/>
+                <field name="is_tender_published" invisible="1"/>
+                <field name="tender_token" invisible="1"/>
+
+                <div class="alert alert-info" role="alert" 
+                     style="margin-bottom: 10px;" 
+                     invisible="not is_tender_published">
+                    <h3 style="margin:0; font-weight:bold; color: #0c5460;">
+                        <i class="fa fa-link"/> Tender Link Active
+                    </h3>
+                    <p style="margin: 5px 0 0 0;">
+                        Share this link with contractors:
+                    </p>
+                    <div style="display: flex; gap: 10px; margin-top: 5px;">
+                        <field name="tender_url" widget="CopyClipboardChar" readonly="1" style="font-weight: bold; width: 100%;"/>
+                    </div>
                 </div>
             </xpath>
 
