@@ -16,6 +16,11 @@
                 <field name="boq_state" widget="statusbar"/>
             </xpath>
 
+            <!-- Add Tender Link to Main Form -->
+            <xpath expr="//field[@name='partner_id']" position="after">
+                <field name="tender_url" widget="url" readonly="1"/>
+            </xpath>
+
             <!-- Add Page to Notebook -->
             <xpath expr="//notebook" position="inside">
                 <page string="BOQ &amp; Tender" name="boq_tender_page">
