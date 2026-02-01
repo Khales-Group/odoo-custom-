@@ -1,5 +1,6 @@
 from odoo import models, fields, api
 from odoo.exceptions import UserError
+import uuid
 
 class ProjectProject(models.Model):
     _inherit = 'project.project'
@@ -24,6 +25,11 @@ class ProjectProject(models.Model):
     # Helper to easily copy the link
     boq_public_url = fields.Char(compute='_compute_boq_public_url', string="Public BOQ Link")
 
+    # === TENDER FIELDS ===
+    tender_token = fields.Char("Tender Token", copy=False)
+    is_tender_published = fields.Boolean("Tender Published", default=False)
+    tender_submission_ids = fields.One2many('tender.submission', 'project_id', string="Bids/Offers")
+
     @api.depends('boq_submission_ids')
     def _compute_boq_submission_count(self):
         for rec in self:
@@ -39,6 +45,12 @@ class ProjectProject(models.Model):
         
     def action_reset_boq(self):
         self.boq_state = 'draft'
+
+    def action_publish_tender(self):
+        for record in self:
+            if not record.tender_token:
+                record.tender_token = str(uuid.uuid4()) # Generate unique ID
+            record.is_tender_published = True
 
     def action_load_default_boq_template(self):
         self.ensure_one()
