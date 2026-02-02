@@ -78,7 +78,7 @@ class MailActivitySchedule(models.TransientModel):
     _inherit = 'mail.activity.schedule'
 
     # نضيف حقل مرفقات خاص بنافذة الجدولة
-    x_attachment_ids = fields.Many2many('ir.attachment', string="إرفاق ملفات")
+    x_attachment_ids = fields.Many2many('ir.attachment', string="إرفاق ملفات", domain="[('res_model', '!=', 'knowledge.article')]")
 
     def action_schedule_activities(self):
         """
