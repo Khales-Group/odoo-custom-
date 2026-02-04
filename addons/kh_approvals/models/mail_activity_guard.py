@@ -112,7 +112,7 @@ class MailActivitySchedule(models.TransientModel):
                 link_html = f'<div style="margin-top:5px;"><a href="{download_url}" target="_blank" style="background-color: #f1f1f1; padding: 5px; border-radius: 4px;">📎 تحميل: {attachment.name}</a></div>'
                 links.append(link_html)
             
-            # دمج الروابط في نهاية الملاحظة
+            # دمج الروابط في نهاية الملاحظ
             self.note = note + "<br/><hr/><b>📂 ملفات مرفقة:</b>" + "".join(links)
 
         # استكمال العملية الطبيعية لأودو
