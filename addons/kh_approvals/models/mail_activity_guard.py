@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
+try:
+    from odoo.tools import Markup
+except ImportError:
+    from markupsafe import Markup
 
 # ---------------------------------------------------------
 # 1. كلاس الصلاحيات (كودك الأصلي مع تحسين بسيط)
@@ -85,7 +89,7 @@ class MailActivitySchedule(models.TransientModel):
         عند الضغط على زر الجدولة، نأخذ الملفات ونضع روابطها داخل الملاحظة
         """
         # التأكد من وجود ملاحظة لتفادي الخطأ
-        note = self.note or ''
+        note = Markup(self.note or '')
         
         if self.x_attachment_ids:
             # FIX: Use Base URL for absolute links (Email support)
@@ -113,7 +117,7 @@ class MailActivitySchedule(models.TransientModel):
                 links.append(link_html)
             
             # دمج الروابط في نهاية الملاحظ
-            self.note = note + "<br/><hr/><b>📂 ملفات مرفقة:</b>" + "".join(links)
+            self.note = note + Markup("<br/><hr/><b>📂 ملفات مرفقة:</b>") + Markup("".join(links))
 
         # استكمال العملية الطبيعية لأودو
         return super(MailActivitySchedule, self).action_schedule_activities()
