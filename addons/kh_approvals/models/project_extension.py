@@ -217,3 +217,9 @@ class ProjectBoqPlan(models.Model):
     quantity = fields.Float(string="Qty", required=True)
     uom_id = fields.Char(string="Unit", default="Unit")
     contractor_unit_price = fields.Float(string="Your Price") # السعر الذي يعبئه المقاول
+class Google_Drive_link(models.model):
+    _name = 'google.drive.link'
+    _description = 'Google Drive Link'
+    name = fields.Char(string="Link Name", required=True)
+    url = fields.Char(string="Google Drive URL", required=True)
+    project_id = fields.Many2one('project.project', string="Related Project")   
