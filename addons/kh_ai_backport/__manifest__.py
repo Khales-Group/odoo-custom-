@@ -5,6 +5,9 @@
     'version': '1.2',
     'author': 'Nezar Abou Hamdan',
     'depends': ['ai_app', 'mail'], # تم التحديث بناءً على الـ External ID الصحيح
+    'external_dependencies': {
+        'python': ['requests', 'numpy', 'pickle', 'base64'],
+    },
     'data': [
         'views/ai_agent_views.xml',
     ],

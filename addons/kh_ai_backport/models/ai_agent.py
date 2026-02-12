@@ -1,7 +1,23 @@
 from odoo import models, fields, api, _
+import base64
+import pickle
+import numpy as np
+import requests
 
 class AiAgent(models.Model):
     _inherit = 'ai.agent'
+
+    status = fields.Selection([
+        ('idle','Idle'),
+        ('processing','Processing'),
+        ('ready','Ready'),
+        ('error','Error')
+    ], default='idle')
+
+    chunk_ids = fields.One2many(
+        'ai.document.chunk',
+        'agent_id'
+    )
 
     def _process_query(self, query, history=None, attachment_ids=None):
         # ميزة الـ Feedback: إشعار المستخدم بالمراحل
@@ -27,7 +43,108 @@ class AiAgent(models.Model):
             record.message_post(body=message, message_type='notification')
 
     def action_reprocess_sources(self):
-        for source in self.sources_ids:
-            source.state = 'processing'
-            source._process_source()
+        self.status = 'processing'
+
+        self.chunk_ids.unlink()
+
+        attachments = self.env['ir.attachment'].search([
+            ('res_model', '=', 'ai.agent'),
+            ('res_id', '=', self.id)
+        ])
+
+        full_text = ""
+        for att in attachments:
+            full_text += self._extract_text(att)
+
+        chunks = self._chunk_text(full_text)
+
+        for chunk in chunks:
+            embedding = self._generate_embedding(chunk)
+
+            self.env['ai.document.chunk'].create({
+                'agent_id': self.id,
+                'content': chunk,
+                'embedding': pickle.dumps(embedding),
+            })
+
+        self.status = 'ready'
         return True
+
+    def _extract_text(self, attachment):
+        data = base64.b64decode(attachment.datas)
+
+        if attachment.mimetype == 'text/plain':
+            return data.decode('utf-8', errors='ignore')
+
+        # Add PDF / DOCX logic here
+        return ""
+
+    def _chunk_text(self, text, size=800):
+        words = text.split()
+        return [
+            " ".join(words[i:i+size])
+            for i in range(0, len(words), size)
+        ]
+
+    def _generate_embedding(self, text):
+        api_key = self.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/embedding-001:embedContent?key={api_key}"
+
+        response = requests.post(url, json={
+            "content": {
+                "parts": [{"text": text}]
+            }
+        })
+
+        return response.json()['embedding']['values']
+
+    def _answer_with_rag(self, question):
+        question_embedding = self._generate_embedding(question)
+
+        scored = []
+
+        for chunk in self.chunk_ids:
+            emb = pickle.loads(chunk.embedding)
+
+            similarity = np.dot(question_embedding, emb) / (
+                np.linalg.norm(question_embedding) * np.linalg.norm(emb)
+            )
+
+            scored.append((similarity, chunk.content))
+
+        scored.sort(reverse=True)
+
+        top_chunks = [c[1] for c in scored[:5]]
+
+        context = "\n\n".join(top_chunks)
+
+        prompt = f"""
+Use ONLY the context below to answer:
+
+{context}
+
+Question:
+{question}
+"""
+
+        answer = self._ask_gemini(prompt)
+
+        self.env['ai.message'].create({
+            'agent_id': self.id,
+            'role': 'assistant',
+            'message': answer
+        })
+
+    def _ask_gemini(self, prompt):
+        api_key = self.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
+
+        response = requests.post(url, json={
+            "contents": [{
+                "parts": [{"text": prompt}]
+            }]
+        })
+
+        return response.json()['candidates'][0]['content']['parts'][0]['text']

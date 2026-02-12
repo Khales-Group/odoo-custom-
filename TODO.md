@@ -1,7 +1,7 @@
-# TODO: Fix Odoo Module Issues
+# TODO: Implement RAG Features for Odoo AI
 
-- [x] Add 'hr_payroll' to depends in **manifest**.py
-- [x] Change default value for 'name' field in approval_request.py to use lambda
-- [x] Update **manifest**.py to include all data files (security, views, menus, data)
-- [x] Set application to True in **manifest**.py
-- [x] Add 'hr' to depends in **manifest**.py
+- [x] Create ai_document_chunk.py model
+- [x] Create ai_message.py model with RAG hook
+- [x] Update ai_agent.py with status, chunk_ids, and RAG methods
+- [x] Update **init**.py to import new models
+- [x] Update **manifest**.py with external dependencies
