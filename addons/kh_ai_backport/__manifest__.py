@@ -4,7 +4,7 @@
     'summary': 'Backporting File Attachments & AI Feedback Stages to 19.0',
     'version': '1.2',
     'author': 'Nezar Abou Hamdan',
-    'depends': ['ai', 'mail'], # تم التحديث بناءً على الـ External ID الصحيح
+    'depends': ['ai_agent', 'mail'], # Reverted to ai_agent as 'ai' does not provide ai.agent model
     'external_dependencies': {
         'python': ['requests', 'numpy', 'pickle', 'base64'],
     },
