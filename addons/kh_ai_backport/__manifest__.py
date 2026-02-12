@@ -5,7 +5,7 @@
     'category': 'Productivity',
     'author': 'Nezar Abou Hamdan',
     'depends': ['ai_agent', 'mail'],
-    'data': [],
+    'data': ['views/ai_agent_views.xml'],
     'installable': True,
     'application': False,
     'license': 'OEEL-1',

@@ -1,0 +1,15 @@
+<odoo>
+    <record id="view_ai_agent_form_inherit" model="ir.ui.view">
+        <field name="name">ai.agent.form.inherit</field>
+        <field name="model">ai.agent</field>
+        <field name="inherit_id" ref="ai_agent.view_ai_agent_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header" position="inside">
+                <button name="action_reprocess_sources" 
+                        string="Reprocess Sources" 
+                        type="object" 
+                        class="oe_highlight"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>
