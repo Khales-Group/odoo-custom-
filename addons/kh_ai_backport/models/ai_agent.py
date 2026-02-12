@@ -130,10 +130,10 @@ Question:
 
         answer = self._ask_gemini(prompt)
 
-        self.env['ai.message'].create({
+        self.env['ai.conversation.message'].create({
             'agent_id': self.id,
             'role': 'assistant',
-            'message': answer
+            'body': answer
         })
 
     def _ask_gemini(self, prompt):

@@ -1,13 +1,14 @@
 from odoo import models, api
 
-class AIMessage(models.Model):
-    _inherit = "ai.message"
+class AIConversationMessage(models.Model):
+    _inherit = "ai.conversation.message"
 
     @api.model
     def create(self, vals):
         record = super().create(vals)
 
-        if record.role == 'user':
-            record.agent_id._answer_with_rag(record.message)
+        # Only trigger on user messages
+        if record.role == 'user' and record.agent_id:
+            record.agent_id._answer_with_rag(record.body)
 
         return record
