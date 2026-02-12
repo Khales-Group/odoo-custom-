@@ -2,9 +2,9 @@
 {
     'name': 'Khales AI 19.1 Backport',
     'summary': 'Backporting File Attachments & AI Feedback Stages to 19.0',
-    'version': '1.1',
+    'version': '1.2',
     'author': 'Nezar Abou Hamdan',
-    'depends': ['ai_app', 'mail'],  # تأكد من أنها ai_app
+    'depends': ['ai_app', 'mail'], # تم التحديث بناءً على الـ External ID الصحيح
     'data': [
         'views/ai_agent_views.xml',
     ],
