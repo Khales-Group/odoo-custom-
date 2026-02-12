@@ -4,7 +4,7 @@
     'summary': 'Backporting File Attachments & AI Feedback Stages to 19.0',
     'version': '1.1',
     'author': 'Nezar Abou Hamdan',
-    'depends': ['ai', 'mail'],  # تم التصحيح هنا ليتوافق مع نسخة 19.0
+    'depends': ['ai_app', 'mail'],  # تأكد من أنها ai_app
     'data': [
         'views/ai_agent_views.xml',
     ],
