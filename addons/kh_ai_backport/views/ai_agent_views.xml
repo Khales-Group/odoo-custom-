@@ -1,13 +1,26 @@
 <odoo>
     <record id="view_ai_agent_form_inherit" model="ir.ui.view">
         <field name="model">ai.agent</field>
-        <field name="inherit_id" ref="ai_app.ai_agent_view_form"/> 
+        <field name="inherit_id" ref="ai_app.ai_agent_view_form"/>
         <field name="arch" type="xml">
+
             <xpath expr="//header" position="inside">
-                <button name="action_reprocess_sources" string="Reprocess Sources" type="object" class="btn-primary"/>
-                <button name="%(base.action_attachment)d" string="Upload Documents" type="action" 
-                        context="{'default_res_model': 'ai.agent', 'default_res_id': active_id}"/>
+
+                <button name="action_reprocess_sources"
+                        string="Reprocess Sources"
+                        type="object"
+                        class="btn-primary"/>
+
+                <button name="%(base.action_attachment)d"
+                        string="Upload Documents"
+                        type="action"
+                        context="{
+                            'default_res_model': 'ai.agent',
+                            'default_res_id': id
+                        }"/>
+
             </xpath>
+
         </field>
     </record>
 </odoo>
