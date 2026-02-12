@@ -48,3 +48,34 @@ class AiAgent(models.Model):
         # إرسال ملاحظة مؤقتة في الـ Chatter ليراها المستخدم
         for record in self:
             record.message_post(body=message, message_type='notification')
+
+    def _process_query(self, query, history=None, attachment_ids=None):
+        """
+        توسيع دالة المعالجة لدعم قراءة الملفات المرسلة لحظياً (Backport من 19.1)
+        """
+        file_context = ""
+        if attachment_ids:
+            attachments = self.env['ir.attachment'].browse(attachment_ids)
+            for attach in attachments:
+                # استخراج النص المستخلص تلقائياً بواسطة أودو
+                text = attach.index_content or ""
+                if text:
+                    file_context += f"\n[Document: {attach.name}]\n{text}\n"
+
+        # إذا وُجد نص من الملفات، نقوم بدمجه في السؤال الموجه للـ AI
+        if file_context:
+            enhanced_query = f"Context from attached files:\n{file_context}\n\nQuestion: {query}"
+        else:
+            enhanced_query = query
+
+        return super(AiAgent, self)._process_query(enhanced_query, history=history)
+
+    def _get_recent_attachments(self):
+        """
+        البحث عن آخر مرفق تم رفعه في جلسة الشات الحالية
+        """
+        messages = self.message_ids.sorted('create_date', reverse=True)
+        for message in messages:
+            if message.attachment_ids:
+                return message.attachment_ids.ids
+        return []
