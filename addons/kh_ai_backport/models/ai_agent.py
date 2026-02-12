@@ -2,7 +2,6 @@ from odoo import models, fields, api
 
 class AiAgent(models.Model):
     _inherit = 'ai.agent'
-
     def _get_system_prompt(self):
         """
         تعديل الـ System Prompt لتمكين العميل من فهم الفلترة الزمنية يدوياً
