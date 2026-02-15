@@ -24,6 +24,7 @@ class AiAgent(models.Model):
     )
     
     sources_ids = fields.One2many('ai.agent.source', 'agent_id', string="Knowledge Sources")
+    partner_id = fields.Many2one('res.partner', string="Partner")
 
     def _process_query(self, query, history=None, attachment_ids=None):
         # ميزة الـ Feedback: إشعار المستخدم بالمراحل
