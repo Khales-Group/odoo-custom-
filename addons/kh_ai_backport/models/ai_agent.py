@@ -35,7 +35,7 @@ class AiAgent(models.Model):
         'agent_id'
     )
     
-    sources_ids = fields.One2many('ai.agent.source', 'agent_id', string="Knowledge Sources")
+    knowledge_source_ids = fields.One2many('ai.agent.source', 'agent_id', string="Knowledge Sources")
     partner_id = fields.Many2one('res.partner', string="Partner")
 
     def _process_query(self, query, history=None, attachment_ids=None):

@@ -34,7 +34,7 @@
                     </div>
                     <notebook>
                         <page string="Sources">
-                            <field name="sources_ids">
+                            <field name="knowledge_source_ids">
                                 <tree editable="bottom">
                                     <field name="name"/>
                                     <field name="source_state"/>
