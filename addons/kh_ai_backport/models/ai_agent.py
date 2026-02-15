@@ -5,7 +5,11 @@ import numpy as np
 import requests
 
 class AiAgent(models.Model):
-    _inherit = 'ai.agent'
+    _name = 'ai.agent'
+    _inherit = ['mail.thread', 'mail.activity.mixin']
+    _description = 'AI Agent'
+
+    name = fields.Char(string="Agent Name", required=True)
 
     status = fields.Selection([
         ('idle','Idle'),
@@ -18,6 +22,8 @@ class AiAgent(models.Model):
         'ai.document.chunk',
         'agent_id'
     )
+    
+    sources_ids = fields.One2many('ai.agent.source', 'agent_id', string="Knowledge Sources")
 
     def _process_query(self, query, history=None, attachment_ids=None):
         # ميزة الـ Feedback: إشعار المستخدم بالمراحل
@@ -36,7 +42,8 @@ class AiAgent(models.Model):
         enhanced_query = f"Context from uploaded files:\n{file_context}\n\nQuestion: {query}" if file_context else query
 
         self._send_ai_status_log(_("Step 2/2: Generating the final answer..."))
-        return super(AiAgent, self)._process_query(enhanced_query, history=history)
+        # Call internal RAG method instead of super() since we are now standalone
+        return self._answer_with_rag(enhanced_query)
 
     def _send_ai_status_log(self, message):
         for record in self:
@@ -148,3 +155,16 @@ Question:
         })
 
         return response.json()['candidates'][0]['content']['parts'][0]['text']
+
+
+class AiAgentSource(models.Model):
+    _name = 'ai.agent.source'
+    _description = 'AI Knowledge Source'
+
+    agent_id = fields.Many2one('ai.agent')
+    name = fields.Char()
+    state = fields.Selection([('draft', 'Draft'), ('processing', 'Processing'), ('done', 'Done')], default='draft')
+    
+    def _process_source(self):
+        # Placeholder for source processing logic
+        self.state = 'done'

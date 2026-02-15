@@ -1,7 +1,12 @@
 from odoo import models, api
 
 class AIAgentMessage(models.Model):
-    _inherit = "ai.agent.message"
+    _name = "ai.agent.message"
+    _description = "AI Agent Message"
+
+    agent_id = fields.Many2one('ai.agent', required=True)
+    role = fields.Selection([('user', 'User'), ('assistant', 'Assistant')], required=True)
+    body = fields.Html(string="Message Body")
 
     @api.model
     def create(self, vals):

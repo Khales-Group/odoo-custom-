@@ -1,26 +1,57 @@
 <odoo>
-    <record id="view_ai_agent_form_inherit" model="ir.ui.view">
+    <!-- Define Action First -->
+    <record id="action_ai_agent" model="ir.actions.act_window">
+        <field name="name">AI Agents</field>
+        <field name="res_model">ai.agent</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- Define Menu -->
+    <menuitem id="menu_ai_agent_root" name="AI Agents" sequence="10"/>
+    <menuitem id="menu_ai_agent_main" parent="menu_ai_agent_root" action="action_ai_agent"/>
+
+    <!-- Define Form View -->
+    <record id="view_ai_agent_form" model="ir.ui.view">
+        <field name="name">ai.agent.form</field>
         <field name="model">ai.agent</field>
-        <field name="inherit_id" ref="ai_app.ai_agent_view_form"/>
         <field name="arch" type="xml">
-
-            <xpath expr="//header" position="inside">
-
-                <button name="action_reprocess_sources"
-                        string="Reprocess Sources"
-                        type="object"
-                        class="btn-primary"/>
-
-                <button name="%(base.action_attachment)d"
-                        string="Upload Documents"
-                        type="action"
-                        context="{
-                            'default_res_model': 'ai.agent',
-                            'default_res_id': id
-                        }"/>
-
-            </xpath>
-
+            <form>
+                <header>
+                    <button name="action_reprocess_sources"
+                            string="Reprocess Sources"
+                            type="object"
+                            class="btn-primary"/>
+                    <button name="%(base.action_attachment)d"
+                            string="Upload Documents"
+                            type="action"
+                            context="{'default_res_model': 'ai.agent', 'default_res_id': id}"/>
+                    <field name="status" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only"/>
+                        <h1><field name="name"/></h1>
+                    </div>
+                    <notebook>
+                        <page string="Sources">
+                            <field name="sources_ids">
+                                <tree editable="bottom">
+                                    <field name="name"/>
+                                    <field name="state"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Chunks">
+                            <field name="chunk_ids"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
         </field>
     </record>
 </odoo>
