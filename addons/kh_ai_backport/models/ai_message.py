@@ -1,4 +1,4 @@
-from odoo import models, api
+from odoo import models, api, fields
 
 class AIAgentMessage(models.Model):
     _name = "ai.agent.message"
