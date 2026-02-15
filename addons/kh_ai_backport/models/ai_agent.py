@@ -4,6 +4,18 @@ import pickle
 import numpy as np
 import requests
 
+class AiAgentSource(models.Model):
+    _name = 'ai.agent.source'
+    _description = 'AI Knowledge Source'
+
+    agent_id = fields.Many2one('ai.agent')
+    name = fields.Char()
+    source_state = fields.Selection([('draft', 'Draft'), ('processing', 'Processing'), ('done', 'Done')], default='draft')
+    
+    def _process_source(self):
+        # Placeholder for source processing logic
+        self.source_state = 'done'
+
 class AiAgent(models.Model):
     _name = 'ai.agent'
     _inherit = ['mail.thread', 'mail.activity.mixin']
@@ -156,16 +168,3 @@ Question:
         })
 
         return response.json()['candidates'][0]['content']['parts'][0]['text']
-
-
-class AiAgentSource(models.Model):
-    _name = 'ai.agent.source'
-    _description = 'AI Knowledge Source'
-
-    agent_id = fields.Many2one('ai.agent')
-    name = fields.Char()
-    state = fields.Selection([('draft', 'Draft'), ('processing', 'Processing'), ('done', 'Done')], default='draft')
-    
-    def _process_source(self):
-        # Placeholder for source processing logic
-        self.state = 'done'
