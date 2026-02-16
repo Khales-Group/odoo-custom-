@@ -48,7 +48,35 @@ class AiAgent(models.Model):
     @api.model
     def _process_query(self, query, history=None, attachment_ids=None):
         # السجل الذهبي: إذا طلع هاد السطر بالـ Terminal يعني حلينا المشكلة
-        _logger.info("===== [DEBUG GEMINI] تم اعتراض السؤال بنجاح =====")
+            _logger.info("===== [DEBUG GEMINI] تم اعتراض السؤال بنجاح =====")
+
+            if attachment_ids:
+                _logger.info(f"===== [DEBUG GEMINI] وجدنا ملفات: {attachment_ids} =====")
+
+                combined_text = ""
+                attachments = self.env['ir.attachment'].sudo().browse(attachment_ids)
+                for attach in attachments:
+                    # محاولة استخراج النص
+                    text = ""
+                    try:
+                        text = self._extract_pdf_text(attach) or self._extract_text(attach)
+                    except Exception as e:
+                        _logger.error(f"===== [DEBUG GEMINI] خطأ أثناء الاستخراج: {str(e)}")
+
+                    if text:
+                        combined_text += f"\n[محتوى ملف {attach.name}]:\n{text}\n"
+
+                if combined_text:
+                    _logger.info("===== [DEBUG GEMINI] جاري إرسال النص إلى جيمناي =====")
+                    try:
+                        answer = self._ask_gemini(f"Document Context:\n{combined_text}\n\nQuestion: {query}")
+                        return answer
+                    except Exception as e:
+                        _logger.error(f"===== [DEBUG GEMINI] خطأ في اتصال Gemini: {str(e)}")
+
+            # إذا ما في ملفات، ارجع لنظام أودو العادي
+            _logger.info("===== [DEBUG GEMINI] لا يوجد ملفات، نعود لنظام أودو الأصلي =====")
+            return super(AiAgent, self)._process_query(query, history=history, attachment_ids=attachment_ids)
 
         if attachment_ids:
             _logger.info(f"===== [DEBUG GEMINI] وجدنا ملفات برقم: {attachment_ids} =====")
