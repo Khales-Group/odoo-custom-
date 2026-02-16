@@ -1,25 +1,19 @@
 <odoo>
     <!-- Extend existing AI agent form (do not replace) -->
-    <record id="view_ai_agent_form_rag" model="ir.ui.view">
+   <record id="view_ai_agent_form_rag" model="ir.ui.view">
         <field name="name">ai.agent.form.rag</field>
         <field name="model">ai.agent</field>
-        <!-- adjust the ref if your core AI view has a different xmlid -->
-        <field name="inherit_id" ref="ai.view_ai_agent_form"/>
+        <field name="inherit_id" ref="ai_app.ai_agent_view_form"/>
         <field name="arch" type="xml">
+            
             <xpath expr="//header" position="inside">
-                <button name="action_reprocess_sources"
-                        string="Reprocess Sources"
-                        type="object"
-                        class="btn-primary"/>
-                <button name="%(base.action_attachment)d"
-                        string="Upload Documents"
-                        type="action"
-                        context="{'default_res_model': 'ai.agent', 'default_res_id': id}"/>
+                <button name="action_reprocess_sources" string="Reprocess Sources" type="object" class="btn-primary"/>
+                <button name="%(base.action_attachment)d" string="Upload Documents" type="action" context="{'default_res_model': 'ai.agent', 'default_res_id': id}"/>
                 <field name="status" widget="statusbar"/>
             </xpath>
 
-            <xpath expr="//notebook/page[@string='Sources']" position="replace">
-                <page string="Sources">
+            <xpath expr="//notebook/page[@name='ai_agent_sources']" position="replace">
+                <page string="Sources" name="ai_agent_sources_custom">
                     <field name="knowledge_source_ids">
                         <tree editable="bottom">
                             <field name="name"/>
@@ -30,14 +24,15 @@
             </xpath>
 
             <xpath expr="//notebook" position="inside">
-                <page string="Chunks">
+                <page string="Chunks" name="ai_agent_chunks">
                     <field name="chunk_ids">
                         <tree>
-                            <field name="content" />
+                            <field name="content"/>
                         </tree>
                     </field>
                 </page>
             </xpath>
+            
         </field>
     </record>
 </odoo>
