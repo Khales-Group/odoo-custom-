@@ -17,5 +17,7 @@
         ],
     },
     'installable': True,
+    'application': True,
+    'sequence': -100,
     'license': 'OEEL-1',
 }
