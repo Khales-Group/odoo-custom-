@@ -4,7 +4,7 @@
     'summary': 'Backporting File Attachments & AI Feedback Stages to 19.0',
     'version': '1.2',
     'author': 'Nezar Abou Hamdan',
-    'depends': ['base', 'mail', 'ai'],
+    'depends': ['base', 'mail', 'ai_app'],
     'external_dependencies': {
         'python': ['requests', 'numpy', 'pickle', 'base64', 'PyPDF2', 'google-genai'],
     },

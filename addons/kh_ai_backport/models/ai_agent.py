@@ -23,6 +23,28 @@ except ImportError:
 class AiAgent(models.Model):
     _inherit = 'ai.agent'
 
+    # Define custom fields for this agent
+    status = fields.Selection([
+        ('idle', 'Idle'),
+        ('processing', 'Processing'),
+        ('ready', 'Ready'),
+        ('error', 'Error')
+    ], default='idle', string='Status')
+
+    chunk_ids = fields.One2many(
+        comodel_name='ai.document.chunk',
+        inverse_name='agent_id',
+        string='Document Chunks'
+    )
+
+    knowledge_source_ids = fields.One2many(
+        comodel_name='ai.agent.source',
+        inverse_name='agent_id',
+        string="Knowledge Sources"
+    )
+
+    partner_id = fields.Many2one('res.partner', string="Partner")
+
     def _process_query(self, query, history=None, attachment_ids=None):
         """Override _process_query to intercept with Gemini bridge."""
         _logger.info("===== [DEBUG GEMINI] AI Agent _process_query TRIGGERED =====")
