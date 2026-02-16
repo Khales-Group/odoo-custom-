@@ -27,27 +27,35 @@ class DiscussChannel(models.Model):
 
     def _message_post(self, body='', subject=None, message_type='notification', **kwargs):
         """
-        Override message posting to intercept PDFs and send them to Gemini API
+        Override message posting to intercept files and send them to Gemini API
         for AI-powered document summarization and Q&A.
         """
         # 1. Let Odoo post the user's message and attachment normally first
         message = super()._message_post(body=body, subject=subject, message_type=message_type, **kwargs)
 
-        # 2. Check if we should trigger the AI (avoid infinite loops from AI replying to itself)
-        # Only process if the message is from a real user (not the system user)
+        # 2. Avoid AI feedback loops - only process messages from real users
         system_user_id = self.env.ref('base.partner_root').id
-        if message.author_id.id != system_user_id:
-            
-            # 3. Check if the user uploaded an attachment
-            if message.attachment_ids:
-                attachment = message.attachment_ids[0]
-                
-                # 4. Extract Text if it's a PDF
+        if message.author_id.id == system_user_id:
+            return message
+
+        # 3. Check if the user uploaded attachments
+        if message.attachment_ids:
+            # Process the first valid document found
+            for attachment in message.attachment_ids:
                 extracted_text = self._extract_pdf_text(attachment)
                 
-                # 5. Call Gemini API if we have a PDF and Gemini is configured
+                # If not a PDF, try to extract plain text
+                if not extracted_text and attachment.mimetype == 'text/plain':
+                    try:
+                        extracted_text = base64.b64decode(attachment.datas).decode('utf-8', errors='ignore')
+                    except Exception as e:
+                        _logger.error(f"Error decoding text file: {str(e)}")
+                        continue
+
+                # 4. Call Gemini API if we have content and Gemini is configured
                 if HAS_GENAI and extracted_text:
                     self._process_with_gemini(extracted_text, body)
+                    break  # Process only the first valid document
 
         return message
 
@@ -75,8 +83,9 @@ class DiscussChannel(models.Model):
         """Send document to Gemini and post the response."""
         try:
             # Get API key from system parameters (stored securely)
+            # Using the same key parameter as AiAgent for unified configuration
             api_key = self.env['ir.config_parameter'].sudo().get_param(
-                'kh_ai_backport.gemini_api_key'
+                'gemini.api.key'
             )
             
             if not api_key:
