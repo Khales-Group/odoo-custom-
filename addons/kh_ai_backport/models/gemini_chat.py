@@ -15,11 +15,11 @@ except ImportError:
     _logger.warning("PyPDF2 not installed. PDF processing disabled.")
 
 try:
-    import google.generativeai as genai
+    from google import genai
     HAS_GENAI = True
 except ImportError:
     HAS_GENAI = False
-    _logger.warning("google-generativeai not installed. Gemini integration disabled.")
+    _logger.warning("google-genai not installed. Gemini integration disabled.")
 
 
 class DiscussChannel(models.Model):
@@ -33,12 +33,16 @@ class DiscussChannel(models.Model):
         # 1. Let Odoo post the user's message and attachment normally first
         message = super()._message_post(body=body, subject=subject, message_type=message_type, **kwargs)
 
-        # 2. Avoid AI feedback loops - only process messages from real users
+        # 2. Skip if it's a notification (system message) or if author is a bot/share user
+        if message_type == 'notification' or message.author_id.partner_share:
+            return message
+        
+        # 3. Additional check: skip if author is system user
         system_user_id = self.env.ref('base.partner_root').id
         if message.author_id.id == system_user_id:
             return message
 
-        # 3. Check if the user uploaded attachments
+        # 4. Check if the user uploaded attachments
         if message.attachment_ids:
             # Process the first valid document found
             for attachment in message.attachment_ids:
@@ -52,7 +56,7 @@ class DiscussChannel(models.Model):
                         _logger.error(f"Error decoding text file: {str(e)}")
                         continue
 
-                # 4. Call Gemini API if we have content and Gemini is configured
+                # 5. Call Gemini API if we have content and Gemini is configured
                 if HAS_GENAI and extracted_text:
                     self._process_with_gemini(extracted_text, body)
                     break  # Process only the first valid document
@@ -97,24 +101,24 @@ class DiscussChannel(models.Model):
                 )
                 return
             
-            # Configure Gemini
-            genai.configure(api_key=api_key)
-            
-            # Using Flash because it is blazing fast and cheap
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            # Initialize Gemini client with the new google-genai SDK
+            client = genai.Client(api_key=api_key)
             
             # Clean up HTML tags from Odoo's chat body
             from odoo.tools import html2plaintext
             user_prompt = html2plaintext(user_message) if user_message else 'Please summarize this document.'
             
-            # Combine the PDF text and the user's question
+            # Combine the document text and the user's question
             full_prompt = f"Here is a document:\n\n{extracted_text}\n\nBased on this document, answer the following user query: {user_prompt}"
             
-            # Get the answer from Gemini
-            response = model.generate_content(full_prompt)
+            # Get the answer from Gemini using the new SDK
+            response = client.models.generate_content(
+                model='gemini-2.0-flash',  # Using the latest flash model
+                contents=full_prompt
+            )
             ai_answer = response.text
             
-            # 6. Post Gemini's answer back into the chat as OdooBot
+            # Post Gemini's answer back into the chat as OdooBot
             self.with_context(mail_create_nosubscribe=True).message_post(
                 body=ai_answer,
                 author_id=self.env.ref('base.partner_root').id,

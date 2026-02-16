@@ -15,6 +15,13 @@ class AiAgentSource(models.Model):
         default='draft',
         string='Source Status'
     )
+    
+    # Required field for native Odoo 19 AI logic (garbage collection cron job)
+    attachment_id = fields.Many2one(
+        comodel_name='ir.attachment',
+        string='Attachment',
+        help='Document attachment associated with this knowledge source'
+    )
 
     def _process_source(self):
         self.status = 'done'
