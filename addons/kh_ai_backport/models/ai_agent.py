@@ -4,24 +4,6 @@ import pickle
 import numpy as np
 import requests
 
-class AiAgentSource(models.Model):
-    _name = 'ai.agent.source'
-    _description = 'AI Knowledge Source'
-
-    agent_id = fields.Many2one(
-        comodel_name='ai.agent',
-        ondelete='cascade',
-        required=True
-    )
-    name = fields.Char()
-    source_state = fields.Selection(
-        [('draft', 'Draft'), ('processing', 'Processing'), ('done', 'Done')],
-        default='draft'
-    )
-    
-    def _process_source(self):
-        # Placeholder for source processing logic
-        self.source_state = 'done'
 
 class AiAgent(models.Model):
     _name = 'ai.agent'
