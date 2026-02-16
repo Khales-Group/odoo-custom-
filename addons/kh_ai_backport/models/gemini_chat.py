@@ -15,11 +15,11 @@ except ImportError:
     _logger.warning("PyPDF2 not installed. PDF processing disabled.")
 
 try:
-    from google import genai
+    import google.generativeai as genai
     HAS_GENAI = True
-except ImportError:
+except Exception:
     HAS_GENAI = False
-    _logger.warning("google-genai not installed. Gemini integration disabled.")
+    _logger.warning("google-generativeai not installed. Gemini integration disabled.")
 
 
 class DiscussChannel(models.Model):
@@ -33,56 +33,8 @@ class DiscussChannel(models.Model):
         # 1. Post message normally first
         message = super()._message_post(body=body, subject=subject, message_type=message_type, **kwargs)
 
-        # 2. DEBUG LOG: Track if the bridge is being called
-        _logger.info(f"Gemini Bridge: Intercepted message in channel '{self.name}' with author '{message.author_id.name}'")
-
-        # 3. Skip notifications (system messages)
-        if message_type == 'notification':
-            _logger.debug(f"Gemini Bridge: Skipping notification message in channel '{self.name}'")
-            return message
-        
-        # 4. Only process messages from real users (not bots/share accounts)
-        # Check: author should not be a sharing partner
-        if message.author_id.partner_share:
-            _logger.debug(f"Gemini Bridge: Skipping share user message in channel '{self.name}'")
-            return message
-        
-        # 5. Skip if author is the system/root user
-        system_user_id = self.env.ref('base.partner_root').id
-        if message.author_id.id == system_user_id:
-            _logger.debug(f"Gemini Bridge: Skipping system user message in channel '{self.name}'")
-            return message
-
-        # 6. Process attachments if present
-        if message.attachment_ids:
-            _logger.info(f"Gemini Bridge: Found {len(message.attachment_ids)} attachment(s) in channel '{self.name}'")
-            
-            # Process the first valid document found
-            for idx, attachment in enumerate(message.attachment_ids):
-                _logger.info(f"Gemini Bridge: Processing attachment {idx+1}: {attachment.name} ({attachment.mimetype})")
-                
-                extracted_text = self._extract_pdf_text(attachment)
-                
-                # If not a PDF, try to extract plain text
-                if not extracted_text and attachment.mimetype == 'text/plain':
-                    try:
-                        extracted_text = base64.b64decode(attachment.datas).decode('utf-8', errors='ignore')
-                        _logger.info(f"Gemini Bridge: Successfully extracted text from {attachment.name}")
-                    except Exception as e:
-                        _logger.error(f"Gemini Bridge: Error decoding text file {attachment.name}: {str(e)}")
-                        continue
-
-                # 7. Call Gemini API if we have content and Gemini is configured
-                if HAS_GENAI and extracted_text:
-                    _logger.info(f"Gemini Bridge: Starting Gemini processing for {attachment.name}")
-                    self._process_with_gemini(extracted_text, body, attachment.name)
-                    break  # Process only the first valid document
-                else:
-                    if not extracted_text:
-                        _logger.warning(f"Gemini Bridge: No text extracted from {attachment.name}")
-                    if not HAS_GENAI:
-                        _logger.warning(f"Gemini Bridge: Gemini not available (HAS_GENAI=False)")
-
+        # NOTE: Gemini bridge temporarily disabled on discuss.channel to avoid
+        # duplicate processing. All AI handling is performed in `ai.agent`.
         return message
 
     def _extract_pdf_text(self, attachment):
@@ -135,25 +87,15 @@ class DiscussChannel(models.Model):
                 return
             
             _logger.info(f"Gemini Bridge: Initializing Gemini client for {attachment_name}")
-            
-            # Initialize Gemini client with the new google-genai SDK
-            client = genai.Client(api_key=api_key)
-            
-            # Clean up HTML tags from Odoo's chat body
+            # Use google.generativeai GenerativeModel API
+            genai.configure(api_key=api_key)
             from odoo.tools import html2plaintext
             user_prompt = html2plaintext(user_message) if user_message else f'Please summarize the document: {attachment_name}'
-            
             _logger.info(f"Gemini Bridge: User prompt: {user_prompt[:100]}...")
-            
-            # Combine the document text and the user's question
             full_prompt = f"Here is a document ({attachment_name}):\n\n{extracted_text}\n\nBased on this document, answer the following user query: {user_prompt}"
-            
-            # Get the answer from Gemini using the new SDK
             _logger.info(f"Gemini Bridge: Sending request to Gemini API...")
-            response = client.models.generate_content(
-                model='gemini-2.0-flash',  # Using the latest flash model
-                contents=full_prompt
-            )
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            response = model.generate_content(full_prompt)
             ai_answer = response.text
             
             _logger.info(f"Gemini Bridge: Received response ({len(ai_answer)} characters) from Gemini")

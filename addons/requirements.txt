@@ -1,2 +1,2 @@
 ﻿pypdf
-google-genai
+google-generativeai
