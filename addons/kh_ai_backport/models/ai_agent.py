@@ -5,14 +5,13 @@ import io
 
 _logger = logging.getLogger(__name__)
 
-# Try to import Gemini SDK
+# محاولة استيراد المكتبات لضمان استقرار السيرفر
 try:
     from google import genai
     HAS_GENAI = True
 except ImportError:
     HAS_GENAI = False
 
-# Try to import PDF support
 try:
     import PyPDF2
     HAS_PDF = True
@@ -23,7 +22,6 @@ except ImportError:
 class AiAgent(models.Model):
     _inherit = 'ai.agent'
 
-    # Define custom fields for this agent
     status = fields.Selection([
         ('idle', 'Idle'),
         ('processing', 'Processing'),
@@ -47,96 +45,73 @@ class AiAgent(models.Model):
 
     def _execute_query(self, query, history=None, attachment_ids=None, **kwargs):
         """
-        هذه هي الدالة 'الأم' في أودو 19 التي يناديها الـ Controller مباشرة.
-        إذا نجحنا في اعتراضها هنا، فقد سيطرنا على الـ AI بالكامل.
+        هذه هي الدالة الأساسية في أودو 19. اعتراضها هنا يضمن السيطرة على الرد.
         """
-        _logger.info("===== [FORCE DEBUG] تم اختراق تنفيذ الـ AI بنجاح! =====")
+        _logger.info("===== [DEBUG] AI EXECUTION TRIGGERED =====")
 
-        if attachment_ids:
-            # إذا وجدنا ملفات، نلغي كل منطق أودو ونستخدم جيمناي
-            _logger.info(f"===== [FORCE DEBUG] جاري معالجة {len(attachment_ids)} ملفات =====")
-
-            # استدعاء جسر جيمناي الخاص بك
+        if attachment_ids and HAS_GENAI:
+            _logger.info(f"===== [DEBUG] Intercepting {len(attachment_ids)} files for Gemini =====")
+            
             combined_text = ""
+            # جلب الملفات المرفقة
             attachments = self.env['ir.attachment'].sudo().browse(attachment_ids)
             for attach in attachments:
-                text = self._extract_pdf_text(attach) or self._extract_text(attach)
+                text = ""
+                # محاولة استخراج النص من PDF
+                if HAS_PDF and attach.mimetype == 'application/pdf':
+                    text = self._extract_pdf_text(attach)
+                
+                # محاولة استخراج النص إذا كان ملف نصي عادي
+                if not text:
+                    text = self._extract_text(attach)
+                
                 if text:
-                    combined_text += f"\n[Document: {attach.name}]\n{text}\n"
+                    combined_text += f"\n[File: {attach.name}]\n{text}\n"
 
             if combined_text:
-                _logger.info("===== [FORCE DEBUG] جاري استدعاء Gemini =====")
-                prompt = f"Context from files:\n{combined_text}\n\nUser Question: {query}"
+                _logger.info("===== [DEBUG] Sending Document context to Gemini 2.0 Flash =====")
+                prompt = f"Using this document content, answer the user query accurately:\n{combined_text}\n\nUser Question: {query}"
                 answer = self._ask_gemini(prompt)
+                
                 if answer:
-                    _logger.info("===== [FORCE DEBUG] تم استقبال الرد من Gemini =====")
+                    _logger.info("===== [DEBUG] Gemini response received successfully =====")
                     return answer
 
-        # إذا لم توجد ملفات، نترك أودو يكمل عمله الأصلي
-        _logger.info("===== [FORCE DEBUG] لا توجد ملفات، نعود للنظام الأصلي =====")
+        # العودة لنظام أودو الأصلي في حال عدم وجود مرفقات أو فشل الجسر
         return super()._execute_query(query, history=history, attachment_ids=attachment_ids, **kwargs)
 
-
     def _extract_text(self, attachment):
-        """Extract text from plain text files."""
-        if not attachment:
-            return ""
-
-        # Prefer indexed content
-        if attachment.index_content:
-            return attachment.index_content
-
-        # Try decoding from base64
+        if not attachment: return ""
+        if attachment.index_content: return attachment.index_content
         if attachment.datas and attachment.mimetype == 'text/plain':
             try:
                 return base64.b64decode(attachment.datas).decode('utf-8', errors='ignore')
-            except Exception:
-                return ""
-
+            except Exception: return ""
         return ""
 
     def _extract_pdf_text(self, attachment):
-        """Extract text from PDF using PyPDF2."""
-        if not HAS_PDF or attachment.mimetype != 'application/pdf':
-            return ""
-
+        if not HAS_PDF or attachment.mimetype != 'application/pdf': return ""
         try:
             pdf_data = base64.b64decode(attachment.datas)
-            pdf_file = io.BytesIO(pdf_data)
-            reader = PyPDF2.PdfReader(pdf_file)
-
-            extracted_text = ""
-            for page in reader.pages:
-                extracted_text += page.extract_text() or ""
-
-            return extracted_text
+            reader = PyPDF2.PdfReader(io.BytesIO(pdf_data))
+            return "".join([page.extract_text() or "" for page in reader.pages])
         except Exception as e:
-            _logger.error(f"===== [FORCE DEBUG] PDF extraction failed: {str(e)} =====")
+            _logger.error(f"PDF Extraction failed: {e}")
             return ""
 
     def _ask_gemini(self, prompt):
-        """Call Gemini API using google-genai SDK."""
+        # تأكد من استخدام نفس المفتاح المعرف في السيستم
         api_key = self.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
-
         if not api_key:
-            _logger.error("===== [FORCE DEBUG] API key not configured =====")
-            return "API key not configured."
-
+            return "Error: Gemini API key is missing in System Parameters."
         try:
-            _logger.info("===== [FORCE DEBUG] Initializing Gemini client =====")
             client = genai.Client(api_key=api_key)
-
-            _logger.info("===== [FORCE DEBUG] Sending request to Gemini =====")
             response = client.models.generate_content(
                 model='gemini-2.0-flash',
                 contents=prompt
             )
-
-            result = response.text
-            _logger.info(f"===== [FORCE DEBUG] Received response: {len(result)} chars =====")
-            return result
-
+            return response.text
         except Exception as e:
-            _logger.error(f"===== [FORCE DEBUG] Gemini API error: {str(e)} =====")
-            return f"Gemini error: {e}"
+            _logger.error(f"Gemini API Call failed: {e}")
+            return f"Gemini connection error: {e}"
 
