@@ -9,6 +9,7 @@
         'python': ['requests', 'numpy', 'pickle', 'base64'],
     },
     'data': [
+        'security/ir.model.access.csv',  # Add this exactly here
         'views/ai_agent_views.xml',
     ],
     'assets': {
