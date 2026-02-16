@@ -49,70 +49,93 @@ class AiAgent(models.Model):
 
     def _process_query(self, query, history=None, attachment_ids=None):
         """
-        Intercept the 'Ask AI' query before it goes to Odoo's native engine.
-        If there are attachments, send them to Gemini bridge for processing.
+        Intercept the 'Ask AI' query with comprehensive debugging.
         """
-        # 1. Check if there are attachments to process with Gemini
-        if attachment_ids and HAS_GENAI:
-            _logger.info(f"AI Agent Bridge: Intercepting query with {len(attachment_ids)} attachment(s)")
-            
-            # 2. Fetch and extract text from attachments
-            attachments = self.env['ir.attachment'].browse(attachment_ids)
-            combined_text = ""
-            
-            for attach in attachments:
-                _logger.info(f"AI Agent Bridge: Processing attachment {attach.name}")
-                
-                # Try PDF extraction first if available
-                extracted_text = ""
-                if HAS_PDF and attach.mimetype == 'application/pdf':
-                    extracted_text = self._extract_pdf_text(attach)
-                
-                # Fallback to plain text extraction
-                if not extracted_text:
-                    extracted_text = self._extract_text(attach)
-                
-                if extracted_text:
-                    combined_text += f"\n[File: {attach.name}]\n{extracted_text}\n"
-                    _logger.info(f"AI Agent Bridge: Extracted {len(extracted_text)} characters from {attach.name}")
-            
-            # 3. If we found text, bypass native AI and go straight to Gemini
-            if combined_text:
-                _logger.info("AI Agent Bridge: Activating Gemini for document processing")
-                self._send_ai_status_log(_("🤖 Bridge Active: Processing document with Gemini..."))
-                
-                # Combine document context with user question
-                full_prompt = f"Document Context:\n{combined_text}\n\nUser Question: {query}"
-                answer = self._ask_gemini(full_prompt)
-                
-                # Post answer as a comment
-                if answer:
-                    self.message_post(body=answer, message_type='comment')
-                    return answer
+        # DEBUG 1: Entry point confirmation
+        _logger.info("========== DEBUG: AI Agent _process_query CALLED ==========")
+        _logger.info(f"========== DEBUG: Query: {query[:100] if query else 'EMPTY'}")
+        _logger.info(f"========== DEBUG: Attachment IDs: {attachment_ids}")
+        _logger.info(f"========== DEBUG: HAS_GENAI: {HAS_GENAI}")
+        _logger.info(f"========== DEBUG: HAS_PDF: {HAS_PDF}")
 
-        # 4. Status feedback for file analysis
-        self._send_ai_status_log(_("Step 1/2: Analyzing sources and attached documents..."))
-
-        # 5. If no attachments or Gemini not available, use native RAG
-        file_context = ""
         if attachment_ids:
-            attachments = self.env['ir.attachment'].browse(attachment_ids)
-            for attach in attachments:
-                # use index_content if available, otherwise decode datas
-                text = attach.index_content or ""
-                if not text and attach.datas:
+            _logger.info("========== DEBUG: Attachments found, starting extraction process ==========")
+            
+            try:
+                attachments = self.env['ir.attachment'].browse(attachment_ids)
+                _logger.info(f"========== DEBUG: Successfully browsed {len(attachments)} attachments ==========")
+                
+                combined_text = ""
+                
+                for idx, attach in enumerate(attachments):
+                    _logger.info(f"========== DEBUG: Processing attachment #{idx+1}: {attach.name} ==========")
+                    _logger.info(f"========== DEBUG: File mimetype: {attach.mimetype}")
+                    _logger.info(f"========== DEBUG: File size: {len(attach.datas) if attach.datas else 0} bytes")
+                    
+                    text = ""
+                    
+                    # Try PDF extraction
+                    if attach.mimetype == 'application/pdf':
+                        _logger.info("========== DEBUG: Attempting PDF extraction with PyPDF2 ==========")
+                        try:
+                            text = self._extract_pdf_text(attach)
+                            _logger.info(f"========== DEBUG: PDF extraction returned {len(text)} characters ==========")
+                        except Exception as e:
+                            _logger.error(f"========== DEBUG: PDF extraction failed: {str(e)} ==========")
+                    
+                    # Try plain text extraction
+                    if not text and attach.mimetype == 'text/plain':
+                        _logger.info("========== DEBUG: Attempting plain text extraction ==========")
+                        try:
+                            text = self._extract_text(attach)
+                            _logger.info(f"========== DEBUG: Text extraction returned {len(text)} characters ==========")
+                        except Exception as e:
+                            _logger.error(f"========== DEBUG: Text extraction failed: {str(e)} ==========")
+                    
+                    if text:
+                        _logger.info(f"========== DEBUG: ✓ Successfully extracted {len(text)} chars from {attach.name} ==========")
+                        combined_text += f"\n[File: {attach.name}]\n{text}\n"
+                    else:
+                        _logger.warning(f"========== DEBUG: ✗ No text extracted from {attach.name} ==========")
+
+                # DEBUG 3: Check combined text
+                _logger.info(f"========== DEBUG: Combined text length: {len(combined_text)} characters ==========")
+                
+                if combined_text and HAS_GENAI:
+                    _logger.info("========== DEBUG: Combined text is NOT empty and HAS_GENAI is TRUE ==========")
+                    _logger.info("========== DEBUG: Calling Gemini API NOW ==========")
+                    
+                    self._send_ai_status_log(_("🤖 Bridge Active: Processing with Gemini..."))
+                    
                     try:
-                        data = base64.b64decode(attach.datas)
-                        text = data.decode('utf-8', errors='ignore')
-                    except Exception:
-                        text = ""
-                if text:
-                    file_context += f"\n[File: {attach.name}]\n{text}\n"
+                        prompt = f"Context:\n{combined_text}\n\nQuestion: {query}"
+                        _logger.info(f"========== DEBUG: Prompt prepared ({len(prompt)} chars), calling _ask_gemini ==========")
+                        
+                        answer = self._ask_gemini(prompt)
+                        
+                        _logger.info(f"========== DEBUG: Gemini response received ({len(answer)} chars) ==========")
+                        _logger.info(f"========== DEBUG: Response preview: {answer[:200]}")
+                        
+                        # Post response
+                        _logger.info("========== DEBUG: Posting answer to message_post ==========")
+                        self.sudo().message_post(body=answer, message_type='comment')
+                        _logger.info("========== DEBUG: ✓ Answer posted successfully ==========")
+                        
+                        return answer
+                    except Exception as e:
+                        _logger.error(f"========== DEBUG: Gemini processing failed: {str(e)} ==========", exc_info=True)
+                elif not combined_text:
+                    _logger.warning("========== DEBUG: Combined text is EMPTY, cannot call Gemini ==========")
+                elif not HAS_GENAI:
+                    _logger.warning("========== DEBUG: HAS_GENAI is FALSE, Gemini not available ==========")
+            
+            except Exception as e:
+                _logger.error(f"========== DEBUG: Attachment processing failed: {str(e)} ==========", exc_info=True)
 
-        enhanced_query = f"Context from uploaded files:\n{file_context}\n\nQuestion: {query}" if file_context else query
-
-        self._send_ai_status_log(_("Step 2/2: Generating the final answer..."))
-        return self._answer_with_rag(enhanced_query)
+        # DEBUG 4: Fallback to native AI
+        _logger.info("========== DEBUG: No attachments OR processing failed, falling back to native AI ==========")
+        _logger.info("========== DEBUG: Calling super()._process_query() ==========")
+        return super()._process_query(query, history=history, attachment_ids=attachment_ids)
 
     def _send_ai_status_log(self, message):
         for record in self:
