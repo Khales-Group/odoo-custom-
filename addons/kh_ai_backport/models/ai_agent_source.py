@@ -10,11 +10,11 @@ class AiAgentSource(models.Model):
         required=True
     )
     name = fields.Char()
-    source_state = fields.Selection(
+    status = fields.Selection(
         [('draft', 'Draft'), ('processing', 'Processing'), ('done', 'Done')],
         default='draft',
-        string='Source State'
+        string='Source Status'
     )
 
     def _process_source(self):
-        self.source_state = 'done'
+        self.status = 'done'
