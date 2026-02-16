@@ -103,7 +103,7 @@ Give a precise, professional answer.
             elif hasattr(genai, 'configure'):
                 # google-generativeai style
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                model = genai.GenerativeModel('gemini-1.5-flash-latest')
                 response = model.generate_content(final_prompt)
                 text = response.text
                 return {'response': text}
