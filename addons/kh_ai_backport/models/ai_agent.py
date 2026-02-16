@@ -3,6 +3,24 @@ import base64
 import pickle
 import numpy as np
 import requests
+import logging
+import io
+
+_logger = logging.getLogger(__name__)
+
+# Try to import Gemini SDK
+try:
+    from google import genai
+    HAS_GENAI = True
+except ImportError:
+    HAS_GENAI = False
+
+# Try to import PDF support
+try:
+    import PyPDF2
+    HAS_PDF = True
+except ImportError:
+    HAS_PDF = False
 
 class AiAgent(models.Model):
     _inherit = 'ai.agent'   # <- important: inherit existing ai.agent
@@ -30,9 +48,52 @@ class AiAgent(models.Model):
     partner_id = fields.Many2one('res.partner', string="Partner")
 
     def _process_query(self, query, history=None, attachment_ids=None):
-        # Status feedback to the chatter
+        """
+        Intercept the 'Ask AI' query before it goes to Odoo's native engine.
+        If there are attachments, send them to Gemini bridge for processing.
+        """
+        # 1. Check if there are attachments to process with Gemini
+        if attachment_ids and HAS_GENAI:
+            _logger.info(f"AI Agent Bridge: Intercepting query with {len(attachment_ids)} attachment(s)")
+            
+            # 2. Fetch and extract text from attachments
+            attachments = self.env['ir.attachment'].browse(attachment_ids)
+            combined_text = ""
+            
+            for attach in attachments:
+                _logger.info(f"AI Agent Bridge: Processing attachment {attach.name}")
+                
+                # Try PDF extraction first if available
+                extracted_text = ""
+                if HAS_PDF and attach.mimetype == 'application/pdf':
+                    extracted_text = self._extract_pdf_text(attach)
+                
+                # Fallback to plain text extraction
+                if not extracted_text:
+                    extracted_text = self._extract_text(attach)
+                
+                if extracted_text:
+                    combined_text += f"\n[File: {attach.name}]\n{extracted_text}\n"
+                    _logger.info(f"AI Agent Bridge: Extracted {len(extracted_text)} characters from {attach.name}")
+            
+            # 3. If we found text, bypass native AI and go straight to Gemini
+            if combined_text:
+                _logger.info("AI Agent Bridge: Activating Gemini for document processing")
+                self._send_ai_status_log(_("🤖 Bridge Active: Processing document with Gemini..."))
+                
+                # Combine document context with user question
+                full_prompt = f"Document Context:\n{combined_text}\n\nUser Question: {query}"
+                answer = self._ask_gemini(full_prompt)
+                
+                # Post answer as a comment
+                if answer:
+                    self.message_post(body=answer, message_type='comment')
+                    return answer
+
+        # 4. Status feedback for file analysis
         self._send_ai_status_log(_("Step 1/2: Analyzing sources and attached documents..."))
 
+        # 5. If no attachments or Gemini not available, use native RAG
         file_context = ""
         if attachment_ids:
             attachments = self.env['ir.attachment'].browse(attachment_ids)
@@ -102,6 +163,28 @@ class AiAgent(models.Model):
         # Extend here: pdfplumber, python-docx, openpyxl, pytesseract for images, etc.
         return ""
 
+    def _extract_pdf_text(self, attachment):
+        """Extract text from a PDF attachment using PyPDF2."""
+        if not HAS_PDF or attachment.mimetype != 'application/pdf':
+            return ""
+        
+        try:
+            pdf_data = base64.b64decode(attachment.datas)
+            pdf_file = io.BytesIO(pdf_data)
+            reader = PyPDF2.PdfReader(pdf_file)
+            extracted_text = ""
+            
+            for page_num, page in enumerate(reader.pages, 1):
+                page_text = page.extract_text() or ""
+                extracted_text += page_text
+                _logger.debug(f"AI Agent Bridge: Extracted {len(page_text)} chars from page {page_num}")
+            
+            _logger.info(f"AI Agent Bridge: PDF extraction complete ({len(extracted_text)} total chars)")
+            return extracted_text
+        except Exception as e:
+            _logger.error(f"AI Agent Bridge: Error extracting PDF text: {str(e)}")
+            return ""
+
     def _chunk_text(self, text, size=800):
         if not text:
             return []
@@ -168,19 +251,26 @@ class AiAgent(models.Model):
         return answer
 
     def _ask_gemini(self, prompt):
+        """Call Gemini API with the new google-genai SDK."""
         api_key = self.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
         if not api_key:
+            _logger.warning("AI Agent Bridge: Gemini API key not configured")
             return "Gemini API key not configured."
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
+        
         try:
-            response = requests.post(url, json={
-                "contents": [{
-                    "parts": [{"text": prompt}]
-                }]
-            }, timeout=60)
-            response.raise_for_status()
-            data = response.json()
-            # adapt based on actual Gemini response shape
-            return data.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '')
+            _logger.info("AI Agent Bridge: Initializing Gemini client")
+            client = genai.Client(api_key=api_key)
+            
+            _logger.info("AI Agent Bridge: Sending request to Gemini API")
+            response = client.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=prompt
+            )
+            
+            result = response.text
+            _logger.info(f"AI Agent Bridge: Received Gemini response ({len(result)} chars)")
+            return result
+            
         except Exception as e:
+            _logger.error(f"AI Agent Bridge: Gemini API error: {str(e)}", exc_info=True)
             return f"Gemini call failed: {e}"
