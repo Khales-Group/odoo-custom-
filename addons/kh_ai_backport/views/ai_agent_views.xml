@@ -15,10 +15,10 @@
             <xpath expr="//notebook/page[@name='ai_agent_sources']" position="replace">
                 <page string="Sources" name="ai_agent_sources_custom">
                     <field name="knowledge_source_ids">
-                        <tree editable="bottom">
+                        <list editable="bottom">
                             <field name="name"/>
                             <field name="status"/>
-                        </tree>
+                        </list>
                     </field>
                 </page>
             </xpath>
