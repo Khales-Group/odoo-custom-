@@ -31,11 +31,16 @@ class AiAgent(models.Model):
     ], default='idle')
 
     chunk_ids = fields.One2many(
-        'ai.document.chunk',
-        'agent_id'
+        comodel_name='ai.document.chunk',
+        inverse_name='agent_id',
+        string='Document Chunks'
     )
     
-    knowledge_source_ids = fields.One2many('ai.agent.source', 'agent_id', string="Knowledge Sources")
+    knowledge_source_ids = fields.One2many(
+        comodel_name='ai.agent.source',
+        inverse_name='agent_id',
+        string="Knowledge Sources"
+    )
     partner_id = fields.Many2one('res.partner', string="Partner")
 
     def _process_query(self, query, history=None, attachment_ids=None):
