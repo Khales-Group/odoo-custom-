@@ -45,46 +45,38 @@ class AiAgent(models.Model):
 
     partner_id = fields.Many2one('res.partner', string="Partner")
 
+    @api.model
     def _process_query(self, query, history=None, attachment_ids=None):
-        """Override _process_query to intercept with Gemini bridge."""
-        _logger.info("===== [DEBUG GEMINI] _process_query called with attachments: %s =====", attachment_ids)
-        
-        # If there are attachments, use Gemini bridge
+        # السجل الذهبي: إذا طلع هاد السطر بالـ Terminal يعني حلينا المشكلة
+        _logger.info("===== [DEBUG GEMINI] تم اعتراض السؤال بنجاح =====")
+
         if attachment_ids:
-            _logger.info("===== [DEBUG GEMINI] Attachments found, processing with Gemini =====")
-            
+            _logger.info(f"===== [DEBUG GEMINI] وجدنا ملفات برقم: {attachment_ids} =====")
+
             combined_text = ""
-            attachments = self.env['ir.attachment'].browse(attachment_ids)
-            
+            attachments = self.env['ir.attachment'].sudo().browse(attachment_ids)
             for attach in attachments:
-                _logger.info("===== [DEBUG GEMINI] Processing file: %s =====", attach.name)
-                
-                # Try PDF extraction first
+                # محاولة استخراج النص
                 text = ""
-                if HAS_PDF and attach.mimetype == 'application/pdf':
-                    text = self._extract_pdf_text(attach)
-                
-                # Fall back to plain text extraction
-                if not text:
-                    text = self._extract_text(attach)
-                
+                try:
+                    text = self._extract_pdf_text(attach) or self._extract_text(attach)
+                except Exception as e:
+                    _logger.error(f"===== [DEBUG GEMINI] خطأ أثناء الاستخراج: {str(e)}")
+
                 if text:
-                    combined_text += text
-                    _logger.info("===== [DEBUG GEMINI] Extracted %d chars from %s =====", len(text), attach.name)
-            
-            # If we got text, send to Gemini
+                    combined_text += f"\n[محتوى ملف {attach.name}]:\n{text}\n"
+
             if combined_text:
-                _logger.info("===== [DEBUG GEMINI] Calling Gemini with combined text =====")
-                prompt = f"Context: {combined_text}\n\nQuestion: {query}"
-                answer = self._ask_gemini(prompt)
-                
-                if answer:
-                    _logger.info("===== [DEBUG GEMINI] Gemini response received =====")
+                _logger.info("===== [DEBUG GEMINI] جاري إرسال النص إلى جيمناي =====")
+                try:
+                    answer = self._ask_gemini(f"Document Context:\n{combined_text}\n\nQuestion: {query}")
                     return answer
-        
-        # No attachments or Gemini failed, use native AI
-        _logger.info("===== [DEBUG GEMINI] Falling back to native AI =====")
-        return super()._process_query(query, history=history, attachment_ids=attachment_ids)
+                except Exception as e:
+                    _logger.error(f"===== [DEBUG GEMINI] خطأ في اتصال Gemini: {str(e)}")
+
+        # إذا ما في ملفات، ارجع لنظام أودو العادي
+        _logger.info("===== [DEBUG GEMINI] لا يوجد ملفات، نعود لنظام أودو الأصلي =====")
+        return super(AiAgent, self)._process_query(query, history=history, attachment_ids=attachment_ids)
 
     def _extract_text(self, attachment):
         """Extract text from plain text files."""
