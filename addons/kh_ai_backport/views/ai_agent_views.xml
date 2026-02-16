@@ -1,57 +1,43 @@
 <odoo>
-    <!-- Define Action First -->
-    <record id="action_ai_agent" model="ir.actions.act_window">
-        <field name="name">AI Agents</field>
-        <field name="res_model">ai.agent</field>
-        <field name="view_mode">tree,form</field>
-    </record>
-
-    <!-- Define Menu -->
-    <menuitem id="menu_ai_agent_root" name="AI Agents" sequence="10"/>
-    <menuitem id="menu_ai_agent_main" parent="menu_ai_agent_root" action="action_ai_agent"/>
-
-    <!-- Define Form View -->
-    <record id="view_ai_agent_form" model="ir.ui.view">
-        <field name="name">ai.agent.form</field>
+    <!-- Extend existing AI agent form (do not replace) -->
+    <record id="view_ai_agent_form_rag" model="ir.ui.view">
+        <field name="name">ai.agent.form.rag</field>
         <field name="model">ai.agent</field>
+        <!-- adjust the ref if your core AI view has a different xmlid -->
+        <field name="inherit_id" ref="ai.view_ai_agent_form"/>
         <field name="arch" type="xml">
-            <form>
-                <header>
-                    <button name="action_reprocess_sources"
-                            string="Reprocess Sources"
-                            type="object"
-                            class="btn-primary"/>
-                    <button name="%(base.action_attachment)d"
-                            string="Upload Documents"
-                            type="action"
-                            context="{'default_res_model': 'ai.agent', 'default_res_id': id}"/>
-                    <field name="status" widget="statusbar"/>
-                </header>
-                <sheet>
-                    <div class="oe_title">
-                        <label for="name" class="oe_edit_only"/>
-                        <h1><field name="name"/></h1>
-                    </div>
-                    <notebook>
-                        <page string="Sources">
-                            <field name="knowledge_source_ids">
-                                <tree editable="bottom">
-                                    <field name="name"/>
-                                    <field name="source_state"/>
-                                </tree>
-                            </field>
-                        </page>
-                        <page string="Chunks">
-                            <field name="chunk_ids"/>
-                        </page>
-                    </notebook>
-                </sheet>
-                <div class="oe_chatter">
-                    <field name="message_follower_ids"/>
-                    <field name="activity_ids"/>
-                    <field name="message_ids"/>
-                </div>
-            </form>
+            <xpath expr="//header" position="inside">
+                <button name="action_reprocess_sources"
+                        string="Reprocess Sources"
+                        type="object"
+                        class="btn-primary"/>
+                <button name="%(base.action_attachment)d"
+                        string="Upload Documents"
+                        type="action"
+                        context="{'default_res_model': 'ai.agent', 'default_res_id': id}"/>
+                <field name="status" widget="statusbar"/>
+            </xpath>
+
+            <xpath expr="//notebook/page[@string='Sources']" position="replace">
+                <page string="Sources">
+                    <field name="knowledge_source_ids">
+                        <tree editable="bottom">
+                            <field name="name"/>
+                            <field name="source_state"/>
+                        </tree>
+                    </field>
+                </page>
+            </xpath>
+
+            <xpath expr="//notebook" position="inside">
+                <page string="Chunks">
+                    <field name="chunk_ids">
+                        <tree>
+                            <field name="content" />
+                        </tree>
+                    </field>
+                </page>
+            </xpath>
         </field>
     </record>
 </odoo>
