@@ -80,20 +80,38 @@ Give a precise, professional answer.
             _logger.warning('Gemini SDK not available; falling back to original controller')
             return super(AIControllerOverride, self).generate_response(**kwargs)
 
-        # Get API key
-        api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
+        # Get API key: prefer odoo.conf (gemini_api_key), fall back to system parameter
+        from odoo.tools import config
+        api_key = config.get('gemini_api_key') or request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
         if not api_key:
             _logger.warning('Gemini API key missing; falling back to original controller')
             return super(AIControllerOverride, self).generate_response(**kwargs)
 
+        # Try SDK invocation compatible with either google-genai (genai.Client)
+        # or google-generativeai (genai.GenerativeModel).
         try:
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            response = model.generate_content(final_prompt)
-            text = response.text
-            return {
-                'response': text,
-            }
+            if hasattr(genai, 'Client'):
+                # google-genai style
+                client = genai.Client(api_key=api_key)
+                response = client.models.generate_content(
+                    model='gemini-2.0-flash',
+                    contents=final_prompt,
+                )
+                text = response.text
+                return {'response': text}
+
+            elif hasattr(genai, 'configure'):
+                # google-generativeai style
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                response = model.generate_content(final_prompt)
+                text = response.text
+                return {'response': text}
+
+            else:
+                _logger.error('Gemini SDK present but unsupported API surface')
+                return super(AIControllerOverride, self).generate_response(**kwargs)
+
         except Exception as e:
             _logger.exception('Gemini API error: %s', e)
             return super(AIControllerOverride, self).generate_response(**kwargs)
