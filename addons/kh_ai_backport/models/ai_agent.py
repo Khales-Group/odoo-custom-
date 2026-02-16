@@ -1,9 +1,6 @@
 from odoo import models, fields, api, _
-import base64
-import pickle
-import numpy as np
-import requests
 import logging
+import base64
 import io
 
 _logger = logging.getLogger(__name__)
@@ -22,101 +19,135 @@ try:
 except ImportError:
     HAS_PDF = False
 
-class AiAgent(models.Model):
-    _inherit = 'ai.agent'   # <- important: inherit existing ai.agent
-    _description = 'AI Agent (extended for RAG)'
-
-    status = fields.Selection([
-        ('idle','Idle'),
-        ('processing','Processing'),
-        ('ready','Ready'),
-        ('error','Error')
-    ], default='idle')
-
-    chunk_ids = fields.One2many(
-        comodel_name='ai.document.chunk',
-        inverse_name='agent_id',
-        string='Document Chunks'
-    )
-
-    knowledge_source_ids = fields.One2many(
-        comodel_name='ai.agent.source',
-        inverse_name='agent_id',
-        string="Knowledge Sources"
-    )
-
-    partner_id = fields.Many2one('res.partner', string="Partner")
-
-from odoo import models, fields, api, _
-import logging
-import base64
-
-_logger = logging.getLogger(__name__)
 
 class AiAgent(models.Model):
     _inherit = 'ai.agent'
 
     def _process_query(self, query, history=None, attachment_ids=None):
-        # سجل 1: التأكد من أن الدالة تعمل
-        _logger.info("===== [DEBUG GEMINI] الدالة بدأت بنجاح =====")
-        _logger.info(f"===== [DEBUG GEMINI] السؤال: {query}")
-        _logger.info(f"===== [DEBUG GEMINI] المرفقات المستلمة: {attachment_ids}")
-
-        # التحقق من وجود المكتبة
-        try:
-            from .gemini_chat import HAS_GENAI
-            _logger.info(f"===== [DEBUG GEMINI] حالة مكتبة Gemini: {HAS_GENAI}")
-        except ImportError as e:
-            _logger.error(f"===== [DEBUG GEMINI] فشل استيراد HAS_GENAI: {str(e)}")
-            HAS_GENAI = False
-
+        """Override _process_query to intercept with Gemini bridge."""
+        _logger.info("===== [DEBUG GEMINI] AI Agent _process_query TRIGGERED =====")
+        _logger.info(f"===== [DEBUG GEMINI] Query: {query}")
+        _logger.info(f"===== [DEBUG GEMINI] Attachment IDs: {attachment_ids}")
+        _logger.info(f"===== [DEBUG GEMINI] HAS_GENAI: {HAS_GENAI}")
+        
+        # If there are attachments AND Gemini is available, process with Gemini
         if attachment_ids and HAS_GENAI:
-            _logger.info("===== [DEBUG GEMINI] البدء في استخراج النص من الملفات =====")
-            attachments = self.env['ir.attachment'].browse(attachment_ids)
-            combined_text = ""
+            _logger.info("===== [DEBUG GEMINI] Processing files with Gemini Bridge =====")
             
-            for attach in attachments:
-                _logger.info(f"===== [DEBUG GEMINI] فحص الملف: {attach.name} النوع: {attach.mimetype}")
+            try:
+                attachments = self.env['ir.attachment'].browse(attachment_ids)
+                combined_text = ""
                 
-                # محاولة الاستخراج
-                text = ""
-                try:
-                    # نستخدم الدالة الموجودة في الموديل نفسه أو نستدعيها من موديول الدردشة
-                    if attach.mimetype == 'application/pdf':
-                        text = self._extract_pdf_text(attach)
-                    else:
-                        text = self._extract_text(attach)
-                except Exception as e:
-                    _logger.error(f"===== [DEBUG GEMINI] خطأ أثناء الاستخراج: {str(e)}")
-
-                if text:
-                    combined_text += f"\n[File: {attach.name}]\n{text}\n"
-                    _logger.info(f"===== [DEBUG GEMINI] تم استخراج نص بنجاح من {attach.name}")
-
-            if combined_text:
-                _logger.info("===== [DEBUG GEMINI] إرسال البيانات إلى Gemini API =====")
-                self._send_ai_status_log(_("🤖 Bridge Active: Gemini is reading your file..."))
-                
-                try:
-                    prompt = f"Using this document context:\n{combined_text}\n\nAnswer this: {query}"
-                    answer = self._ask_gemini(prompt)
+                for attach in attachments:
+                    _logger.info(f"===== [DEBUG GEMINI] Processing: {attach.name} ({attach.mimetype}) =====")
                     
-                    if answer:
-                        _logger.info("===== [DEBUG GEMINI] Gemini استجاب بنجاح!")
-                        # حفظ الرد في سجل المحادثة
-                        self.sudo().message_post(body=answer, message_type='comment')
-                        return answer
-                except Exception as e:
-                    _logger.error(f"===== [DEBUG GEMINI] خطأ في اتصال Gemini: {str(e)}")
-
-        # إذا لم يتحقق أي شرط، نعود للنظام الأصلي
-        _logger.warning("===== [DEBUG GEMINI] فشل الجسر، العودة لنظام أودو الأصلي =====")
+                    text = ""
+                    
+                    # Try PDF extraction
+                    if HAS_PDF and attach.mimetype == 'application/pdf':
+                        try:
+                            text = self._extract_pdf_text(attach)
+                            _logger.info(f"===== [DEBUG GEMINI] PDF extraction: {len(text)} chars =====")
+                        except Exception as e:
+                            _logger.error(f"===== [DEBUG GEMINI] PDF extraction error: {str(e)} =====")
+                    
+                    # Try plain text extraction
+                    if not text:
+                        try:
+                            text = self._extract_text(attach)
+                            _logger.info(f"===== [DEBUG GEMINI] Text extraction: {len(text)} chars =====")
+                        except Exception as e:
+                            _logger.error(f"===== [DEBUG GEMINI] Text extraction error: {str(e)} =====")
+                    
+                    if text:
+                        combined_text += f"\n[File: {attach.name}]\n{text}\n"
+                
+                # If we have text, send to Gemini
+                if combined_text:
+                    _logger.info("===== [DEBUG GEMINI] Calling Gemini API =====")
+                    
+                    try:
+                        prompt = f"Using this document context:\n{combined_text}\n\nAnswer this: {query}"
+                        answer = self._ask_gemini(prompt)
+                        
+                        if answer:
+                            _logger.info("===== [DEBUG GEMINI] Gemini responded successfully =====")
+                            self.sudo().message_post(body=answer, message_type='comment')
+                            return answer
+                    except Exception as e:
+                        _logger.error(f"===== [DEBUG GEMINI] Gemini API error: {str(e)} =====")
+                else:
+                    _logger.warning("===== [DEBUG GEMINI] No text extracted from any file =====")
+                    
+            except Exception as e:
+                _logger.error(f"===== [DEBUG GEMINI] Attachment processing error: {str(e)} =====")
+        
+        # If no attachments or Gemini unavailable, use native AI
+        _logger.info("===== [DEBUG GEMINI] Falling back to native AI =====")
         return super()._process_query(query, history=history, attachment_ids=attachment_ids)
 
-    def _send_ai_status_log(self, message):
-        for record in self:
-            # post a notification in chatter so user sees progress
-            record.message_post(body=message, message_type='notification')
+    def _extract_text(self, attachment):
+        """Extract text from plain text files."""
+        if not attachment:
+            return ""
+        
+        # Prefer indexed content
+        if attachment.index_content:
+            return attachment.index_content
+        
+        # Try decoding from base64
+        if attachment.datas and attachment.mimetype == 'text/plain':
+            try:
+                return base64.b64decode(attachment.datas).decode('utf-8', errors='ignore')
+            except Exception:
+                return ""
+        
+        return ""
+
+    def _extract_pdf_text(self, attachment):
+        """Extract text from PDF using PyPDF2."""
+        if not HAS_PDF or attachment.mimetype != 'application/pdf':
+            return ""
+        
+        try:
+            pdf_data = base64.b64decode(attachment.datas)
+            pdf_file = io.BytesIO(pdf_data)
+            reader = PyPDF2.PdfReader(pdf_file)
+            
+            extracted_text = ""
+            for page in reader.pages:
+                extracted_text += page.extract_text() or ""
+            
+            return extracted_text
+        except Exception as e:
+            _logger.error(f"===== [DEBUG GEMINI] PDF extraction failed: {str(e)} =====")
+            return ""
+
+    def _ask_gemini(self, prompt):
+        """Call Gemini API."""
+        api_key = self.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
+        
+        if not api_key:
+            _logger.error("===== [DEBUG GEMINI] API key not configured =====")
+            return "API key not configured."
+        
+        try:
+            _logger.info("===== [DEBUG GEMINI] Initializing Gemini client =====")
+            client = genai.Client(api_key=api_key)
+            
+            _logger.info("===== [DEBUG GEMINI] Sending request to Gemini =====")
+            response = client.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=prompt
+            )
+            
+            result = response.text
+            _logger.info(f"===== [DEBUG GEMINI] Received response: {len(result)} chars =====")
+            return result
+            
+        except Exception as e:
+            _logger.error(f"===== [DEBUG GEMINI] Gemini API error: {str(e)} =====")
+            return f"Gemini error: {e}"
 
     def action_reprocess_sources(self):
         for agent in self:
