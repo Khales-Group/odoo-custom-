@@ -48,61 +48,46 @@ class AiAgent(models.Model):
     @api.model
     def _process_query(self, query, history=None, attachment_ids=None):
         # السجل الذهبي: إذا طلع هاد السطر بالـ Terminal يعني حلينا المشكلة
-            _logger.info("===== [DEBUG GEMINI] تم اعتراض السؤال بنجاح =====")
-
-            if attachment_ids:
-                _logger.info(f"===== [DEBUG GEMINI] وجدنا ملفات: {attachment_ids} =====")
-
-                combined_text = ""
-                attachments = self.env['ir.attachment'].sudo().browse(attachment_ids)
-                for attach in attachments:
-                    # محاولة استخراج النص
-                    text = ""
-                    try:
-                        text = self._extract_pdf_text(attach) or self._extract_text(attach)
-                    except Exception as e:
-                        _logger.error(f"===== [DEBUG GEMINI] خطأ أثناء الاستخراج: {str(e)}")
-
-                    if text:
-                        combined_text += f"\n[محتوى ملف {attach.name}]:\n{text}\n"
-
-                if combined_text:
-                    _logger.info("===== [DEBUG GEMINI] جاري إرسال النص إلى جيمناي =====")
-                    try:
-                        answer = self._ask_gemini(f"Document Context:\n{combined_text}\n\nQuestion: {query}")
-                        return answer
-                    except Exception as e:
-                        _logger.error(f"===== [DEBUG GEMINI] خطأ في اتصال Gemini: {str(e)}")
-
-            # إذا ما في ملفات، ارجع لنظام أودو العادي
-            _logger.info("===== [DEBUG GEMINI] لا يوجد ملفات، نعود لنظام أودو الأصلي =====")
-            return super(AiAgent, self)._process_query(query, history=history, attachment_ids=attachment_ids)
+        _logger.info("===== [DEBUG GEMINI] تم اعتراض السؤال بنجاح =====")
 
         if attachment_ids:
-            _logger.info(f"===== [DEBUG GEMINI] وجدنا ملفات برقم: {attachment_ids} =====")
+            _logger.info(f"===== [DEBUG GEMINI] وجدنا ملفات: {attachment_ids} =====")
 
             combined_text = ""
+            # جلب الملفات باستخدام sudo لتجنب مشاكل الصلاحيات في Ask AI
             attachments = self.env['ir.attachment'].sudo().browse(attachment_ids)
+
             for attach in attachments:
-                # محاولة استخراج النص
-                text = ""
+                # استخراج النص
                 try:
                     text = self._extract_pdf_text(attach) or self._extract_text(attach)
                 except Exception as e:
                     _logger.error(f"===== [DEBUG GEMINI] خطأ أثناء الاستخراج: {str(e)}")
+                    text = ""
 
                 if text:
                     combined_text += f"\n[محتوى ملف {attach.name}]:\n{text}\n"
 
             if combined_text:
-                _logger.info("===== [DEBUG GEMINI] جاري إرسال النص إلى جيمناي =====")
+                _logger.info("===== [DEBUG GEMINI] إرسال البيانات لجيمناي 2.0 فلاش =====")
+
+                # استدعاء جيمناي مباشرة وإرجاع النص لقطع الطريق على أودو
+                prompt = f"استخدم السياق التالي للإجابة على سؤال المستخدم:\n{combined_text}\n\nالسؤال: {query}"
                 try:
-                    answer = self._ask_gemini(f"Document Context:\n{combined_text}\n\nQuestion: {query}")
-                    return answer
+                    answer = self._ask_gemini(prompt)
                 except Exception as e:
                     _logger.error(f"===== [DEBUG GEMINI] خطأ في اتصال Gemini: {str(e)}")
+                    answer = None
 
-        # إذا ما في ملفات، ارجع لنظام أودو العادي
+                if answer:
+                    # نشر الرد في الشات
+                    try:
+                        self.message_post(body=answer, message_type='comment')
+                    except Exception:
+                        _logger.exception("===== [DEBUG GEMINI] failed to post message on agent")
+                    return answer
+
+        # إذا ما في ملفات، نرجع لنظام أودو الطبيعي
         _logger.info("===== [DEBUG GEMINI] لا يوجد ملفات، نعود لنظام أودو الأصلي =====")
         return super(AiAgent, self)._process_query(query, history=history, attachment_ids=attachment_ids)
 
