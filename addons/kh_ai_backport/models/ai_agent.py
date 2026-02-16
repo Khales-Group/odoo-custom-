@@ -43,6 +43,13 @@ class AiAgent(models.Model):
 
     partner_id = fields.Many2one('res.partner', string="Partner")
 
+    def action_reprocess_sources(self):
+        """
+        Action triggered by the 'Reprocess Sources' button.
+        """
+        # TODO: Implement logic to reprocess knowledge sources (e.g. re-index vector store)
+        return True
+
     def _execute_query(self, query, history=None, attachment_ids=None, **kwargs):
         """
         هذه هي الدالة الأساسية في أودو 19. اعتراضها هنا يضمن السيطرة على الرد.
@@ -114,4 +121,3 @@ class AiAgent(models.Model):
         except Exception as e:
             _logger.error(f"Gemini API Call failed: {e}")
             return f"Gemini connection error: {e}"
-
