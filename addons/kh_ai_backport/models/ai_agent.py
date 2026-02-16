@@ -47,64 +47,42 @@ class AiAgent(models.Model):
 
     def _process_query(self, query, history=None, attachment_ids=None):
         """Override _process_query to intercept with Gemini bridge."""
-        _logger.info("===== [DEBUG GEMINI] AI Agent _process_query TRIGGERED =====")
-        _logger.info(f"===== [DEBUG GEMINI] Query: {query}")
-        _logger.info(f"===== [DEBUG GEMINI] Attachment IDs: {attachment_ids}")
-        _logger.info(f"===== [DEBUG GEMINI] HAS_GENAI: {HAS_GENAI}")
+        _logger.info("===== [DEBUG GEMINI] _process_query called with attachments: %s =====", attachment_ids)
         
-        # If there are attachments AND Gemini is available, process with Gemini
-        if attachment_ids and HAS_GENAI:
-            _logger.info("===== [DEBUG GEMINI] Processing files with Gemini Bridge =====")
+        # If there are attachments, use Gemini bridge
+        if attachment_ids:
+            _logger.info("===== [DEBUG GEMINI] Attachments found, processing with Gemini =====")
             
-            try:
-                attachments = self.env['ir.attachment'].browse(attachment_ids)
-                combined_text = ""
+            combined_text = ""
+            attachments = self.env['ir.attachment'].browse(attachment_ids)
+            
+            for attach in attachments:
+                _logger.info("===== [DEBUG GEMINI] Processing file: %s =====", attach.name)
                 
-                for attach in attachments:
-                    _logger.info(f"===== [DEBUG GEMINI] Processing: {attach.name} ({attach.mimetype}) =====")
-                    
-                    text = ""
-                    
-                    # Try PDF extraction
-                    if HAS_PDF and attach.mimetype == 'application/pdf':
-                        try:
-                            text = self._extract_pdf_text(attach)
-                            _logger.info(f"===== [DEBUG GEMINI] PDF extraction: {len(text)} chars =====")
-                        except Exception as e:
-                            _logger.error(f"===== [DEBUG GEMINI] PDF extraction error: {str(e)} =====")
-                    
-                    # Try plain text extraction
-                    if not text:
-                        try:
-                            text = self._extract_text(attach)
-                            _logger.info(f"===== [DEBUG GEMINI] Text extraction: {len(text)} chars =====")
-                        except Exception as e:
-                            _logger.error(f"===== [DEBUG GEMINI] Text extraction error: {str(e)} =====")
-                    
-                    if text:
-                        combined_text += f"\n[File: {attach.name}]\n{text}\n"
+                # Try PDF extraction first
+                text = ""
+                if HAS_PDF and attach.mimetype == 'application/pdf':
+                    text = self._extract_pdf_text(attach)
                 
-                # If we have text, send to Gemini
-                if combined_text:
-                    _logger.info("===== [DEBUG GEMINI] Calling Gemini API =====")
-                    
-                    try:
-                        prompt = f"Using this document context:\n{combined_text}\n\nAnswer this: {query}"
-                        answer = self._ask_gemini(prompt)
-                        
-                        if answer:
-                            _logger.info("===== [DEBUG GEMINI] Gemini responded successfully =====")
-                            self.sudo().message_post(body=answer, message_type='comment')
-                            return answer
-                    except Exception as e:
-                        _logger.error(f"===== [DEBUG GEMINI] Gemini API error: {str(e)} =====")
-                else:
-                    _logger.warning("===== [DEBUG GEMINI] No text extracted from any file =====")
-                    
-            except Exception as e:
-                _logger.error(f"===== [DEBUG GEMINI] Attachment processing error: {str(e)} =====")
+                # Fall back to plain text extraction
+                if not text:
+                    text = self._extract_text(attach)
+                
+                if text:
+                    combined_text += text
+                    _logger.info("===== [DEBUG GEMINI] Extracted %d chars from %s =====", len(text), attach.name)
+            
+            # If we got text, send to Gemini
+            if combined_text:
+                _logger.info("===== [DEBUG GEMINI] Calling Gemini with combined text =====")
+                prompt = f"Context: {combined_text}\n\nQuestion: {query}"
+                answer = self._ask_gemini(prompt)
+                
+                if answer:
+                    _logger.info("===== [DEBUG GEMINI] Gemini response received =====")
+                    return answer
         
-        # If no attachments or Gemini unavailable, use native AI
+        # No attachments or Gemini failed, use native AI
         _logger.info("===== [DEBUG GEMINI] Falling back to native AI =====")
         return super()._process_query(query, history=history, attachment_ids=attachment_ids)
 
