@@ -14,7 +14,6 @@
     ],
     'assets': {
         'web.assets_backend': [
-            'kh_ai_backport/static/src/components/ai_chat_patch.js',
         ],
     },
     'installable': True,
