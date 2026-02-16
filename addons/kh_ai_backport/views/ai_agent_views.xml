@@ -25,11 +25,7 @@
 
             <xpath expr="//notebook" position="inside">
                 <page string="Chunks" name="ai_agent_chunks">
-                    <field name="chunk_ids">
-                        <tree>
-                            <field name="content"/>
-                        </tree>
-                    </field>
+                    <field name="chunk_ids"/>
                 </page>
             </xpath>
             
