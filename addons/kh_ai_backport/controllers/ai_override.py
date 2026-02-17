@@ -81,18 +81,18 @@ Give a precise, professional answer.
             _logger.warning('Gemini SDK not available; falling back to original controller')
             return super(AIControllerOverride, self).generate_response(**kwargs)
 
-        # Get API key: prefer odoo.conf (gemini_api_key), fall back to system parameter
-        from odoo.tools import config
-        api_key = config.get('gemini_api_key') or request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
-        if not api_key:
-            _logger.warning('Gemini API key missing; falling back to original controller')
-            return super(AIControllerOverride, self).generate_response(**kwargs)
-
         # Use new google-genai SDK (Client)
         try:
             _logger.info("GOOGLE PACKAGE PATH: %s", google.__file__)
             
-            client = genai.Client(api_key=api_key)
+            # Vertex AI Configuration
+            key_path = "/home/odoo/vertex_key.json"
+            client = genai.Client(
+                vertexai=True,
+                project="gen-lang-client-0937150406", # تم استخراجه من الملف الذي أرفقته
+                location="us-central1",
+                credentials_path=key_path # هنا حددنا الملف مباشرة بدون الحاجة لمتغيرات بيئة
+            )
             response = client.models.generate_content(
                 model='gemini-2.0-flash',
                 contents=final_prompt,
