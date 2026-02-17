@@ -6,7 +6,7 @@
     'author': 'Nezar Abou Hamdan',
     'depends': ['base', 'mail', 'ai'],
     'external_dependencies': {
-        'python': ['google-generativeai', 'PyPDF2'],
+        'python': ['google-genai', 'PyPDF2'],
     },
     'data': [
         'security/ir.model.access.csv',  # Add this exactly here
