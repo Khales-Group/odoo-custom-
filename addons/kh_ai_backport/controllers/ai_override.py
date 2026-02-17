@@ -16,9 +16,10 @@ try:
 except Exception:
     HAS_PDF = False
 
-# Gemini SDK (google-generativeai)
+# Gemini SDK (google-genai)
 try:
-    import google.generativeai as genai
+    from google import genai
+    import google
     HAS_GENAI = True
 except Exception:
     HAS_GENAI = False
@@ -87,30 +88,17 @@ Give a precise, professional answer.
             _logger.warning('Gemini API key missing; falling back to original controller')
             return super(AIControllerOverride, self).generate_response(**kwargs)
 
-        # Try SDK invocation compatible with either google-genai (genai.Client)
-        # or google-generativeai (genai.GenerativeModel).
+        # Use new google-genai SDK (Client)
         try:
-            if hasattr(genai, 'Client'):
-                # google-genai style
-                client = genai.Client(api_key=api_key)
-                response = client.models.generate_content(
-                    model='gemini-2.0-flash',
-                    contents=final_prompt,
-                )
-                text = response.text
-                return {'response': text}
-
-            elif hasattr(genai, 'configure'):
-                # google-generativeai style
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-1.5-flash-latest')
-                response = model.generate_content(final_prompt)
-                text = response.text
-                return {'response': text}
-
-            else:
-                _logger.error('Gemini SDK present but unsupported API surface')
-                return super(AIControllerOverride, self).generate_response(**kwargs)
+            _logger.info("GOOGLE PACKAGE PATH: %s", google.__file__)
+            
+            client = genai.Client(api_key=api_key)
+            response = client.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=final_prompt,
+            )
+            text = getattr(response, "text", str(response))
+            return {'response': text}
 
         except Exception as e:
             _logger.exception('Gemini API error: %s', e)

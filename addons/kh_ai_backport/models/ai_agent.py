@@ -7,7 +7,7 @@ _logger = logging.getLogger(__name__)
 
 # محاولة استيراد المكتبات لضمان استقرار السيرفر
 try:
-    import google.generativeai as genai
+    from google import genai
     HAS_GENAI = True
 except ImportError:
     HAS_GENAI = False
@@ -112,12 +112,13 @@ class AiAgent(models.Model):
         if not api_key:
             return "Error: Gemini API key is missing in System Parameters."
         try:
-            # Configure the SDK and call the GenerativeModel API
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash-latest")
-
-            response = model.generate_content(prompt)
-            return response.text
+            # Configure the SDK and call the Client API
+            client = genai.Client(api_key=api_key)
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+            )
+            return getattr(response, "text", str(response))
         except Exception as e:
             _logger.error(f"Gemini API Call failed: {e}")
             return f"Gemini connection error: {e}"

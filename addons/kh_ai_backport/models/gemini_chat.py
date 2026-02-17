@@ -15,11 +15,11 @@ except ImportError:
     _logger.warning("PyPDF2 not installed. PDF processing disabled.")
 
 try:
-    import google.generativeai as genai
+    from google import genai
     HAS_GENAI = True
-except Exception:
+except ImportError:
     HAS_GENAI = False
-    _logger.warning("google-generativeai not installed. Gemini integration disabled.")
+    _logger.warning("google-genai not installed. Gemini integration disabled.")
 
 
 class DiscussChannel(models.Model):
@@ -87,16 +87,18 @@ class DiscussChannel(models.Model):
                 return
             
             _logger.info(f"Gemini Bridge: Initializing Gemini client for {attachment_name}")
-            # Use google.generativeai GenerativeModel API
-            genai.configure(api_key=api_key)
+            client = genai.Client(api_key=api_key)
             from odoo.tools import html2plaintext
             user_prompt = html2plaintext(user_message) if user_message else f'Please summarize the document: {attachment_name}'
             _logger.info(f"Gemini Bridge: User prompt: {user_prompt[:100]}...")
             full_prompt = f"Here is a document ({attachment_name}):\n\n{extracted_text}\n\nBased on this document, answer the following user query: {user_prompt}"
             _logger.info(f"Gemini Bridge: Sending request to Gemini API...")
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            response = model.generate_content(full_prompt)
-            ai_answer = response.text
+            
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=full_prompt
+            )
+            ai_answer = getattr(response, "text", str(response))
             
             _logger.info(f"Gemini Bridge: Received response ({len(ai_answer)} characters) from Gemini")
             
