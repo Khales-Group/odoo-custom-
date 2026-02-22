@@ -2,139 +2,114 @@
 from odoo import http
 from odoo.http import request
 from odoo.addons.ai.controllers.main import AIController
-
 import base64
 import io
 import logging
-import time, random
+import time
+import random
 
 _logger = logging.getLogger(__name__)
 
-# Optional PDF reader
+# التحقق من وجود المكتبات اللازمة لضمان عدم توقف السيرفر
 try:
     import PyPDF2
     HAS_PDF = True
-except Exception:
+except ImportError:
     HAS_PDF = False
 
-# google-genai SDK
 try:
     from google import genai
-    import google
     HAS_GENAI = True
-except Exception:
+except ImportError:
     HAS_GENAI = False
-
 
 class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== GEMINI OVERRIDE ACTIVE =====')
+        """
+        تجاوز دالة أودو الأصلية لتوجيه الطلب إلى Gemini عبر Vertex AI.
+        """
+        _logger.info('===== [PROD] GEMINI VERTEX AI OVERRIDE START =====')
 
+        # 1. استخراج السؤال والمرفقات
         prompt = kwargs.get('prompt') or kwargs.get('question') or ''
-        attachments = kwargs.get('attachments') or []
-
+        attachments_ids = kwargs.get('attachments') or []
         extracted_text = ''
-        # attachments may be list of ids or dicts
-        for item in attachments:
+
+        # 2. معالجة الملفات المرفقة واستخراج النصوص منها
+        if attachments_ids:
             try:
-                att_id = int(item) if isinstance(item, (int, str)) and str(item).isdigit() else (item.get('id') if isinstance(item, dict) else None)
-            except Exception:
-                att_id = None
-            if not att_id:
-                continue
-            attachment = request.env['ir.attachment'].sudo().browse(int(att_id))
-            if not attachment:
-                continue
-            # PDF extraction
-            if HAS_PDF and attachment.mimetype == 'application/pdf' and attachment.datas:
-                try:
-                    pdf_data = base64.b64decode(attachment.datas)
-                    reader = PyPDF2.PdfReader(io.BytesIO(pdf_data))
-                    for page in reader.pages:
-                        extracted_text += page.extract_text() or ''
-                except Exception as e:
-                    _logger.exception('PDF extraction failed: %s', e)
-            # plain text
-            if not extracted_text and attachment.datas and attachment.mimetype == 'text/plain':
-                try:
-                    extracted_text = base64.b64decode(attachment.datas).decode('utf-8', errors='ignore')
-                except Exception:
-                    extracted_text = ''
+                # تحويل المعرفات إلى أرقام صحيحة والبحث عنها في المرفقات
+                ids = [int(i) for i in attachments_ids if str(i).isdigit()]
+                attachments = request.env['ir.attachment'].sudo().browse(ids)
+                
+                for att in attachments:
+                    if not att.datas:
+                        continue
+                        
+                    # استخراج نص من ملفات PDF
+                    if HAS_PDF and att.mimetype == 'application/pdf':
+                        try:
+                            pdf_data = base64.b64decode(att.datas)
+                            reader = PyPDF2.PdfReader(io.BytesIO(pdf_data))
+                            text = "".join([page.extract_text() or '' for page in reader.pages])
+                            extracted_text += f"\n--- Content of {att.name} ---\n{text}\n"
+                        except Exception as e:
+                            _logger.error("Failed to parse PDF %s: %s", att.name, e)
+                            
+                    # استخراج نص من ملفات Text
+                    elif 'text' in (att.mimetype or ''):
+                        try:
+                            text = base64.b64decode(att.datas).decode('utf-8', errors='ignore')
+                            extracted_text += f"\n--- Content of {att.name} ---\n{text}\n"
+                        except Exception as e:
+                            _logger.error("Failed to parse text file %s: %s", att.name, e)
+            except Exception as e:
+                _logger.error("Error processing attachments: %s", e)
 
-        # Build final prompt
-        final_prompt = f"""
-You are an expert Odoo 19 Enterprise ERP consultant.
-You solve technical, functional, HR, accounting and development issues.
+        # 3. بناء الـ Prompt النهائي مع السياق المستخرج
+        final_prompt = f"System: You are an Odoo 19 expert. Use the following context to answer:\n{extracted_text}\n\nUser Question: {prompt}" if extracted_text else prompt
 
-Use the following document content if provided:
-{extracted_text}
-
-User question:
-{prompt}
-
-Give a precise, professional answer.
-"""
-
-        # If Gemini SDK not available, fallback
+        # 4. التحقق من جاهزية المكتبة (Fallback Plan)
         if not HAS_GENAI:
-            _logger.warning('Gemini SDK not available; falling back to original controller')
+            _logger.warning('Google GenAI SDK not installed. Falling back to default controller.')
             return super(AIControllerOverride, self).generate_response(**kwargs)
 
-        # Get API key from System Parameters
-        api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
-        if not api_key:
-            _logger.warning('Gemini API key missing; falling back to original controller')
-            return super(AIControllerOverride, self).generate_response(**kwargs)
-
-        # Initialize google-genai client (Odoo.sh: use API key only)
-        try:
-            _logger.info("GOOGLE PACKAGE PATH: %s", getattr(google, "__file__", "unknown"))
-            client = genai.Client(api_key=api_key)
-        except Exception as e:
-            _logger.exception("Failed to init genai client: %s", e)
-            return super(AIControllerOverride, self).generate_response(**kwargs)
-
-        # small retry wrapper for transient errors (quota spikes)
-        def call_with_retries(client, prompt, attempts=3):
-            last_exc = None
-            for i in range(1, attempts + 1):
-                try:
-                    resp = client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=[{"role": "user", "parts": [{"text": prompt}]}],
-                    )
-                    try:
-                        return resp.candidates[0].content.parts[0].text
-                    except Exception:
-                        _logger.error("Gemini returned unexpected structure: %s", resp)
-                        return "AI returned empty response."
-                except Exception as exc:
-                    last_exc = exc
-                    _logger.warning("Gemini attempt %s failed: %s", i, str(exc))
-                    if i < attempts:
-                        time.sleep((2 ** (i - 1)) * 0.6 + random.uniform(0, 0.4))
-            raise last_exc
-
-        try:
-            result_text = call_with_retries(client, final_prompt)
-            _logger.info("FINAL TEXT SENT TO ODOO: %s", result_text)
+        # 5. الاتصال بـ Vertex AI مع نظام إعادة المحاولة (Retry Logic)
+        def call_gemini():
+            # إعداد العميل باستخدام ملف الـ JSON الذي رفعته
+            client = genai.Client(
+                vertexai=True,
+                project="gen-lang-client-0937150406",
+                location="us-central1",
+                credentials_path="/home/odoo/vertex_key.json"
+            )
             
-            # Call original controller to maintain expected JSON contract/metadata
-            # We suppress exceptions from super() to ensure we return our result if original fails
+            # تنفيذ الطلب
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=final_prompt
+            )
+            return response.text
+
+        # تنفيذ الطلب مع محاولات إعادة في حال حدوث خطأ عابر
+        attempts = 3
+        for i in range(attempts):
             try:
-                original_response = super(AIControllerOverride, self).generate_response(**kwargs)
-                if isinstance(original_response, dict):
-                    original_response['answer'] = result_text
-                    return original_response
-            except Exception:
-                _logger.warning("Original controller execution failed, falling back to manual response structure")
-            
-            return {
-                'answer': result_text,
-                'status': 'success',
-            }
-        except Exception as e:
-            _logger.exception('Gemini API error: %s', e)
-            return {'response': "AI processing is temporarily unavailable. Please try again later or contact an administrator."}
+                result_text = call_gemini()
+                _logger.info("Gemini response generated successfully.")
+                
+                # إرجاع الرد بالصيغة التي تتوقعها واجهة أودو 19
+                return {
+                    'answer': result_text,
+                    'status': 'success',
+                }
+            except Exception as e:
+                _logger.warning("Attempt %s failed: %s", i + 1, e)
+                if i < attempts - 1:
+                    time.sleep(1 * (i + 1)) # تأخير تصاعدي بسيط
+                else:
+                    _logger.error("All Gemini attempts failed. Falling back to original controller.")
+                    # إذا فشل كل شيء، نعود للنظام الأصلي
+                    return super(AIControllerOverride, self).generate_response(**kwargs)
