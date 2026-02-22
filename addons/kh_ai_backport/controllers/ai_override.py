@@ -8,14 +8,14 @@ import time, random
 
 _logger = logging.getLogger(__name__)
 
-# PDF support
+# دعم الـ PDF
 try:
     import PyPDF2
     HAS_PDF = True
 except ImportError:
     HAS_PDF = False
 
-# Gemini SDK
+# دعم Gemini
 try:
     from google import genai
     HAS_GENAI = True
@@ -26,84 +26,77 @@ class AIControllerGeminiDirect(http.Controller):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== GEMINI DIRECT ACTIVE =====')
+        _logger.info('===== GEMINI DIRECT (FREEDOM MODE) =====')
 
-        # user input
         prompt = kwargs.get('prompt') or kwargs.get('question') or ''
         attachments = kwargs.get('attachments') or []
 
-        # extract attachment text
         extracted_text = ""
+        
+        # 1. معالجة قوية للمرفقات (PDF, TXT, CSV, JSON)
         for item in attachments:
             try:
                 att_id = int(item) if isinstance(item, (int, str)) and str(item).isdigit() else (item.get('id') if isinstance(item, dict) else None)
-            except Exception:
-                att_id = None
-            if not att_id:
-                continue
-            attachment = request.env['ir.attachment'].sudo().browse(int(att_id))
-            if not attachment:
-                continue
-            # PDF extraction
-            if HAS_PDF and attachment.mimetype == 'application/pdf' and attachment.datas:
-                try:
-                    pdf_data = base64.b64decode(attachment.datas)
-                    reader = PyPDF2.PdfReader(io.BytesIO(pdf_data))
+                if not att_id: continue
+                
+                attachment = request.env['ir.attachment'].sudo().browse(int(att_id))
+                if not attachment or not attachment.exists(): continue
+
+                # جلب محتوى الملف بأمان (أودو 19 يستخدم raw أو datas)
+                file_bytes = attachment.raw or (base64.b64decode(attachment.datas) if attachment.datas else b'')
+                if not file_bytes: continue
+
+                mime = attachment.mimetype or ''
+                file_name = attachment.name or 'Unknown_File'
+
+                # إذا كان PDF
+                if HAS_PDF and 'pdf' in mime:
+                    reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
+                    extracted_text += f"\n--- [File: {file_name}] ---\n"
                     for page in reader.pages:
                         extracted_text += page.extract_text() or ''
-                except Exception as e:
-                    _logger.exception('PDF extraction failed: %s', e)
-            # plain text
-            if not extracted_text and attachment.datas and attachment.mimetype == 'text/plain':
-                try:
-                    extracted_text = base64.b64decode(attachment.datas).decode('utf-8', errors='ignore')
-                except Exception:
-                    extracted_text = ''
+                        
+                # إذا كان ملف نصي (كود، نصوص، الخ)
+                elif any(x in mime for x in ['text', 'csv', 'json']):
+                    extracted_text += f"\n--- [File: {file_name}] ---\n"
+                    extracted_text += file_bytes.decode('utf-8', errors='ignore')
+                else:
+                    _logger.warning("Unsupported file type for AI text extraction: %s", mime)
 
-        # build final prompt
-        final_prompt = f"""
-You are an expert Odoo 19 Enterprise ERP consultant.
-You solve technical, functional, HR, accounting and development issues.
+            except Exception as e:
+                _logger.exception('File extraction failed: %s', e)
 
-Use the following document content if provided:
-{extracted_text}
+        # 2. البرومبت الحر (Gemini الحقيقي)
+        if extracted_text:
+            final_prompt = f"Here is the content of uploaded files for context:\n{extracted_text}\n\nUser Question/Request:\n{prompt}"
+        else:
+            final_prompt = prompt
 
-User question:
-{prompt}
-
-Give a precise, professional answer.
-"""
-
-        # check Gemini SDK
+        # 3. التأكد من وجود المكتبة والمفتاح
         if not HAS_GENAI:
             return {'response': "Gemini SDK not available. Cannot process request."}
 
-        # get API key
         api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
         if not api_key:
             return {'response': "Gemini API key missing in System Parameters."}
 
-        # init client
         try:
             client = genai.Client(api_key=api_key)
         except Exception as e:
             _logger.exception("Failed to init Gemini client: %s", e)
             return {'response': f"Gemini client initialization error: {e}"}
 
-        # call Gemini with retry
+        # 4. الاتصال مع إعادة المحاولة
         def call_gemini(prompt_text, attempts=3):
             last_exc = None
-            for i in range(1, attempts+1):
+            for i in range(1, attempts + 1):
                 try:
                     resp = client.models.generate_content(
                         model="gemini-2.5-flash",
                         contents=[{"role": "user", "parts": [{"text": prompt_text}]}],
                     )
-                    try:
-                        return resp.candidates[0].content.parts[0].text
-                    except Exception:
-                        _logger.error("Gemini returned unexpected structure: %s", resp)
-                        return "AI returned empty response."
+                    # دعم مباشر للردود المتعددة الأشكال
+                    return resp.text if hasattr(resp, 'text') else resp.candidates[0].content.parts[0].text
                 except Exception as exc:
                     last_exc = exc
                     _logger.warning("Gemini attempt %s failed: %s", i, str(exc))
@@ -111,15 +104,16 @@ Give a precise, professional answer.
                         time.sleep((2 ** (i - 1)) * 0.6 + random.uniform(0, 0.4))
             raise last_exc
 
+        # 5. التنفيذ وإعادة الـ JSON
         try:
             result_text = call_gemini(final_prompt)
-            _logger.info("FINAL TEXT SENT TO ODOO: %s", result_text)
-            # JSON جاهز لكل واجهات أودو 19 chat
+            _logger.info("FINAL TEXT SENT TO ODOO: Success")
+            
             return {
-                'answer': result_text,    # للحفاظ على logging القديم
-                'response': result_text,  # chat widget
-                'message': result_text,   # نسخة احتياطية
-                'status': 'success'
+                'answer': result_text,
+                'response': result_text,
+                'message': result_text,
+                'status': 'success',
             }
         except Exception as e:
             _logger.exception("Gemini API error: %s", e)
