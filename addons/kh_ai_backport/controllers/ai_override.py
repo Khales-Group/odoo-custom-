@@ -119,7 +119,11 @@ Give a precise, professional answer.
 
         try:
             result_text = call_with_retries(client, final_prompt)
-            return {'response': result_text}
+            _logger.info("FINAL TEXT SENT TO ODOO: %s", result_text)
+            return {
+                'answer': result_text,
+                'status': 'success'
+            }
         except Exception as e:
             _logger.exception('Gemini API error: %s', e)
             return {'response': "AI processing is temporarily unavailable. Please try again later or contact an administrator."}
