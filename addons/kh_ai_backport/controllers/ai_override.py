@@ -107,7 +107,7 @@ class AIControllerGeminiDirect(http.Controller):
         # 5. التنفيذ وإعادة الـ JSON
         try:
             result_text = call_gemini(final_prompt)
-            _logger.info("FINAL TEXT SENT TO ODOO: Success")
+            _logger.info("FINAL TEXT SENT TO ODOO: %s", result_text)
             
             return {
                 'answer': result_text,
