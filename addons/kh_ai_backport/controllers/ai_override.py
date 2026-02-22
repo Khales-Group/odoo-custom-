@@ -28,7 +28,7 @@ except Exception:
 
 class AIControllerOverride(AIController):
 
-    @http.route('/ai/generate_response', type='json', auth='user')
+    @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
         _logger.info('===== GEMINI OVERRIDE ACTIVE =====')
 
@@ -120,9 +120,20 @@ Give a precise, professional answer.
         try:
             result_text = call_with_retries(client, final_prompt)
             _logger.info("FINAL TEXT SENT TO ODOO: %s", result_text)
+            
+            # Call original controller to maintain expected JSON contract/metadata
+            # We suppress exceptions from super() to ensure we return our result if original fails
+            try:
+                original_response = super(AIControllerOverride, self).generate_response(**kwargs)
+                if isinstance(original_response, dict):
+                    original_response['answer'] = result_text
+                    return original_response
+            except Exception:
+                _logger.warning("Original controller execution failed, falling back to manual response structure")
+            
             return {
                 'answer': result_text,
-                'status': 'success'
+                'status': 'success',
             }
         except Exception as e:
             _logger.exception('Gemini API error: %s', e)
