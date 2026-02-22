@@ -76,19 +76,19 @@ Give a precise, professional answer.
 
         # check Gemini SDK
         if not HAS_GENAI:
-            return {'answer': "Gemini SDK not available. Cannot process request."}
+            return {'response': "Gemini SDK not available. Cannot process request."}
 
         # get API key
         api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
         if not api_key:
-            return {'answer': "Gemini API key missing in System Parameters."}
+            return {'response': "Gemini API key missing in System Parameters."}
 
         # init client
         try:
             client = genai.Client(api_key=api_key)
         except Exception as e:
             _logger.exception("Failed to init Gemini client: %s", e)
-            return {'answer': f"Gemini client initialization error: {e}"}
+            return {'response': f"Gemini client initialization error: {e}"}
 
         # call Gemini with retry
         def call_gemini(prompt_text, attempts=3):
