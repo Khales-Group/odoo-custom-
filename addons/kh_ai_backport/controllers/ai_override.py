@@ -114,7 +114,16 @@ Give a precise, professional answer.
         try:
             result_text = call_gemini(final_prompt)
             _logger.info("FINAL TEXT SENT TO ODOO: %s", result_text)
-            return {'answer': result_text}
+            return {
+                'answer': result_text,
+                'response': result_text,
+                'status': 'success',
+            }
         except Exception as e:
             _logger.exception("Gemini API error: %s", e)
-            return {'answer': f"AI processing error: {e}"}
+            error_msg = f"AI processing error: {e}"
+            return {
+                'answer': error_msg,
+                'response': error_msg,
+                'status': 'error',
+            }
