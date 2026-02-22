@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from odoo import http
 from odoo.http import request
-# هنا رجعنا الوراثة الصحيحة اللي كانت بكودك الأصلي
 from odoo.addons.ai.controllers.main import AIController
 import base64
 import io
@@ -25,18 +24,18 @@ class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== GEMINI FINAL FIX ACTIVE =====')
+        _logger.info('===== GEMINI DEFINITIVE FIX =====')
 
         prompt = kwargs.get('prompt') or kwargs.get('question') or ''
         attachments = kwargs.get('attachments') or []
         extracted_text = ""
 
-        # 1. استخراج النصوص من المرفقات
+        # 1. استخراج المرفقات
         for item in attachments:
             try:
                 att_id = int(item) if isinstance(item, (int, str)) and str(item).isdigit() else (item.get('id') if isinstance(item, dict) else None)
                 if not att_id: continue
-                attachment = request.env['ir.attachment'].sudo().browse(int(att_id))
+                attachment = request.env['ir.attachment'].sudo().browse(att_id)
                 if not attachment: continue
 
                 if HAS_PDF and attachment.mimetype == 'application/pdf' and attachment.datas:
@@ -48,38 +47,31 @@ class AIControllerOverride(AIController):
             except Exception as e:
                 _logger.error('Attachment error: %s', e)
 
-        # 2. البرومبت العام والمختصر
+        # 2. برومبت المساعد العام
         system_prompt = "You are a helpful, intelligent, and general AI assistant. Answer the user's questions clearly and accurately."
         final_prompt = f"{system_prompt}\n\nContext:\n{extracted_text}\n\nUser: {prompt}" if extracted_text else f"{system_prompt}\n\nUser: {prompt}"
 
-        # 3. جلب الرد من Gemini باستخدام System Parameters
-        gemini_text = "Error: AI not processed."
         api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
         
-        if HAS_GENAI and api_key:
-            try:
-                client = genai.Client(api_key=api_key)
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=final_prompt
-                )
-                gemini_text = getattr(response, "text", str(response))
-                _logger.info("FINAL TEXT FROM GEMINI READY")
-            except Exception as e:
-                _logger.error("Gemini failed: %s", e)
-                gemini_text = f"Gemini API Error: {e}"
-        else:
-            gemini_text = "Gemini SDK or API Key missing."
+        # إذا مافي API Key أو SDK، نرجع لأودو كاحتياط
+        if not HAS_GENAI or not api_key:
+            _logger.warning("Missing GenAI SDK or API Key. Falling back to Odoo AI.")
+            return super(AIControllerOverride, self).generate_response(**kwargs)
 
-        # 4. السحر القديم تبعك (لمنع الشاشة البيضاء)
+        # 3. الاتصال بـ Gemini (الصافي)
         try:
-            # نجعل أودو يجهز القاموس والـ Metadata
-            original_response = super(AIControllerOverride, self).generate_response(**kwargs)
-            if isinstance(original_response, dict):
-                # نستبدل رد أودو برد Gemini
-                original_response['answer'] = gemini_text
-                return original_response
-            return original_response
+            client = genai.Client(api_key=api_key)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=final_prompt
+            )
+            gemini_text = getattr(response, "text", str(response))
+            _logger.info("FINAL TEXT FROM GEMINI READY")
+            
+            # السر الحقيقي هنا: نعيد القاموس بالاسم 'response' وبدون استخدام super() أبداً!
+            return {'response': gemini_text}
+            
         except Exception as e:
-            _logger.error("Super call failed: %s", e)
-            return {'answer': gemini_text, 'status': 'success'}
+            _logger.error("Gemini failed: %s", e)
+            # ما نستدعي super إلا لو جوجل فصلت أو الـ API Key خلص رصيده
+            return super(AIControllerOverride, self).generate_response(**kwargs)
