@@ -1,101 +1,88 @@
 # -*- coding: utf-8 -*-
-from odoo import models, api, _
-import logging
+from odoo import http
+from odoo.http import request
 import base64
 import io
+import logging
 
 _logger = logging.getLogger(__name__)
 
-# التحقق من وجود المكتبة
-try:
-    from google import genai
-    HAS_GENAI = True
-except ImportError:
-    HAS_GENAI = False
-
-# التحقق من وجود مكتبة PDF
+# دعم الـ PDF
 try:
     import PyPDF2
     HAS_PDF = True
 except ImportError:
     HAS_PDF = False
 
-class AiAgentOverride(models.Model):
-    _inherit = 'ai.agent'
+# دعم Gemini
+try:
+    from google import genai
+    HAS_GENAI = True
+except ImportError:
+    HAS_GENAI = False
 
-    def _execute_query(self, query, history=None, attachment_ids=None, **kwargs):
-        """
-        استبدال منطق الذكاء الاصطناعي لاستخدام Gemini عبر API Key فقط.
-        """
-        
-        # 1. إذا لم تكن المكتبة موجودة، ارجع لنظام أودو الأصلي
-        if not HAS_GENAI:
-            return super()._execute_query(query, history=history, attachment_ids=attachment_ids, **kwargs)
+class AIControllerGeminiDirect(http.Controller):
 
-        # 2. جلب الـ API Key من إعدادات النظام
-        api_key = self.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
-        
-        # إذا لم يوجد مفتاح، ارجع لنظام أودو الأصلي
-        if not api_key:
-            _logger.warning("Gemini API Key not found in System Parameters.")
-            return super()._execute_query(query, history=history, attachment_ids=attachment_ids, **kwargs)
+    @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
+    def generate_response(self, **kwargs):
+        _logger.info('===== GEMINI DIRECT CONTROLLER ACTIVE =====')
 
-        _logger.info("===== GEMINI API KEY MODE ACTIVE =====")
+        prompt = kwargs.get('prompt') or kwargs.get('question') or ''
+        attachments = kwargs.get('attachments') or []
+        extracted_text = ""
 
-        combined_text = ""
-        
-        # 3. معالجة المرفقات (اختياري، لزيادة الذكاء)
-        if attachment_ids:
+        # 1. استخراج النصوص من المرفقات
+        for item in attachments:
             try:
-                # التعامل مع IDs سواء كانت قائمة أو رقم مفرد
-                ids_to_browse = []
-                if isinstance(attachment_ids, list):
-                    ids_to_browse = [int(i) for i in attachment_ids if str(i).isdigit()]
-                elif isinstance(attachment_ids, int):
-                    ids_to_browse = [attachment_ids]
-                
-                if ids_to_browse:
-                    attachments = self.env['ir.attachment'].sudo().browse(ids_to_browse)
-                    for att in attachments:
-                        file_content = ""
-                        # PDF
-                        if HAS_PDF and att.mimetype == 'application/pdf' and att.datas:
-                            try:
-                                reader = PyPDF2.PdfReader(io.BytesIO(base64.b64decode(att.datas)))
-                                file_content = "".join([page.extract_text() or "" for page in reader.pages])
-                            except Exception: pass
-                        # Text
-                        elif att.datas and 'text' in (att.mimetype or ''):
-                            try:
-                                file_content = base64.b64decode(att.datas).decode('utf-8', errors='ignore')
-                            except Exception: pass
-                        
-                        if file_content:
-                            combined_text += f"\n--- File: {att.name} ---\n{file_content}\n"
+                att_id = int(item) if isinstance(item, (int, str)) and str(item).isdigit() else (item.get('id') if isinstance(item, dict) else None)
+                if not att_id: continue
+                attachment = request.env['ir.attachment'].sudo().browse(int(att_id))
+                if not attachment: continue
+
+                # PDF
+                if HAS_PDF and attachment.mimetype == 'application/pdf' and attachment.datas:
+                    pdf_data = base64.b64decode(attachment.datas)
+                    reader = PyPDF2.PdfReader(io.BytesIO(pdf_data))
+                    extracted_text += "".join([page.extract_text() or '' for page in reader.pages])
+                # Text
+                elif attachment.datas and 'text' in (attachment.mimetype or ''):
+                    extracted_text += base64.b64decode(attachment.datas).decode('utf-8', errors='ignore')
             except Exception as e:
-                _logger.error(f"Attachment processing error: {e}")
+                _logger.error('Attachment processing failed: %s', e)
 
-        # 4. تجهيز النص النهائي
-        final_prompt = f"Context:\n{combined_text}\n\nUser Question: {query}" if combined_text else query
+        # 2. بناء السؤال
+        final_prompt = f"Context:\n{extracted_text}\n\nUser question: {prompt}" if extracted_text else prompt
 
-        # 5. الاتصال بـ Gemini
+        if not HAS_GENAI:
+            return {'response': "Gemini SDK not available.", 'status': 'error'}
+
+        # 3. جلب الـ API Key من System Parameters (كما طلبت)
+        api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
+        if not api_key:
+            return {'response': "Gemini API key missing in System Parameters.", 'status': 'error'}
+
+        # 4. الاتصال المباشر بـ Gemini وإرجاع الرد
         try:
-            # تهيئة العميل بالمفتاح فقط
             client = genai.Client(api_key=api_key)
-            
-            # طلب الرد (يمكنك تغيير الموديل إلى gemini-1.5-flash إذا أردت)
             response = client.models.generate_content(
-                model="gemini-2.0-flash", 
+                model="gemini-2.5-flash",
                 contents=final_prompt
             )
             
-            result_text = response.text
-            _logger.info("Gemini Response Received Successfully")
+            result_text = getattr(response, "text", str(response))
+            _logger.info("FINAL TEXT SENT TO ODOO: %s", result_text)
             
-            # إرجاع النص فقط (أودو سيتولى عرضه في الشاشة)
-            return result_text
+            # السر لعدم ظهور الشاشة البيضاء: إرجاع الـ response والـ answer معاً
+            return {
+                'answer': result_text,
+                'response': result_text,
+                'status': 'success',
+            }
 
         except Exception as e:
-            _logger.exception("Gemini API Error: %s", e)
-            # في حال حدوث خطأ (مثل 429)، العودة لنظام أودو الأصلي بدلاً من التوقف
-            return super()._execute_query(query, history=history, attachment_ids=attachment_ids, **kwargs)
+            _logger.exception("Gemini API error: %s", e)
+            return {
+                'answer': f"AI processing error: {e}",
+                'response': f"AI processing error: {e}",
+                'status': 'error',
+            }
