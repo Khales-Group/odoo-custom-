@@ -102,7 +102,7 @@ Give a precise, professional answer.
             for i in range(1, attempts + 1):
                 try:
                     resp = client.models.generate_content(
-                        model="gemini-2.0-flash",
+                        model="gemini-2.5-flash",
                         contents=prompt,
                     )
                     return getattr(resp, "text", str(resp))

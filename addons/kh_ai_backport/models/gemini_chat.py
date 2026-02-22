@@ -84,7 +84,7 @@ class DiscussChannel(models.Model):
             full_prompt = f"Here is a document ({attachment_name}):\n\n{extracted_text}\n\nBased on this document, answer the following user query: {user_prompt}"
             
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 contents=full_prompt
             )
             ai_answer = getattr(response, "text", str(response))

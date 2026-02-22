@@ -115,7 +115,7 @@ class AiAgent(models.Model):
             # Configure the SDK and call the Client API (using API key only)
             client = genai.Client(api_key=api_key)
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 contents=prompt,
             )
             return getattr(response, "text", str(response))
