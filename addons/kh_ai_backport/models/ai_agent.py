@@ -116,9 +116,13 @@ class AiAgent(models.Model):
             client = genai.Client(api_key=api_key)
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
-                contents=prompt,
+                contents=[{"role": "user", "parts": [{"text": prompt}]}],
             )
-            return getattr(response, "text", str(response))
+            try:
+                return response.candidates[0].content.parts[0].text
+            except Exception:
+                _logger.error("Gemini returned unexpected structure: %s", response)
+                return "AI returned empty response."
         except Exception as e:
             _logger.error("Gemini API Call failed: %s", e, exc_info=True)
             # تمييز خطأ الموارد (مثلاً quota) لتسهيل التشخيص

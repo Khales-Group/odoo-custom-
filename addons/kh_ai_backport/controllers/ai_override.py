@@ -103,9 +103,13 @@ Give a precise, professional answer.
                 try:
                     resp = client.models.generate_content(
                         model="gemini-2.5-flash",
-                        contents=prompt,
+                        contents=[{"role": "user", "parts": [{"text": prompt}]}],
                     )
-                    return getattr(resp, "text", str(resp))
+                    try:
+                        return resp.candidates[0].content.parts[0].text
+                    except Exception:
+                        _logger.error("Gemini returned unexpected structure: %s", resp)
+                        return "AI returned empty response."
                 except Exception as exc:
                     last_exc = exc
                     _logger.warning("Gemini attempt %s failed: %s", i, str(exc))
