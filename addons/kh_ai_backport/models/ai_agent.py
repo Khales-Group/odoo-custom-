@@ -52,78 +52,62 @@ class AiAgent(models.Model):
 
     def _execute_query(self, query, history=None, attachment_ids=None, **kwargs):
         """
-        هذه هي الدالة الأساسية في أودو 19. اعتراضها هنا يضمن السيطرة على الرد.
+        الاعتراض هنا يضمن أن أودو سيأخذ النص الذي نعيده،
+        ويقوم هو بإنشاء فقاعة الدردشة في واجهة المستخدم تلقائياً.
         """
-        _logger.info("===== [DEBUG] AI EXECUTION TRIGGERED =====")
+        _logger.info("===== [PROD] GEMINI AI MODEL OVERRIDE TRIGGERED =====")
 
-        if attachment_ids and HAS_GENAI:
-            _logger.info(f"===== [DEBUG] Intercepting {len(attachment_ids)} files for Gemini =====")
-            
-            combined_text = ""
-            # جلب الملفات المرفقة
+        if not HAS_GENAI:
+            _logger.warning("Gemini SDK not found. Falling back to default Odoo AI.")
+            return super()._execute_query(query, history=history, attachment_ids=attachment_ids, **kwargs)
+
+        combined_text = ""
+
+        # 1. معالجة المرفقات (إن وجدت)
+        if attachment_ids:
             attachments = self.env['ir.attachment'].sudo().browse(attachment_ids)
-            for attach in attachments:
+            for att in attachments:
                 text = ""
-                # محاولة استخراج النص من PDF
-                if HAS_PDF and attach.mimetype == 'application/pdf':
-                    text = self._extract_pdf_text(attach)
-                
-                # محاولة استخراج النص إذا كان ملف نصي عادي
-                if not text:
-                    text = self._extract_text(attach)
+                # PDF
+                if HAS_PDF and att.mimetype == 'application/pdf' and att.datas:
+                    try:
+                        reader = PyPDF2.PdfReader(io.BytesIO(base64.b64decode(att.datas)))
+                        text = "".join([page.extract_text() or "" for page in reader.pages])
+                    except Exception as e:
+                        _logger.error("PDF parsing error: %s", e)
+                # Text
+                elif att.datas and 'text' in (att.mimetype or ''):
+                    try:
+                        text = base64.b64decode(att.datas).decode('utf-8', errors='ignore')
+                    except Exception:
+                        pass
                 
                 if text:
-                    combined_text += f"\n[File: {attach.name}]\n{text}\n"
+                    combined_text += f"\n[File: {att.name}]\n{text}\n"
 
-            if combined_text:
-                _logger.info("===== [DEBUG] Sending Document context to Gemini 2.0 Flash =====")
-                prompt = f"Using this document content, answer the user query accurately:\n{combined_text}\n\nUser Question: {query}"
-                answer = self._ask_gemini(prompt)
-                
-                if answer:
-                    _logger.info("===== [DEBUG] Gemini response received successfully =====")
-                    return answer
+        # 2. تجهيز السؤال النهائي
+        final_prompt = f"System: Use context to answer precisely.\nContext:\n{combined_text}\n\nUser: {query}" if combined_text else query
 
-        # العودة لنظام أودو الأصلي في حال عدم وجود مرفقات أو فشل الجسر
-        return super()._execute_query(query, history=history, attachment_ids=attachment_ids, **kwargs)
-
-    def _extract_text(self, attachment):
-        if not attachment: return ""
-        if attachment.index_content: return attachment.index_content
-        if attachment.datas and attachment.mimetype == 'text/plain':
-            try:
-                return base64.b64decode(attachment.datas).decode('utf-8', errors='ignore')
-            except Exception: return ""
-        return ""
-
-    def _extract_pdf_text(self, attachment):
-        if not HAS_PDF or attachment.mimetype != 'application/pdf': return ""
+        # 3. جلب الرد من Gemini مباشرة
         try:
-            pdf_data = base64.b64decode(attachment.datas)
-            reader = PyPDF2.PdfReader(io.BytesIO(pdf_data))
-            return "".join([page.extract_text() or "" for page in reader.pages])
-        except Exception as e:
-            _logger.error(f"PDF Extraction failed: {e}")
-            return ""
+            # استخدام API Key الموجود في الإعدادات لضمان العمل على ويندوز
+            api_key = self.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
+            if not api_key:
+                _logger.warning("Gemini API Key missing.")
+                return super()._execute_query(query, history=history, attachment_ids=attachment_ids, **kwargs)
 
-    def _ask_gemini(self, prompt):
-        # تأكد من استخدام نفس المفتاح المعرف في السيستم
-        api_key = self.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
-        if not api_key:
-            return "Error: Gemini API key is missing in System Parameters."
-        try:
-            # Configure the SDK and call the Client API (using API key only)
             client = genai.Client(api_key=api_key)
+            
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
-                contents=[{"role": "user", "parts": [{"text": prompt}]}],
+                contents=final_prompt
             )
-            try:
-                return response.candidates[0].content.parts[0].text
-            except Exception:
-                _logger.error("Gemini returned unexpected structure: %s", response)
-                return "AI returned empty response."
+            
+            _logger.info("Gemini response generated successfully.")
+            # إرجاع النص مباشرة! أودو سيتكفل بعرضه في الشاشة كرسالة
+            return getattr(response, "text", str(response))
+
         except Exception as e:
-            _logger.error("Gemini API Call failed: %s", e, exc_info=True)
-            # تمييز خطأ الموارد (مثلاً quota) لتسهيل التشخيص
-            return f"Gemini connection error: {e}"
+            _logger.error("Gemini Call Failed: %s", e)
+            # إذا تعطلت جوجل لسبب ما، نعود للذكاء الاصطناعي الافتراضي لأودو
+            return super()._execute_query(query, history=history, attachment_ids=attachment_ids, **kwargs)
