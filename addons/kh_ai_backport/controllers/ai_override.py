@@ -25,7 +25,7 @@ class AIControllerGeminiDirect(http.Controller):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== GEMINI DIRECT CONTROLLER ACTIVE =====')
+        _logger.info('===== GEMINI GENERIC CONTROLLER ACTIVE =====')
 
         prompt = kwargs.get('prompt') or kwargs.get('question') or ''
         attachments = kwargs.get('attachments') or []
@@ -50,13 +50,18 @@ class AIControllerGeminiDirect(http.Controller):
             except Exception as e:
                 _logger.error('Attachment processing failed: %s', e)
 
-        # 2. بناء السؤال
-        final_prompt = f"Context:\n{extracted_text}\n\nUser question: {prompt}" if extracted_text else prompt
+        # 2. بناء "برومبت عام" (مساعد ذكي غير مخصص لأودو)
+        system_prompt = "You are a helpful, intelligent, and general AI assistant. Answer the user's questions clearly and accurately."
+        
+        if extracted_text:
+            final_prompt = f"{system_prompt}\n\nContext from files:\n{extracted_text}\n\nUser Question: {prompt}"
+        else:
+            final_prompt = f"{system_prompt}\n\nUser Question: {prompt}"
 
         if not HAS_GENAI:
             return {'response': "Gemini SDK not available.", 'status': 'error'}
 
-        # 3. جلب الـ API Key من System Parameters (كما طلبت)
+        # 3. جلب الـ API Key من System Parameters
         api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
         if not api_key:
             return {'response': "Gemini API key missing in System Parameters.", 'status': 'error'}
@@ -72,7 +77,7 @@ class AIControllerGeminiDirect(http.Controller):
             result_text = getattr(response, "text", str(response))
             _logger.info("FINAL TEXT SENT TO ODOO: %s", result_text)
             
-            # السر لعدم ظهور الشاشة البيضاء: إرجاع الـ response والـ answer معاً
+            # إرجاع الرد بالشكل الذي تفهمه واجهة أودو 100%
             return {
                 'answer': result_text,
                 'response': result_text,
