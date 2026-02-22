@@ -70,37 +70,24 @@ class DiscussChannel(models.Model):
     def _process_with_gemini(self, extracted_text, user_message, attachment_name=""):
         """Send document to Gemini and post the response."""
         try:
-            # Get API key from system parameters (stored securely)
-            # Using the same key parameter as AiAgent for unified configuration
             api_key = self.env['ir.config_parameter'].sudo().get_param(
                 'gemini.api.key'
             )
             
             if not api_key:
                 _logger.warning("Gemini Bridge: Gemini API key not configured. Skipping AI processing.")
-                self.sudo().message_post(
-                    body="⚠️ Gemini API key is not configured. Please contact your administrator.",
-                    author_id=self.env.ref('base.partner_root').id,
-                    message_type='comment',
-                    subtype_xmlid='mail.mt_comment'
-                )
                 return
             
-            _logger.info(f"Gemini Bridge: Initializing Gemini client for {attachment_name}")
             client = genai.Client(api_key=api_key)
             from odoo.tools import html2plaintext
             user_prompt = html2plaintext(user_message) if user_message else f'Please summarize the document: {attachment_name}'
-            _logger.info(f"Gemini Bridge: User prompt: {user_prompt[:100]}...")
             full_prompt = f"Here is a document ({attachment_name}):\n\n{extracted_text}\n\nBased on this document, answer the following user query: {user_prompt}"
-            _logger.info(f"Gemini Bridge: Sending request to Gemini API...")
             
             response = client.models.generate_content(
                 model="gemini-2.0-flash",
                 contents=full_prompt
             )
             ai_answer = getattr(response, "text", str(response))
-            
-            _logger.info(f"Gemini Bridge: Received response ({len(ai_answer)} characters) from Gemini")
             
             # Post Gemini's answer back into the chat as OdooBot using sudo() to bypass permissions
             self.sudo().with_context(mail_create_nosubscribe=True).message_post(
@@ -109,8 +96,6 @@ class DiscussChannel(models.Model):
                 message_type='comment',
                 subtype_xmlid='mail.mt_comment'  # Ensures it appears as a real chat bubble
             )
-            
-            _logger.info(f"Gemini Bridge: Successfully processed document in channel {self.id}")
             
         except Exception as e:
             _logger.error(f"Gemini Bridge: API error: {str(e)}", exc_info=True)

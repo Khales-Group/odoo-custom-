@@ -1,3 +1,2 @@
 google-genai
-google-cloud-aiplatform
 PyPDF2

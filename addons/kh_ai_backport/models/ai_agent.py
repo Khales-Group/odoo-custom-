@@ -112,7 +112,7 @@ class AiAgent(models.Model):
         if not api_key:
             return "Error: Gemini API key is missing in System Parameters."
         try:
-            # Configure the SDK and call the Client API
+            # Configure the SDK and call the Client API (using API key only)
             client = genai.Client(api_key=api_key)
             response = client.models.generate_content(
                 model="gemini-2.0-flash",
@@ -120,5 +120,6 @@ class AiAgent(models.Model):
             )
             return getattr(response, "text", str(response))
         except Exception as e:
-            _logger.error(f"Gemini API Call failed: {e}")
+            _logger.error("Gemini API Call failed: %s", e, exc_info=True)
+            # تمييز خطأ الموارد (مثلاً quota) لتسهيل التشخيص
             return f"Gemini connection error: {e}"

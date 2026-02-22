@@ -6,6 +6,7 @@ from odoo.addons.ai.controllers.main import AIController
 import base64
 import io
 import logging
+import time, random
 
 _logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ try:
 except Exception:
     HAS_PDF = False
 
-# Gemini SDK (google-genai)
+# google-genai SDK
 try:
     from google import genai
     import google
@@ -76,30 +77,45 @@ User question:
 Give a precise, professional answer.
 """
 
-        # If Gemini not available, fallback to super
+        # If Gemini SDK not available, fallback
         if not HAS_GENAI:
             _logger.warning('Gemini SDK not available; falling back to original controller')
             return super(AIControllerOverride, self).generate_response(**kwargs)
 
-        # Use new google-genai SDK (Client)
-        try:
-            _logger.info("GOOGLE PACKAGE PATH: %s", google.__file__)
-            
-            # Vertex AI Configuration
-            key_path = "/home/odoo/vertex_key.json"
-            client = genai.Client(
-                vertexai=True,
-                project="gen-lang-client-0937150406", # تم استخراجه من الملف الذي أرفقته
-                location="us-central1",
-                credentials_path=key_path # هنا حددنا الملف مباشرة بدون الحاجة لمتغيرات بيئة
-            )
-            response = client.models.generate_content(
-                model='gemini-2.0-flash',
-                contents=final_prompt,
-            )
-            text = getattr(response, "text", str(response))
-            return {'response': text}
+        # Get API key from System Parameters
+        api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
+        if not api_key:
+            _logger.warning('Gemini API key missing; falling back to original controller')
+            return super(AIControllerOverride, self).generate_response(**kwargs)
 
+        # Initialize google-genai client (Odoo.sh: use API key only)
+        try:
+            _logger.info("GOOGLE PACKAGE PATH: %s", getattr(google, "__file__", "unknown"))
+            client = genai.Client(api_key=api_key)
+        except Exception as e:
+            _logger.exception("Failed to init genai client: %s", e)
+            return super(AIControllerOverride, self).generate_response(**kwargs)
+
+        # small retry wrapper for transient errors (quota spikes)
+        def call_with_retries(client, prompt, attempts=3):
+            last_exc = None
+            for i in range(1, attempts + 1):
+                try:
+                    resp = client.models.generate_content(
+                        model="gemini-2.0-flash",
+                        contents=prompt,
+                    )
+                    return getattr(resp, "text", str(resp))
+                except Exception as exc:
+                    last_exc = exc
+                    _logger.warning("Gemini attempt %s failed: %s", i, str(exc))
+                    if i < attempts:
+                        time.sleep((2 ** (i - 1)) * 0.6 + random.uniform(0, 0.4))
+            raise last_exc
+
+        try:
+            result_text = call_with_retries(client, final_prompt)
+            return {'response': result_text}
         except Exception as e:
             _logger.exception('Gemini API error: %s', e)
-            return super(AIControllerOverride, self).generate_response(**kwargs)
+            return {'response': "AI processing is temporarily unavailable. Please try again later or contact an administrator."}
