@@ -1,31 +1,31 @@
 # -*- coding: utf-8 -*-
 from odoo import http
 from odoo.http import request
+# هنا رجعنا الوراثة الصحيحة اللي كانت بكودك الأصلي
+from odoo.addons.ai.controllers.main import AIController
 import base64
 import io
 import logging
 
 _logger = logging.getLogger(__name__)
 
-# دعم الـ PDF
 try:
     import PyPDF2
     HAS_PDF = True
 except ImportError:
     HAS_PDF = False
 
-# دعم Gemini
 try:
     from google import genai
     HAS_GENAI = True
 except ImportError:
     HAS_GENAI = False
 
-class AIControllerGeminiDirect(http.Controller):
+class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== GEMINI GENERIC CONTROLLER ACTIVE =====')
+        _logger.info('===== GEMINI FINAL FIX ACTIVE =====')
 
         prompt = kwargs.get('prompt') or kwargs.get('question') or ''
         attachments = kwargs.get('attachments') or []
@@ -39,55 +39,47 @@ class AIControllerGeminiDirect(http.Controller):
                 attachment = request.env['ir.attachment'].sudo().browse(int(att_id))
                 if not attachment: continue
 
-                # PDF
                 if HAS_PDF and attachment.mimetype == 'application/pdf' and attachment.datas:
                     pdf_data = base64.b64decode(attachment.datas)
                     reader = PyPDF2.PdfReader(io.BytesIO(pdf_data))
                     extracted_text += "".join([page.extract_text() or '' for page in reader.pages])
-                # Text
                 elif attachment.datas and 'text' in (attachment.mimetype or ''):
                     extracted_text += base64.b64decode(attachment.datas).decode('utf-8', errors='ignore')
             except Exception as e:
-                _logger.error('Attachment processing failed: %s', e)
+                _logger.error('Attachment error: %s', e)
 
-        # 2. بناء "برومبت عام" (مساعد ذكي غير مخصص لأودو)
+        # 2. البرومبت العام والمختصر
         system_prompt = "You are a helpful, intelligent, and general AI assistant. Answer the user's questions clearly and accurately."
-        
-        if extracted_text:
-            final_prompt = f"{system_prompt}\n\nContext from files:\n{extracted_text}\n\nUser Question: {prompt}"
-        else:
-            final_prompt = f"{system_prompt}\n\nUser Question: {prompt}"
+        final_prompt = f"{system_prompt}\n\nContext:\n{extracted_text}\n\nUser: {prompt}" if extracted_text else f"{system_prompt}\n\nUser: {prompt}"
 
-        if not HAS_GENAI:
-            return {'response': "Gemini SDK not available.", 'status': 'error'}
-
-        # 3. جلب الـ API Key من System Parameters
+        # 3. جلب الرد من Gemini باستخدام System Parameters
+        gemini_text = "Error: AI not processed."
         api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
-        if not api_key:
-            return {'response': "Gemini API key missing in System Parameters.", 'status': 'error'}
+        
+        if HAS_GENAI and api_key:
+            try:
+                client = genai.Client(api_key=api_key)
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=final_prompt
+                )
+                gemini_text = getattr(response, "text", str(response))
+                _logger.info("FINAL TEXT FROM GEMINI READY")
+            except Exception as e:
+                _logger.error("Gemini failed: %s", e)
+                gemini_text = f"Gemini API Error: {e}"
+        else:
+            gemini_text = "Gemini SDK or API Key missing."
 
-        # 4. الاتصال المباشر بـ Gemini وإرجاع الرد
+        # 4. السحر القديم تبعك (لمنع الشاشة البيضاء)
         try:
-            client = genai.Client(api_key=api_key)
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=final_prompt
-            )
-            
-            result_text = getattr(response, "text", str(response))
-            _logger.info("FINAL TEXT SENT TO ODOO: %s", result_text)
-            
-            # إرجاع الرد بالشكل الذي تفهمه واجهة أودو 100%
-            return {
-                'answer': result_text,
-                'response': result_text,
-                'status': 'success',
-            }
-
+            # نجعل أودو يجهز القاموس والـ Metadata
+            original_response = super(AIControllerOverride, self).generate_response(**kwargs)
+            if isinstance(original_response, dict):
+                # نستبدل رد أودو برد Gemini
+                original_response['answer'] = gemini_text
+                return original_response
+            return original_response
         except Exception as e:
-            _logger.exception("Gemini API error: %s", e)
-            return {
-                'answer': f"AI processing error: {e}",
-                'response': f"AI processing error: {e}",
-                'status': 'error',
-            }
+            _logger.error("Super call failed: %s", e)
+            return {'answer': gemini_text, 'status': 'success'}
