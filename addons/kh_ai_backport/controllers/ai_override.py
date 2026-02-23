@@ -26,14 +26,23 @@ class AIControllerGeminiDirect(http.Controller):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== GEMINI DIRECT (FREEDOM MODE) =====')
+        _logger.info('===== GEMINI DIRECT (DEBUG & FREEDOM MODE) =====')
+        
+        # 1. سطر كشف الأسرار: نطبع كل البيانات اللي جاية من الواجهة كما هي
+        _logger.info("PAYLOAD RECEIVED FROM FRONTEND: %s", str(kwargs))
 
-        prompt = kwargs.get('prompt') or kwargs.get('question') or ''
-        attachments = kwargs.get('attachments') or []
+        # 2. اصطياد النص بأي اسم كان
+        prompt = kwargs.get('prompt') or kwargs.get('question') or kwargs.get('text') or kwargs.get('message') or kwargs.get('body') or ''
+        # إذا كان النص داخل قاموس (Dictionary) من الواجهة
+        if isinstance(prompt, dict):
+            prompt = prompt.get('text') or prompt.get('body') or str(prompt)
+
+        # 3. اصطياد المرفقات بأي اسم كانت
+        attachments = kwargs.get('attachments') or kwargs.get('attachment_ids') or kwargs.get('files') or []
 
         extracted_text = ""
         
-        # 1. معالجة قوية للمرفقات (PDF, TXT, CSV, JSON)
+        # 4. معالجة قوية للمرفقات
         for item in attachments:
             try:
                 att_id = int(item) if isinstance(item, (int, str)) and str(item).isdigit() else (item.get('id') if isinstance(item, dict) else None)
@@ -42,21 +51,18 @@ class AIControllerGeminiDirect(http.Controller):
                 attachment = request.env['ir.attachment'].sudo().browse(int(att_id))
                 if not attachment or not attachment.exists(): continue
 
-                # جلب محتوى الملف بأمان (أودو 19 يستخدم raw أو datas)
                 file_bytes = attachment.raw or (base64.b64decode(attachment.datas) if attachment.datas else b'')
                 if not file_bytes: continue
 
                 mime = attachment.mimetype or ''
                 file_name = attachment.name or 'Unknown_File'
 
-                # إذا كان PDF
                 if HAS_PDF and 'pdf' in mime:
                     reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
                     extracted_text += f"\n--- [File: {file_name}] ---\n"
                     for page in reader.pages:
                         extracted_text += page.extract_text() or ''
                         
-                # إذا كان ملف نصي (كود، نصوص، الخ)
                 elif any(x in mime for x in ['text', 'csv', 'json']):
                     extracted_text += f"\n--- [File: {file_name}] ---\n"
                     extracted_text += file_bytes.decode('utf-8', errors='ignore')
@@ -66,7 +72,7 @@ class AIControllerGeminiDirect(http.Controller):
             except Exception as e:
                 _logger.exception('File extraction failed: %s', e)
 
-        # 2. البرومبت الموجه (لحل الهلوسة مع الملفات)
+        # 5. البرومبت الموجه
         system_prompt = "You are a helpful and intelligent AI assistant. If context files are provided, use them to answer the user's question accurately. Do not generate random topics."
         
         if extracted_text:
@@ -74,7 +80,6 @@ class AIControllerGeminiDirect(http.Controller):
         else:
             final_prompt = f"{system_prompt}\n\nUser Question: {prompt}"
 
-        # 3. التأكد من وجود المكتبة والمفتاح
         if not HAS_GENAI:
             return {'response': "Gemini SDK not available. Cannot process request."}
 
@@ -88,7 +93,7 @@ class AIControllerGeminiDirect(http.Controller):
             _logger.exception("Failed to init Gemini client: %s", e)
             return {'response': f"Gemini client initialization error: {e}"}
 
-        # 4. الاتصال مع إعادة المحاولة
+        # الاتصال مع إعادة المحاولة
         def call_gemini(prompt_text, attempts=3):
             last_exc = None
             for i in range(1, attempts + 1):
@@ -97,7 +102,6 @@ class AIControllerGeminiDirect(http.Controller):
                         model="gemini-2.5-flash",
                         contents=[{"role": "user", "parts": [{"text": prompt_text}]}],
                     )
-                    # دعم مباشر للردود المتعددة الأشكال
                     return resp.text if hasattr(resp, 'text') else resp.candidates[0].content.parts[0].text
                 except Exception as exc:
                     last_exc = exc
@@ -106,7 +110,6 @@ class AIControllerGeminiDirect(http.Controller):
                         time.sleep((2 ** (i - 1)) * 0.6 + random.uniform(0, 0.4))
             raise last_exc
 
-        # 5. التنفيذ وإعادة الـ JSON
         try:
             result_text = call_gemini(final_prompt)
             _logger.info("FINAL TEXT SENT TO ODOO: %s", result_text)
