@@ -2,6 +2,8 @@
 from odoo import http
 from odoo.http import request
 from odoo.tools import html2plaintext
+# استيراد الكنترولر الأصلي لأودو عشان نقدر نشغله وقت الحاجة
+from odoo.addons.ai.controllers.main import AIController
 import base64
 import io
 import logging
@@ -20,17 +22,17 @@ try:
 except ImportError:
     HAS_PDF = False
 
-class AIControllerGeminiDirect(http.Controller):
+# الوراثة من الكنترولر الأصلي
+class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== GEMINI DIRECT (ULTIMATE FIX) =====')
+        _logger.info('===== SMART AI ROUTER (ODOO + GEMINI) =====')
         
         prompt = ""
-        extracted_text = ""
         attachments = request.env['ir.attachment'].sudo()
 
-        # 1. جلب الرسالة والمرفقات
+        # 1. جلب الرسالة والمرفقات لفحصها
         mail_message_id = kwargs.get('mail_message_id')
         if mail_message_id:
             message = request.env['mail.message'].sudo().browse(int(mail_message_id))
@@ -40,8 +42,41 @@ class AIControllerGeminiDirect(http.Controller):
         else:
             raw_prompt = kwargs.get('prompt') or kwargs.get('question') or kwargs.get('text') or ''
             prompt = html2plaintext(raw_prompt) if '<' in raw_prompt else raw_prompt
+            att_ids = kwargs.get('attachments') or kwargs.get('attachment_ids') or []
+            if att_ids:
+                attachments = request.env['ir.attachment'].sudo().browse([int(i) for i in att_ids if str(i).isdigit()])
 
-        # 2. استخراج النص من الملفات المرفقة
+        prompt_lower = prompt.lower()
+        has_files = len(attachments) > 0
+
+        # ==========================================
+        # 🚦 شرطي المرور الذكي (The Router) 🚦
+        # ==========================================
+        
+        # قائمة الكلمات التي تدل على أن المستخدم يريد بيانات من قاعدة البيانات
+        # (تقدر تضيف أو تعدل عليها براحتك مستقبلاً)
+        db_keywords = [
+            'موظف', 'موظفين', 'مبيعات', 'عملاء', 'عميل', 'فواتير', 'فاتورة', 'مخزن',
+            'كم عدد', 'موظف عنا', 'employee', 'sales', 'customer', 'invoice', 'how many'
+        ]
+
+        # هل السؤال يحتوي على كلمة من القائمة؟
+        needs_database = any(keyword in prompt_lower for keyword in db_keywords)
+
+        # القرار: إذا طلب داتا ومافي ملفات -> روح لأودو (Odoo Native AI)
+        if needs_database and not has_files:
+            _logger.info("🚦 ROUTER: Routing to Odoo Native AI (Database query detected)")
+            # تشغيل محرك أودو الأصلي وإرجاع النتيجة
+            return super(AIControllerOverride, self).generate_response(**kwargs)
+
+        # القرار: غير كذا -> روح لـ Gemini (ملفات، أسئلة عامة، ترجمة، الخ)
+        _logger.info("🚦 ROUTER: Routing to Gemini AI (Files or General query detected)")
+        # ==========================================
+
+        # --- مسار GEMINI ---
+        extracted_text = ""
+        
+        # استخراج النص من الملفات المرفقة
         for att in attachments:
             file_text = ""
             if att.index_content:
@@ -62,14 +97,11 @@ class AIControllerGeminiDirect(http.Controller):
             if file_text:
                 extracted_text += f"\n--- [File: {att.name}] ---\n{file_text}\n"
 
-        # 3. بناء البرومبت
+        # بناء البرومبت لـ Gemini
         system_prompt = "You are a helpful AI assistant. Use the provided file context to answer the user's question. If no context is provided, answer normally."
-        if extracted_text:
-            final_prompt = f"{system_prompt}\n\n--- FILE CONTEXT ---\n{extracted_text}\n-------------------\n\nUser Question: {prompt}"
-        else:
-            final_prompt = f"{system_prompt}\n\nUser Question: {prompt}"
+        final_prompt = f"{system_prompt}\n\n--- FILE CONTEXT ---\n{extracted_text}\n-------------------\n\nUser Question: {prompt}" if extracted_text else f"{system_prompt}\n\nUser Question: {prompt}"
 
-        # 4. الاتصال بجوجل
+        # الاتصال بجوجل
         if not HAS_GENAI:
             return {'response': "Gemini SDK not available."}
 
@@ -84,31 +116,22 @@ class AIControllerGeminiDirect(http.Controller):
                 contents=final_prompt
             )
             result_text = getattr(response, "text", str(response))
-            _logger.info("FINAL TEXT FROM GEMINI RECEIVED.")
+            _logger.info("SUCCESS: Text received from Gemini.")
             
-            # ==========================================
-            # السحر الجديد: إجبار أودو على عرض الرسالة في الشاشة
-            # ==========================================
+            # زراعة الرسالة في الشاشة (نفس حركتنا السحرية الأخيرة)
             channel_id = kwargs.get('channel_id')
             if channel_id:
                 channel = request.env['discuss.channel'].sudo().browse(int(channel_id))
                 if channel.exists():
-                    # تحويل النص لـ HTML عشان التنسيق والأسطر تطلع صح
                     html_body = result_text.replace('\n', '<br>')
-                    
-                    # نستخدم OdooBot كصاحب الرسالة عشان تطلع كأنها من النظام/الذكاء الاصطناعي
                     bot_id = request.env.ref('base.partner_root').id
-                    
-                    # ننشر الرسالة مباشرة في الشات
                     channel.message_post(
                         body=html_body,
                         author_id=bot_id,
                         message_type='comment',
                         subtype_xmlid='mail.mt_comment'
                     )
-                    _logger.info("SUCCESS: Message posted to chat UI in channel %s", channel_id)
-            # ==========================================
-
+                    
             return {
                 'answer': result_text,
                 'response': result_text,
