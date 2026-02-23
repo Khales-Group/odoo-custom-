@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from odoo import http
 from odoo.http import request
+from odoo.tools import html2plaintext
 import base64
 import io
 import logging
@@ -26,36 +27,38 @@ class AIControllerGeminiDirect(http.Controller):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== GEMINI DIRECT (DEBUG & FREEDOM MODE) =====')
+        _logger.info('===== GEMINI DIRECT (MAIL MESSAGE MODE) =====')
         
-        # 1. سطر كشف الأسرار: نطبع كل البيانات اللي جاية من الواجهة كما هي
-        _logger.info("PAYLOAD RECEIVED FROM FRONTEND: %s", str(kwargs))
-
-        # 2. اصطياد النص بأي اسم كان
-        prompt = kwargs.get('prompt') or kwargs.get('question') or kwargs.get('text') or kwargs.get('message') or kwargs.get('body') or ''
-        # إذا كان النص داخل قاموس (Dictionary) من الواجهة
-        if isinstance(prompt, dict):
-            prompt = prompt.get('text') or prompt.get('body') or str(prompt)
-
-        # 3. اصطياد المرفقات بأي اسم كانت
-        attachments = kwargs.get('attachments') or kwargs.get('attachment_ids') or kwargs.get('files') or []
-
+        prompt = ""
         extracted_text = ""
-        
-        # 4. معالجة قوية للمرفقات
-        for item in attachments:
-            try:
-                att_id = int(item) if isinstance(item, (int, str)) and str(item).isdigit() else (item.get('id') if isinstance(item, dict) else None)
-                if not att_id: continue
-                
-                attachment = request.env['ir.attachment'].sudo().browse(int(att_id))
-                if not attachment or not attachment.exists(): continue
+        attachments = []
 
-                file_bytes = attachment.raw or (base64.b64decode(attachment.datas) if attachment.datas else b'')
+        # 1. السر: قراءة الرسالة من قاعدة البيانات عبر الـ ID
+        mail_message_id = kwargs.get('mail_message_id')
+        
+        if mail_message_id:
+            message = request.env['mail.message'].sudo().browse(int(mail_message_id))
+            if message.exists():
+                # أودو يحفظ الرسالة كـ HTML، نحولها لنص عادي عشان يفهمها Gemini
+                prompt = html2plaintext(message.body) if message.body else ""
+                # جلب الملفات المرفقة بالرسالة مباشرة
+                attachments = message.attachment_ids
+        else:
+            # خطة احتياطية لو تم الإرسال بالطريقة القديمة
+            raw_prompt = kwargs.get('prompt') or kwargs.get('question') or kwargs.get('text') or ''
+            prompt = html2plaintext(raw_prompt) if '<' in raw_prompt else raw_prompt
+            att_ids = kwargs.get('attachments') or kwargs.get('attachment_ids') or []
+            if att_ids:
+                attachments = request.env['ir.attachment'].sudo().browse([int(i) for i in att_ids if str(i).isdigit()])
+
+        # 2. استخراج النصوص من المرفقات
+        for att in attachments:
+            try:
+                file_bytes = att.raw or (base64.b64decode(att.datas) if att.datas else b'')
                 if not file_bytes: continue
 
-                mime = attachment.mimetype or ''
-                file_name = attachment.name or 'Unknown_File'
+                mime = att.mimetype or ''
+                file_name = att.name or 'Unknown_File'
 
                 if HAS_PDF and 'pdf' in mime:
                     reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
@@ -72,16 +75,16 @@ class AIControllerGeminiDirect(http.Controller):
             except Exception as e:
                 _logger.exception('File extraction failed: %s', e)
 
-        # 5. البرومبت الموجه
-        system_prompt = "You are a helpful and intelligent AI assistant. If context files are provided, use them to answer the user's question accurately. Do not generate random topics."
-        
+        # 3. البرومبت الحر (Freedom Mode)
+        system_prompt = "You are a helpful and intelligent AI assistant. Use provided context files to answer user questions if applicable."
         if extracted_text:
             final_prompt = f"{system_prompt}\n\n--- FILE CONTEXT ---\n{extracted_text}\n-------------------\n\nUser Question: {prompt}"
         else:
             final_prompt = f"{system_prompt}\n\nUser Question: {prompt}"
 
+        # 4. التحقق من الإعدادات
         if not HAS_GENAI:
-            return {'response': "Gemini SDK not available. Cannot process request."}
+            return {'response': "Gemini SDK not available."}
 
         api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
         if not api_key:
@@ -90,10 +93,9 @@ class AIControllerGeminiDirect(http.Controller):
         try:
             client = genai.Client(api_key=api_key)
         except Exception as e:
-            _logger.exception("Failed to init Gemini client: %s", e)
-            return {'response': f"Gemini client initialization error: {e}"}
+            return {'response': f"Gemini initialization error: {e}"}
 
-        # الاتصال مع إعادة المحاولة
+        # 5. الاتصال بـ Gemini مع نظام إعادة المحاولة
         def call_gemini(prompt_text, attempts=3):
             last_exc = None
             for i in range(1, attempts + 1):
@@ -105,14 +107,14 @@ class AIControllerGeminiDirect(http.Controller):
                     return resp.text if hasattr(resp, 'text') else resp.candidates[0].content.parts[0].text
                 except Exception as exc:
                     last_exc = exc
-                    _logger.warning("Gemini attempt %s failed: %s", i, str(exc))
                     if i < attempts:
                         time.sleep((2 ** (i - 1)) * 0.6 + random.uniform(0, 0.4))
             raise last_exc
 
+        # 6. التنفيذ النهائي
         try:
             result_text = call_gemini(final_prompt)
-            _logger.info("FINAL TEXT SENT TO ODOO: %s", result_text)
+            _logger.info("FINAL TEXT FROM GEMINI: %s", result_text)
             
             return {
                 'answer': result_text,
