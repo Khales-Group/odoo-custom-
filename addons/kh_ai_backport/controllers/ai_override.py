@@ -14,60 +14,53 @@ try:
 except ImportError:
     HAS_GENAI = False
 
+try:
+    import PyPDF2
+    HAS_PDF = True
+except ImportError:
+    HAS_PDF = False
+
 class AIControllerGeminiDirect(http.Controller):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== GEMINI DIRECT (ULTIMATE FILE READER) =====')
+        _logger.info('===== GEMINI DIRECT (ULTIMATE FIX) =====')
         
         prompt = ""
         extracted_text = ""
         attachments = request.env['ir.attachment'].sudo()
 
-        # 1. جلب الرسالة والمرفقات من قاعدة البيانات
+        # 1. جلب الرسالة والمرفقات
         mail_message_id = kwargs.get('mail_message_id')
         if mail_message_id:
             message = request.env['mail.message'].sudo().browse(int(mail_message_id))
             if message.exists():
                 prompt = html2plaintext(message.body) if message.body else ""
                 attachments = message.attachment_ids
-                _logger.info("Found Message ID %s with %s attachments.", message.id, len(attachments))
         else:
             raw_prompt = kwargs.get('prompt') or kwargs.get('question') or kwargs.get('text') or ''
             prompt = html2plaintext(raw_prompt) if '<' in raw_prompt else raw_prompt
 
-        # 2. استخراج النص بأقوى طريقة ممكنة
+        # 2. استخراج النص من الملفات المرفقة
         for att in attachments:
-            _logger.info("Processing File: %s (MimeType: %s)", att.name, att.mimetype)
             file_text = ""
-            
-            # الطريقة الأولى: استخدام محرك أودو الداخلي (الأقوى والأسرع)
             if att.index_content:
                 file_text = att.index_content
-                _logger.info("SUCCESS: Text extracted using Odoo index_content.")
             else:
-                # الطريقة الثانية: فك التشفير اليدوي
                 try:
                     file_bytes = att.raw or (base64.b64decode(att.datas) if att.datas else b'')
                     if file_bytes:
                         if 'pdf' in (att.mimetype or ''):
                             try:
-                                import PyPDF2
                                 reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
                                 file_text = "".join([page.extract_text() or '' for page in reader.pages])
-                                _logger.info("SUCCESS: Text extracted using PyPDF2.")
-                            except Exception as e:
-                                _logger.error("PyPDF2 failed: %s", e)
+                            except Exception: pass
                         else:
                             file_text = file_bytes.decode('utf-8', errors='ignore')
-                            _logger.info("SUCCESS: Text extracted using UTF-8 decode.")
-                except Exception as e:
-                    _logger.error("Manual extraction failed: %s", e)
+                except Exception: pass
 
             if file_text:
                 extracted_text += f"\n--- [File: {att.name}] ---\n{file_text}\n"
-            else:
-                _logger.warning("FAILED: Could not extract any text from file %s", att.name)
 
         # 3. بناء البرومبت
         system_prompt = "You are a helpful AI assistant. Use the provided file context to answer the user's question. If no context is provided, answer normally."
@@ -91,13 +84,37 @@ class AIControllerGeminiDirect(http.Controller):
                 contents=final_prompt
             )
             result_text = getattr(response, "text", str(response))
-            _logger.info("FINAL TEXT FROM GEMINI RECEIVED: %s", result_text)
+            _logger.info("FINAL TEXT FROM GEMINI RECEIVED.")
             
+            # ==========================================
+            # السحر الجديد: إجبار أودو على عرض الرسالة في الشاشة
+            # ==========================================
+            channel_id = kwargs.get('channel_id')
+            if channel_id:
+                channel = request.env['discuss.channel'].sudo().browse(int(channel_id))
+                if channel.exists():
+                    # تحويل النص لـ HTML عشان التنسيق والأسطر تطلع صح
+                    html_body = result_text.replace('\n', '<br>')
+                    
+                    # نستخدم OdooBot كصاحب الرسالة عشان تطلع كأنها من النظام/الذكاء الاصطناعي
+                    bot_id = request.env.ref('base.partner_root').id
+                    
+                    # ننشر الرسالة مباشرة في الشات
+                    channel.message_post(
+                        body=html_body,
+                        author_id=bot_id,
+                        message_type='comment',
+                        subtype_xmlid='mail.mt_comment'
+                    )
+                    _logger.info("SUCCESS: Message posted to chat UI in channel %s", channel_id)
+            # ==========================================
+
             return {
                 'answer': result_text,
                 'response': result_text,
                 'status': 'success',
             }
+            
         except Exception as e:
             _logger.exception("Gemini API error: %s", e)
             return {'response': f"AI error: {e}"}
