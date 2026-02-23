@@ -66,11 +66,13 @@ class AIControllerGeminiDirect(http.Controller):
             except Exception as e:
                 _logger.exception('File extraction failed: %s', e)
 
-        # 2. البرومبت الحر (Gemini الحقيقي)
+        # 2. البرومبت الموجه (لحل الهلوسة مع الملفات)
+        system_prompt = "You are a helpful and intelligent AI assistant. If context files are provided, use them to answer the user's question accurately. Do not generate random topics."
+        
         if extracted_text:
-            final_prompt = f"Here is the content of uploaded files for context:\n{extracted_text}\n\nUser Question/Request:\n{prompt}"
+            final_prompt = f"{system_prompt}\n\n--- FILE CONTEXT ---\n{extracted_text}\n-------------------\n\nUser Question: {prompt}"
         else:
-            final_prompt = prompt
+            final_prompt = f"{system_prompt}\n\nUser Question: {prompt}"
 
         # 3. التأكد من وجود المكتبة والمفتاح
         if not HAS_GENAI:
