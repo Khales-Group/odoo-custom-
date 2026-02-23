@@ -91,7 +91,7 @@ class AIControllerGeminiDirect(http.Controller):
                 contents=final_prompt
             )
             result_text = getattr(response, "text", str(response))
-            _logger.info("FINAL TEXT FROM GEMINI RECEIVED.")
+            _logger.info("FINAL TEXT FROM GEMINI RECEIVED: %s", result_text)
             
             return {
                 'answer': result_text,
