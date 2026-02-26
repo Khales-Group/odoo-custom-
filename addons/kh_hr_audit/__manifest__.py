@@ -10,7 +10,6 @@
     'data': [
         'security/ir.model.access.csv',
         'ir_cron_data.xml',
-        'mail_template_data.xml',
         'views/audit_view.xml',
         'views/hr_audit_views.xml',
     ],
