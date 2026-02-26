@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from odoo import models, fields, api, _
+from odoo import models, fields, api
 from odoo.exceptions import UserError
 from dateutil.relativedelta import relativedelta
 from datetime import datetime, time, timedelta, date
@@ -68,7 +68,10 @@ class HrSmartAudit(models.TransientModel):
 
         for att in attendances:
             if att.check_in and att.check_out:
+                # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
                 # فلتر: تجاهل أي بصمة مدتها أقل من 10 دقائق (600 ثانية)
+                # هذا يحل مشكلة البصمات الصفرية أو الوهمية
+                # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
                 duration_seconds = (att.check_out - att.check_in).total_seconds()
                 if duration_seconds < 600: 
                     continue # تخطي هذا السجل كأنه لم يكن
@@ -108,13 +111,8 @@ class HrSmartAudit(models.TransientModel):
         ])
         public_holiday_dates = {} 
         for gl in global_leaves:
-            try:
-                g_start = pytz.utc.localize(gl.date_from).astimezone(tz).date()
-                g_end = pytz.utc.localize(gl.date_to).astimezone(tz).date()
-            except Exception:
-                # in case date fields are plain dates
-                g_start = (gl.date_from if isinstance(gl.date_from, date) else date_from)
-                g_end = (gl.date_to if isinstance(gl.date_to, date) else date_to)
+            g_start = pytz.utc.localize(gl.date_from).astimezone(tz).date()
+            g_end = pytz.utc.localize(gl.date_to).astimezone(tz).date()
             curr = max(g_start, date_from)
             end = min(g_end, date_to)
             while curr <= end:
@@ -146,6 +144,7 @@ class HrSmartAudit(models.TransientModel):
             # 2. عطلة رسمية
             if current_day in public_holiday_dates:
                 holiday_name = public_holiday_dates[current_day]
+                # الآن بما أننا فلترنا الحضور الوهمي، هذا الشرط لن يتحقق إلا إذا كان دوام حقيقي
                 if current_day in attendance_dates:
                     days_worked += 1
                     work_log.append(f"{day_str} (عطلة+عمل)")
@@ -206,7 +205,7 @@ class HrSmartAudit(models.TransientModel):
             'work_log': ', '.join(work_log), 
             'absence_log': ', '.join(absence_log),
             'holiday_log': ', '.join(holiday_log),
-            'balance': getattr(employee, 'remaining_leaves', 0.0) if employee else 0.0, 
+            'balance': employee.remaining_leaves if 'remaining_leaves' in employee else 0.0, 
         }
 
     # 4. الرواتب (نفس الكود السابق)
@@ -272,29 +271,11 @@ class HrSmartAudit(models.TransientModel):
     def _show_warning(self, msg):
         return {'type': 'ir.actions.client', 'tag': 'display_notification', 'params': {'title': 'تنبيه', 'message': msg, 'type': 'warning', 'sticky': False}}
     
-    # ACTION: Send all audit lines to their managers
-    def action_send_all_reports(self):
-        """
-        Send every line in this transient audit to its manager.
-        The actual sending handled by hr.smart.audit.line.send_report_to_manager
-        """
-        for rec in self:
-            for line in rec.audit_line_ids:
-                try:
-                    line.send_report_to_manager(force_send=True)
-                except Exception:
-                    _logger.exception("Failed to send audit line %s", getattr(line, 'id', 'n/a'))
-        return True
-
-    # compatibility method (keeps old placeholder)
-    def action_send_report(self):
-        return self.action_send_all_reports()
-
+    def action_send_report(self): pass
 
 class HrSmartAuditLine(models.TransientModel):
     _name = 'hr.smart.audit.line'
     _description = 'Audit Result Line'
-
     audit_id = fields.Many2one('hr.smart.audit')
     employee_id = fields.Many2one('hr.employee', string='الموظف')
     avg_check_in = fields.Char(string='معدل الدخول')
@@ -320,70 +301,3 @@ class HrSmartAuditLine(models.TransientModel):
             'target': 'new',
             'name': f'تفاصيل الموظف: {self.employee_id.name}'
         }
-
-    def send_report_to_manager(self, force_send=False):
-        """
-        Send this single audit-line report to the manager of the employee.
-        Strategy:
-         - try to find a mail.template for model hr.smart.audit.line or hr.smart.audit
-         - if found, use template.send_mail
-         - else fallback to simple mail.mail using manager email (work_email or partner.email)
-        """
-        self.ensure_one()
-        # determine manager employee record (parent)
-        manager_emp = False
-        try:
-            manager_emp = self.employee_id.parent_id if self.employee_id else False
-        except Exception:
-            manager_emp = False
-
-        manager_email = False
-        # try manager user partner email first
-        if manager_emp and getattr(manager_emp, 'user_id', False):
-            mgr_user = manager_emp.user_id
-            if mgr_user and getattr(mgr_user, 'partner_id', False) and mgr_user.partner_id.email:
-                manager_email = mgr_user.partner_id.email
-
-        # fallback to manager_emp.work_email or email field
-        if not manager_email and manager_emp:
-            manager_email = getattr(manager_emp, 'work_email', False) or getattr(manager_emp, 'email', False)
-
-        # try finding template
-        template = None
-        try:
-            template = self.env['mail.template'].search([('model_id.model', 'in', ['hr.smart.audit.line', 'hr.smart.audit'])], limit=1)
-        except Exception:
-            template = None
-
-        if template:
-            try:
-                template.send_mail(self.id, force_send=force_send, raise_exception=False)
-                _logger.info("Sent audit line %s via template %s", self.id, template.id)
-                return True
-            except Exception:
-                _logger.exception("Template send failed for audit line %s", self.id)
-
-        # fallback: create mail.mail directly
-        if manager_email:
-            try:
-                subject = _('تقرير أداء الموظف: %s') % (self.employee_id.name if self.employee_id else '')
-                body = self.work_details or self.absence_details or _('No details.')
-                # include a short HTML summary
-                body_html = "<div><p>%s</p><p><b>ملخص:</b></p><div>%s</div></div>" % (_('Dear Manager,'), body)
-                mail_vals = {
-                    'subject': subject,
-                    'body_html': body_html,
-                    'email_from': (self.env.user.company_id.email or self.env.user.email or 'noreply@example.com'),
-                    'email_to': manager_email,
-                }
-                mail = self.env['mail.mail'].create(mail_vals)
-                if force_send:
-                    mail.send()
-                _logger.info("Created fallback mail for audit line %s to %s", self.id, manager_email)
-                return True
-            except Exception:
-                _logger.exception("Failed to create/send fallback mail for audit line %s", self.id)
-                return False
-        else:
-            _logger.warning("No manager email found for employee %s (audit line %s)", getattr(self.employee_id, 'name', 'n/a'), self.id)
-            return False
