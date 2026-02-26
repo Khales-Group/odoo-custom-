@@ -271,7 +271,85 @@ class HrSmartAudit(models.TransientModel):
     def _show_warning(self, msg):
         return {'type': 'ir.actions.client', 'tag': 'display_notification', 'params': {'title': 'تنبيه', 'message': msg, 'type': 'warning', 'sticky': False}}
     
-    def action_send_report(self): pass
+    def action_send_report(self):
+        if not self.audit_line_ids:
+            return self._show_warning('لا يوجد بيانات لإرسالها. يرجى تحليل البيانات أولاً.')
+
+        # 1. تجميع بيانات الموظفين حسب المدير المباشر
+        manager_data = {}
+        for line in self.audit_line_ids:
+            manager = line.employee_id.parent_id
+            
+            # عشان نبعت إشعار داخل أودو، لازم المدير يكون مربوط بمستخدم (User)
+            if not manager or not manager.user_id:
+                continue 
+
+            if manager not in manager_data:
+                manager_data[manager] = []
+            
+            manager_data[manager].append(line)
+
+        # 2. بناء التقرير وإرساله كإشعار داخلي لكل مدير
+        sent_count = 0
+        for manager, lines in manager_data.items():
+            
+            # تصميم جدول HTML للرسالة الداخلية
+            html_body = f"""
+                <div style="font-family: 'Tajawal', Arial; direction: rtl; text-align: right;">
+                    <h3 style="color: #2c3e50;">تقرير الرقابة الذكي للموظفين التابعين لك</h3>
+                    <p>الفترة المحللة: من <b>{self.date_from}</b> إلى <b>{self.date_to}</b></p>
+                    
+                    <table border="1" style="width: 100%; border-collapse: collapse; margin-top: 15px; text-align: center;">
+                        <tr style="background-color: #f8f9fa; color: #333;">
+                            <th style="padding: 8px;">الموظف</th>
+                            <th style="padding: 8px;">أيام العمل</th>
+                            <th style="padding: 8px;">تأخيرات</th>
+                            <th style="padding: 8px;">غياب</th>
+                            <th style="padding: 8px;">رصيد الإجازات</th>
+                            <th style="padding: 8px;">التوصية</th>
+                        </tr>
+            """
+            
+            # إضافة صفوف الموظفين
+            for line in lines:
+                html_body += f"""
+                        <tr>
+                            <td style="padding: 8px;">{line.employee_id.name}</td>
+                            <td style="padding: 8px;">{line.days_worked}</td>
+                            <td style="padding: 8px; color: {'red' if line.late_count > 0 else 'black'};">{line.late_count}</td>
+                            <td style="padding: 8px; color: {'red' if line.absence_count > 0 else 'black'};">{line.absence_count}</td>
+                            <td style="padding: 8px;">{line.leave_balance}</td>
+                            <td style="padding: 8px; font-weight: bold;">{line.recommendation or '-'}</td>
+                        </tr>
+                """
+                
+            html_body += """
+                    </table>
+                    <br/>
+                    <p style="font-size: 12px; color: #777;">تم الإنشاء تلقائياً بواسطة نظام التحكم الذكي للموارد البشرية.</p>
+                </div>
+            """
+
+            # إرسال الرسالة إلى صندوق وارد المدير (Inbox)
+            manager.user_id.partner_id.message_post(
+                body=html_body,
+                message_type='notification',
+                subtype_xmlid='mail.mt_comment',
+                author_id=self.env.user.partner_id.id, # الرسالة رح تبين إنها مبعوتة من الشخص اللي كبس الزر
+            )
+            sent_count += 1
+
+        # 3. إظهار إشعار نجاح للمستخدم
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'تم الإرسال بنجاح ✅',
+                'message': f'تم إرسال التقارير كإشعارات داخلية إلى {sent_count} مديرين في صندوق الوارد (Inbox).',
+                'type': 'success',
+                'sticky': False,
+            }
+        }
 
 class HrSmartAuditLine(models.TransientModel):
     _name = 'hr.smart.audit.line'
