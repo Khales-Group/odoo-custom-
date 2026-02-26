@@ -330,12 +330,14 @@ class HrSmartAudit(models.TransientModel):
                 </div>
             """
 
-            # إرسال الرسالة إلى صندوق وارد المدير (Inbox)
-            manager.user_id.partner_id.message_post(
+            # إرسال الرسالة لملف المدير مع عمل "إشارة" له عشان توصله غصب في الـ Inbox
+            manager.message_post(
                 body=html_body,
-                message_type='notification',
+                subject='تقرير الرقابة الذكي للموارد البشرية',
+                message_type='comment', 
                 subtype_xmlid='mail.mt_comment',
-                author_id=self.env.user.partner_id.id, # الرسالة رح تبين إنها مبعوتة من الشخص اللي كبس الزر
+                author_id=self.env.user.partner_id.id,
+                partner_ids=[manager.user_id.partner_id.id] # 🔴 هذا هو السطر السحري!
             )
             sent_count += 1
 
