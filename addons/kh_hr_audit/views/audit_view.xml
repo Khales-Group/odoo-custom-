@@ -79,11 +79,14 @@
             <field name="model">hr.smart.audit</field>
             <field name="arch" type="xml">
                 <form string="Smart HR Control Center">
-                    <header>
-                        <button name="action_analyze_data" string="تحليل البيانات 🚀" type="object" class="btn-primary" icon="fa-cogs"/>
-                        <button name="action_auto_generate_payroll" string="إنشاء الرواتب 💰" type="object" class="btn-success" icon="fa-money"/>
-                        <button string="إلغاء" class="btn-secondary" special="cancel"/>
-                    </header>
+               <header>
+    <button name="action_analyze_data" string="تحليل البيانات 🚀" type="object" class="btn-primary" icon="fa-cogs"/>
+    <button name="action_auto_generate_payroll" string="إنشاء الرواتب 💰" type="object" class="btn-success" icon="fa-money"/>
+    
+    <button name="action_send_report" string="إرسال للمديرين 📧" type="object" class="btn-info" icon="fa-paper-plane"/>
+    
+    <button string="إلغاء" class="btn-secondary" special="cancel"/>
+</header>
                     <sheet>
                         <div class="oe_title">
                             <h1>🕵️‍♂️ Smart HR Control Center</h1>
