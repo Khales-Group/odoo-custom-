@@ -7,6 +7,9 @@
             <field name="model">hr.smart.audit.line</field>
             <field name="arch" type="xml">
                 <form string="تفاصيل الموظف" create="0" edit="0" delete="0">
+                    <header>
+                        <button name="send_report_to_manager" type="object" string="إرسال إلى المدير" class="btn-primary" icon="fa-paper-plane"/>
+                    </header>
                     <sheet>
                         <div class="oe_title">
                             <h1>
@@ -69,6 +72,7 @@
                     <field name="status" string="الحالة" widget="badge" 
                            decoration-success="status == 'success'" 
                            decoration-danger="status == 'danger'"/>
+                    <button name="send_report_to_manager" type="object" string="Send" icon="fa-paper-plane" class="btn-secondary"/>
                     <button name="open_details" type="object" string="التفاصيل" icon="fa-list-alt" class="btn-secondary"/>
                 </list>
             </field>
@@ -82,6 +86,7 @@
                     <header>
                         <button name="action_analyze_data" string="تحليل البيانات 🚀" type="object" class="btn-primary" icon="fa-cogs"/>
                         <button name="action_auto_generate_payroll" string="إنشاء الرواتب 💰" type="object" class="btn-success" icon="fa-money"/>
+                        <button name="action_send_all_reports" string="إرسال تقارير المدراء ✉️" type="object" class="btn-info" icon="fa-paper-plane"/>
                         <button string="إلغاء" class="btn-secondary" special="cancel"/>
                     </header>
                     <sheet>
