@@ -289,14 +289,17 @@ class HrSmartAudit(models.TransientModel):
             
             manager_data[manager].append(line)
 
-        # 2. بناء التقرير وإرساله كإشعار داخلي لكل مدير
+        # 2. إحضار OdooBot ليكون هو المرسل (عشان يوصل الإشعار للجميع بدون استثناء)
+        odoobot = self.env.ref('base.partner_root', raise_if_not_found=False)
+        author_id = odoobot.id if odoobot else self.env.user.partner_id.id
+
         sent_count = 0
         for manager, lines in manager_data.items():
             
-            # تصميم جدول HTML للرسالة الداخلية
+            # بناء الجدول
             html_body = f"""
                 <div style="font-family: 'Tajawal', Arial; direction: rtl; text-align: right;">
-                    <h3 style="color: #2c3e50;">تقرير الرقابة الذكي للموظفين التابعين لك</h3>
+                    <h3 style="color: #2c3e50;">📊 تقرير الرقابة الذكي للموظفين</h3>
                     <p>الفترة المحللة: من <b>{self.date_from}</b> إلى <b>{self.date_to}</b></p>
                     
                     <table border="1" style="width: 100%; border-collapse: collapse; margin-top: 15px; text-align: center;">
@@ -310,14 +313,13 @@ class HrSmartAudit(models.TransientModel):
                         </tr>
             """
             
-            # إضافة صفوف الموظفين
             for line in lines:
                 html_body += f"""
                         <tr>
                             <td style="padding: 8px;">{line.employee_id.name}</td>
                             <td style="padding: 8px;">{line.days_worked}</td>
-                            <td style="padding: 8px; color: {'red' if line.late_count > 0 else 'black'};">{line.late_count}</td>
-                            <td style="padding: 8px; color: {'red' if line.absence_count > 0 else 'black'};">{line.absence_count}</td>
+                            <td style="padding: 8px; color: {'red' if line.late_count > 0 else 'black'}; font-weight: bold;">{line.late_count}</td>
+                            <td style="padding: 8px; color: {'red' if line.absence_count > 0 else 'black'}; font-weight: bold;">{line.absence_count}</td>
                             <td style="padding: 8px;">{line.leave_balance}</td>
                             <td style="padding: 8px; font-weight: bold;">{line.recommendation or '-'}</td>
                         </tr>
@@ -330,24 +332,34 @@ class HrSmartAudit(models.TransientModel):
                 </div>
             """
 
-            # إرسال الرسالة لملف المدير مع عمل "إشارة" له عشان توصله غصب في الـ Inbox
+            # --- أ. إرسال الرسالة لصندوق الوارد (Inbox) باسم OdooBot ---
             manager.message_post(
                 body=html_body,
                 subject='تقرير الرقابة الذكي للموارد البشرية',
                 message_type='comment', 
                 subtype_xmlid='mail.mt_comment',
-                author_id=self.env.user.partner_id.id,
-                partner_ids=[manager.user_id.partner_id.id] # 🔴 هذا هو السطر السحري!
+                author_id=author_id, # مرسل الرسالة هو النظام
+                partner_ids=[manager.user_id.partner_id.id] # إجبار وصولها للـ Inbox
             )
+
+            # --- ب. جدولة "مهمة" (Activity) في أيقونة الساعة ⏰ ---
+            manager.activity_schedule(
+                'mail.mail_activity_data_todo',
+                user_id=manager.user_id.id,
+                summary='مراجعة تقرير الأداء والمراقبة الذكي',
+                note='تم إرسال تقرير مفصل بأسماء الموظفين التابعين لك في صندوق الوارد (Inbox). يرجى المراجعة.',
+                date_deadline=self.date_to
+            )
+
             sent_count += 1
 
-        # 3. إظهار إشعار نجاح للمستخدم
+        # 3. إظهار إشعار نجاح
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
             'params': {
                 'title': 'تم الإرسال بنجاح ✅',
-                'message': f'تم إرسال التقارير كإشعارات داخلية إلى {sent_count} مديرين في صندوق الوارد (Inbox).',
+                'message': f'تم إرسال التقارير كرسائل (Inbox) ومهام (To-Do) إلى {sent_count} مديرين.',
                 'type': 'success',
                 'sticky': False,
             }
