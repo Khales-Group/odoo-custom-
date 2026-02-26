@@ -2,7 +2,9 @@
     <data noupdate="1">
         <record id="ir_cron_hr_monthly_audit" model="ir.cron">
             <field name="name">HR: Generate and Send Monthly Audits (29th)</field>
-            <field name="model_id" ref="model_kh_hr_audit"/>
+            
+            <field name="model_id" ref="model_kh_hr_monthly_report"/>
+            
             <field name="state">code</field>
             <field name="code">model._cron_generate_monthly_reports()</field>
             <field name="interval_number">1</field>
