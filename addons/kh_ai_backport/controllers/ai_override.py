@@ -32,7 +32,6 @@ class AIControllerOverride(AIController):
         prompt = ""
         attachments = request.env['ir.attachment'].sudo()
 
-        # ... (احتفظ بكود جلب الرسالة والمرفقات كما هو في كودك السابق) ...
         mail_message_id = kwargs.get('mail_message_id')
         if mail_message_id:
             message = request.env['mail.message'].sudo().browse(int(mail_message_id))
@@ -49,19 +48,14 @@ class AIControllerOverride(AIController):
         prompt_lower = prompt.lower()
         has_files = len(attachments) > 0
 
-        # شرطي المرور يوجه لأودو إذا كان استعلام قاعدة بيانات بدون ملفات
         db_keywords = ['موظف', 'موظفين', 'مبيعات', 'عملاء', 'عميل', 'how many', 'sales']
         needs_database = any(keyword in prompt_lower for keyword in db_keywords)
 
         if needs_database and not has_files:
             return super(AIControllerOverride, self).generate_response(**kwargs)
 
-        # ==========================================
-        # 🚀 مسار GEMINI (قراءة المستندات والاستخراج)
-        # ==========================================
         extracted_text = ""
         for att in attachments:
-            # ... (احتفظ بكود استخراج النص من الـ PDF كما هو في كودك السابق) ...
             try:
                 if 'pdf' in (att.mimetype or ''):
                     file_bytes = att.raw or (base64.b64decode(att.datas) if att.datas else b'')
@@ -72,7 +66,6 @@ class AIControllerOverride(AIController):
             except Exception as e:
                 _logger.warning(f"File extraction error: {e}")
 
-        # 🧠 البرومبت السحري (هنا بنأمر Gemini يرجع JSON إذا كان الطلب فاتورة)
         system_prompt = """You are an advanced ERP AI Assistant. 
         Read the provided file text. 
         IF the user asks to create an invoice, bill, or receipt based on this file:
@@ -93,17 +86,11 @@ class AIControllerOverride(AIController):
             response = client.models.generate_content(model="gemini-2.5-flash", contents=final_prompt)
             result_text = getattr(response, "text", str(response)).strip()
             
-            # ==========================================
-            # ⚙️ المعترض (The Interceptor): فحص مخرجات Gemini
-            # ==========================================
-            # تنظيف الـ JSON من أي علامات Markdown قد يضيفها Gemini
             clean_json_str = re.sub(r'```json|```', '', result_text).strip()
             
             try:
-                # محاولة قراءة النص كـ JSON
                 parsed_data = json.loads(clean_json_str)
                 
-                # إذا كان JSON ويطلب إنشاء فاتورة، نزرعها في أودو فوراً!
                 if parsed_data.get('action') == 'create_invoice':
                     c_name = parsed_data.get('customer_name')
                     inv_amount = float(parsed_data.get('amount', 0.0))
@@ -113,7 +100,13 @@ class AIControllerOverride(AIController):
                     if not partner:
                         partner = env['res.partner'].sudo().create({'name': c_name})
                         
-                    income_account = env['account.account'].sudo().search([('account_type', '=', 'income'), ('company_id', '=', env.company.id)], limit=1)
+                    # ==========================================
+                    # 🛠️ التعديل هنا: استخدام company_ids بدل company_id
+                    # ==========================================
+                    income_account = env['account.account'].sudo().search([
+                        ('account_type', '=', 'income'), 
+                        ('company_ids', 'in', env.company.id)
+                    ], limit=1)
                     
                     invoice_vals = {
                         'move_type': 'out_invoice',
@@ -128,17 +121,14 @@ class AIControllerOverride(AIController):
                     new_inv = env['account.move'].sudo().create(invoice_vals)
                     inv_url = f"/web#id={new_inv.id}&model=account.move&view_type=form"
                     
-                    # نغير رسالة الذكاء الاصطناعي لتبشرك بالنجاح مع الرابط
                     final_chat_message = f"✅ **Success!** I read the document, extracted the data, and automatically created the invoice for **{partner.name}** with amount **{inv_amount}**.\n\n[👉 CLICK HERE TO OPEN THE INVOICE]({inv_url})"
                 
                 else:
-                    final_chat_message = result_text # JSON لشيء آخر
+                    final_chat_message = result_text
                     
             except json.JSONDecodeError:
-                # إذا لم يكن JSON (يعني سؤال عام مثل ترجمة أو تلخيص)، نرد بالنص العادي
                 final_chat_message = result_text
 
-            # 💬 إرسال الرسالة النهائية للشات
             channel_id = kwargs.get('channel_id')
             if channel_id:
                 channel = request.env['discuss.channel'].sudo().browse(int(channel_id))
