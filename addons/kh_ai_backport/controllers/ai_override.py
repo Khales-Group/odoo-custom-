@@ -21,7 +21,7 @@ class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== SMART AI ROUTER: AUTO-OPEN INVOICE MODE =====')
+        _logger.info('===== KH_AI: FORCED AUTO-OPEN MODE =====')
         
         prompt = ""
         attachments = request.env['ir.attachment'].sudo()
@@ -43,18 +43,13 @@ class AIControllerOverride(AIController):
         prompt_lower = prompt.lower()
         has_files = len(attachments) > 0
 
-        # شرطي المرور للطلبات الداخلية (بدون ملفات)
-        if any(k in prompt_lower for k in ['موظف', 'مبيعات', 'كم عدد']) and not has_files:
+        # شرطي المرور للطلبات الداخلية
+        if any(k in prompt_lower for k in ['موظف', 'مبيعات', 'how many']) and not has_files:
             return super(AIControllerOverride, self).generate_response(**kwargs)
 
         # 2. إعداد Gemini Vision لاستخراج البيانات
-        system_prompt = """You are an expert ERP accountant. Analyze the document visually.
-        If the user wants to create an invoice:
-        1. Extract Customer Name.
-        2. Extract ALL line items (Description, Quantity, Unit Price).
-        Reply ONLY with JSON:
-        {"action": "create_invoice", "customer_name": "Name", "invoice_lines": [{"desc": "X", "qty": 1, "price": 10}]}
-        """
+        system_prompt = """You are an ERP expert. Analyze the document.
+        Return ONLY JSON: {"action": "create_invoice", "customer_name": "X", "invoice_lines": [{"desc": "Y", "qty": 1, "price": 10}]}"""
         
         gemini_contents = [f"{system_prompt}\n\nUser Question: {prompt}"]
         for att in attachments:
@@ -62,39 +57,31 @@ class AIControllerOverride(AIController):
             if file_bytes:
                 gemini_contents.append(types.Part.from_bytes(data=file_bytes, mime_type=att.mimetype or 'application/pdf'))
 
-        if not HAS_GENAI: return {'response': "Error: Gemini SDK Missing"}
+        if not HAS_GENAI: return {'response': "Missing SDK"}
         api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
 
         try:
             client = genai.Client(api_key=api_key)
             response = client.models.generate_content(model="gemini-2.5-flash", contents=gemini_contents)
             result_text = getattr(response, "text", str(response)).strip()
-            
-            # تنظيف الـ JSON
             clean_json_str = re.sub(r'```json|```', '', result_text).strip()
 
             try:
                 parsed_data = json.loads(clean_json_str)
                 if parsed_data.get('action') == 'create_invoice':
                     env = request.env
-                    # إنشاء/جلب العميل
                     partner = env['res.partner'].sudo().search([('name', '=ilike', parsed_data.get('customer_name'))], limit=1)
                     if not partner:
                         partner = env['res.partner'].sudo().create({'name': parsed_data.get('customer_name')})
                     
-                    # حساب الإيرادات
-                    income_account = env['account.account'].sudo().search([
-                        ('account_type', '=', 'income'), 
-                        ('company_ids', 'in', env.company.id)
-                    ], limit=1)
+                    income_account = env['account.account'].sudo().search([('account_type', '=', 'income'), ('company_ids', 'in', env.company.id)], limit=1)
                     
-                    # بناء الأسطر المتعددة
-                    invoice_lines = []
-                    for line in parsed_data.get('invoice_lines', []):
-                        invoice_lines.append((0, 0, {
-                            'name': line.get('desc', 'AI Line Item'),
-                            'quantity': float(line.get('qty', 1.0)),
-                            'price_unit': float(line.get('price', 0.0)),
+                    lines = []
+                    for l in parsed_data.get('invoice_lines', []):
+                        lines.append((0, 0, {
+                            'name': l.get('desc', 'AI Item'),
+                            'quantity': float(l.get('qty', 1.0)),
+                            'price_unit': float(l.get('price', 0.0)),
                             'account_id': income_account.id if income_account else False
                         }))
 
@@ -102,25 +89,27 @@ class AIControllerOverride(AIController):
                     new_inv = env['account.move'].sudo().create({
                         'move_type': 'out_invoice',
                         'partner_id': partner.id,
-                        'invoice_line_ids': invoice_lines
+                        'invoice_line_ids': lines
                     })
 
                     # ==========================================
-                    # 🚀 الحركة القاضية: فتح الفاتورة تلقائياً 🚀
+                    # 🚀 الحركة القاضية: إرجاع Action لفتح الصفحة 🚀
                     # ==========================================
                     return {
                         'type': 'ir.actions.act_window',
                         'res_model': 'account.move',
                         'res_id': new_inv.id,
                         'views': [[False, 'form']],
-                        'target': 'current', # يفتحها في الصفحة الحالية فوراً
+                        'target': 'current',
+                        'answer': f"تم إنشاء الفاتورة رقم {new_inv.id} بنجاح. يتم تحويلك الآن...",
+                        'response': f"تم إنشاء الفاتورة. يتم فتحها الآن...",
+                        'status': 'success'
                     }
 
-            except Exception:
-                pass # إذا لم يكن JSON، أكمل كرسالة عادية
+            except Exception: pass
 
             return {'answer': result_text, 'response': result_text, 'status': 'success'}
 
         except Exception as e:
             _logger.exception("AI Error")
-            return {'response': f"Error: {str(e)}"}
+            return {'response': f"Error: {e}"}
