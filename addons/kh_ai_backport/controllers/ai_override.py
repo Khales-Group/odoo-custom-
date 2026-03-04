@@ -21,12 +21,12 @@ class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== SMART AI ROUTER: CLEAN HTML & CLICKABLE LINK =====')
+        _logger.info('===== SMART AI ROUTER: AUTO-OPEN INVOICE MODE =====')
         
         prompt = ""
         attachments = request.env['ir.attachment'].sudo()
 
-        # 1. جلب البيانات (نفس الكود السابق)
+        # 1. جلب بيانات الرسالة والمرفقات
         mail_message_id = kwargs.get('mail_message_id')
         if mail_message_id:
             message = request.env['mail.message'].sudo().browse(int(mail_message_id))
@@ -43,13 +43,18 @@ class AIControllerOverride(AIController):
         prompt_lower = prompt.lower()
         has_files = len(attachments) > 0
 
-        # شرطي المرور للطلبات الداخلية
+        # شرطي المرور للطلبات الداخلية (بدون ملفات)
         if any(k in prompt_lower for k in ['موظف', 'مبيعات', 'كم عدد']) and not has_files:
             return super(AIControllerOverride, self).generate_response(**kwargs)
 
-        # 2. إعداد Gemini Vision
-        system_prompt = """You are an ERP expert. Extract Client Name and ALL Table Lines. 
-        Reply ONLY with JSON: {"action": "create_invoice", "customer_name": "X", "invoice_lines": [{"desc": "Y", "qty": 1, "price": 10}]}"""
+        # 2. إعداد Gemini Vision لاستخراج البيانات
+        system_prompt = """You are an expert ERP accountant. Analyze the document visually.
+        If the user wants to create an invoice:
+        1. Extract Customer Name.
+        2. Extract ALL line items (Description, Quantity, Unit Price).
+        Reply ONLY with JSON:
+        {"action": "create_invoice", "customer_name": "Name", "invoice_lines": [{"desc": "X", "qty": 1, "price": 10}]}
+        """
         
         gemini_contents = [f"{system_prompt}\n\nUser Question: {prompt}"]
         for att in attachments:
@@ -57,7 +62,7 @@ class AIControllerOverride(AIController):
             if file_bytes:
                 gemini_contents.append(types.Part.from_bytes(data=file_bytes, mime_type=att.mimetype or 'application/pdf'))
 
-        if not HAS_GENAI: return {'response': "Error: GenAI Lib Missing"}
+        if not HAS_GENAI: return {'response': "Error: Gemini SDK Missing"}
         api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
 
         try:
@@ -65,61 +70,57 @@ class AIControllerOverride(AIController):
             response = client.models.generate_content(model="gemini-2.5-flash", contents=gemini_contents)
             result_text = getattr(response, "text", str(response)).strip()
             
-            # تنظيف الـ JSON من الرد
+            # تنظيف الـ JSON
             clean_json_str = re.sub(r'```json|```', '', result_text).strip()
-            final_msg = result_text
 
             try:
                 parsed_data = json.loads(clean_json_str)
                 if parsed_data.get('action') == 'create_invoice':
                     env = request.env
+                    # إنشاء/جلب العميل
                     partner = env['res.partner'].sudo().search([('name', '=ilike', parsed_data.get('customer_name'))], limit=1)
                     if not partner:
                         partner = env['res.partner'].sudo().create({'name': parsed_data.get('customer_name')})
                     
-                    income_account = env['account.account'].sudo().search([('account_type', '=', 'income'), ('company_ids', 'in', env.company.id)], limit=1)
+                    # حساب الإيرادات
+                    income_account = env['account.account'].sudo().search([
+                        ('account_type', '=', 'income'), 
+                        ('company_ids', 'in', env.company.id)
+                    ], limit=1)
                     
+                    # بناء الأسطر المتعددة
                     invoice_lines = []
                     for line in parsed_data.get('invoice_lines', []):
                         invoice_lines.append((0, 0, {
-                            'name': line.get('desc', 'AI Extracted'),
+                            'name': line.get('desc', 'AI Line Item'),
                             'quantity': float(line.get('qty', 1.0)),
                             'price_unit': float(line.get('price', 0.0)),
                             'account_id': income_account.id if income_account else False
                         }))
 
+                    # إنشاء الفاتورة
                     new_inv = env['account.move'].sudo().create({
                         'move_type': 'out_invoice',
                         'partner_id': partner.id,
                         'invoice_line_ids': invoice_lines
                     })
 
-                    # 1. بناء الرابط بشكل احترافي (عشان يضمن يشتغل 100%)
-                    base_url = env['ir.config_parameter'].sudo().get_param('web.base.url')
-                    # التأكد من عدم وجود سلاش مزدوج
-                    inv_url = f"{base_url.rstrip('/')}/web#id={new_inv.id}&model=account.move&view_type=form"
-                    
-                    # 2. رسالة نصية نقية تماماً (بدون أي HTML أو Markdown معقد)
-                    final_msg = f"✅ Invoice Created: #{new_inv.id}\nCustomer: {partner.name}\n\nClick to open:\n{inv_url}"
+                    # ==========================================
+                    # 🚀 الحركة القاضية: فتح الفاتورة تلقائياً 🚀
+                    # ==========================================
+                    return {
+                        'type': 'ir.actions.act_window',
+                        'res_model': 'account.move',
+                        'res_id': new_inv.id,
+                        'views': [[False, 'form']],
+                        'target': 'current', # يفتحها في الصفحة الحالية فوراً
+                    }
 
-            except Exception as e:
-                final_msg = f"Error during creation: {str(e)}"
+            except Exception:
+                pass # إذا لم يكن JSON، أكمل كرسالة عادية
 
-            # 3. النشر في القناة (بدون أي تحويل HTML أو إضافات)
-            channel_id = kwargs.get('channel_id')
-            if channel_id:
-                channel = request.env['discuss.channel'].sudo().browse(int(channel_id))
-                if channel.exists():
-                    # إرسال النص الصافي - أودو Discuss بيحول أي URL بيبدأ بـ http تلقائياً للينك أزرق
-                    channel.message_post(
-                        body=final_msg,
-                        author_id=request.env.ref('base.partner_root').id,
-                        message_type='comment'
-                    )
-
-            return {'answer': final_msg, 'response': final_msg, 'status': 'success'}
+            return {'answer': result_text, 'response': result_text, 'status': 'success'}
 
         except Exception as e:
             _logger.exception("AI Error")
-            return {'response': f"System Error: {e}"}
-
+            return {'response': f"Error: {str(e)}"}
