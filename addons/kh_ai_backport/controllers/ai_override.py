@@ -4,7 +4,6 @@ from odoo.http import request
 from odoo.tools import html2plaintext
 from odoo.addons.ai.controllers.main import AIController
 import base64
-import io
 import logging
 import json
 import re
@@ -13,21 +12,16 @@ _logger = logging.getLogger(__name__)
 
 try:
     from google import genai
+    from google.genai import types # 👈 السحر هنا: استيراد مكتبة الأنواع لدعم الصور والملفات
     HAS_GENAI = True
 except ImportError:
     HAS_GENAI = False
-
-try:
-    import PyPDF2
-    HAS_PDF = True
-except ImportError:
-    HAS_PDF = False
 
 class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== SMART AI ROUTER: PHASE 2 (AUTONOMOUS DOCS) =====')
+        _logger.info('===== SMART AI ROUTER: MULTIMODAL VISION =====')
         
         prompt = ""
         attachments = request.env['ir.attachment'].sudo()
@@ -54,36 +48,47 @@ class AIControllerOverride(AIController):
         if needs_database and not has_files:
             return super(AIControllerOverride, self).generate_response(**kwargs)
 
-        extracted_text = ""
-        for att in attachments:
-            try:
-                if 'pdf' in (att.mimetype or ''):
-                    file_bytes = att.raw or (base64.b64decode(att.datas) if att.datas else b'')
-                    reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
-                    extracted_text += "".join([page.extract_text() or '' for page in reader.pages])
-                elif att.index_content:
-                    extracted_text += att.index_content
-            except Exception as e:
-                _logger.warning(f"File extraction error: {e}")
-
+        # ==========================================
+        # 👁️ مسار GEMINI VISION (قراءة الصور والسكانر)
+        # ==========================================
         system_prompt = """You are an advanced ERP AI Assistant. 
-        Read the provided file text. 
+        Analyze the attached documents visually (Images or PDFs). 
         IF the user asks to create an invoice, bill, or receipt based on this file:
-        You MUST extract the 'Client/Customer Name' and the 'Total Amount'.
+        You MUST extract the 'Client/Customer/Company Name' and the 'Total Amount'.
         Then, you MUST reply ONLY with a valid JSON format like this exactly (no markdown, no extra text):
         {"action": "create_invoice", "customer_name": "Extracted Name", "amount": 1234.50}
         
-        IF the user asks a general question (not creating an invoice), just answer normally in text.
+        IF the user asks a general question, just answer normally.
         """
         
-        final_prompt = f"{system_prompt}\n\n--- FILE CONTEXT ---\n{extracted_text}\n-------------------\n\nUser Question: {prompt}" if extracted_text else f"User Question: {prompt}"
+        final_prompt = f"{system_prompt}\n\nUser Question: {prompt}"
+        
+        # قائمة المحتويات اللي راح تنرسل لجوجل (نص + ملفات خام)
+        gemini_contents = [final_prompt]
+
+        for att in attachments:
+            try:
+                file_bytes = att.raw or (base64.b64decode(att.datas) if att.datas else b'')
+                mime_type = att.mimetype or 'application/pdf'
+                
+                if file_bytes:
+                    # نرسل الملف مباشرة لـ Gemini ليقوم بتحليله بصرياً!
+                    gemini_contents.append(
+                        types.Part.from_bytes(data=file_bytes, mime_type=mime_type)
+                    )
+            except Exception as e:
+                _logger.warning(f"File attachment error: {e}")
 
         if not HAS_GENAI: return {'response': "Gemini SDK missing."}
         api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
         
         try:
             client = genai.Client(api_key=api_key)
-            response = client.models.generate_content(model="gemini-2.5-flash", contents=final_prompt)
+            # إرسال الباكج كامل (النص + الصور/الـ PDF)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash", 
+                contents=gemini_contents
+            )
             result_text = getattr(response, "text", str(response)).strip()
             
             clean_json_str = re.sub(r'```json|```', '', result_text).strip()
@@ -100,9 +105,6 @@ class AIControllerOverride(AIController):
                     if not partner:
                         partner = env['res.partner'].sudo().create({'name': c_name})
                         
-                    # ==========================================
-                    # 🛠️ التعديل هنا: استخدام company_ids بدل company_id
-                    # ==========================================
                     income_account = env['account.account'].sudo().search([
                         ('account_type', '=', 'income'), 
                         ('company_ids', 'in', env.company.id)
@@ -112,7 +114,7 @@ class AIControllerOverride(AIController):
                         'move_type': 'out_invoice',
                         'partner_id': partner.id,
                         'invoice_line_ids': [(0, 0, {
-                            'name': 'Invoice automatically extracted from PDF via AI',
+                            'name': 'Invoice Extracted via AI Vision',
                             'quantity': 1.0,
                             'price_unit': inv_amount,
                             'account_id': income_account.id if income_account else False
@@ -121,7 +123,7 @@ class AIControllerOverride(AIController):
                     new_inv = env['account.move'].sudo().create(invoice_vals)
                     inv_url = f"/web#id={new_inv.id}&model=account.move&view_type=form"
                     
-                    final_chat_message = f"✅ **Success!** I read the document, extracted the data, and automatically created the invoice for **{partner.name}** with amount **{inv_amount}**.\n\n[👉 CLICK HERE TO OPEN THE INVOICE]({inv_url})"
+                    final_chat_message = f"✅ **Vision Success!** I visually scanned the document, extracted the data, and automatically created the invoice for **{partner.name}** with amount **{inv_amount}**.\n\n[👉 CLICK HERE TO OPEN THE INVOICE]({inv_url})"
                 
                 else:
                     final_chat_message = result_text
