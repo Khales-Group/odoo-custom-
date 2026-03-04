@@ -2,11 +2,12 @@
 from odoo import http
 from odoo.http import request
 from odoo.tools import html2plaintext
-# استيراد الكنترولر الأصلي لأودو عشان نقدر نشغله وقت الحاجة
 from odoo.addons.ai.controllers.main import AIController
 import base64
 import io
 import logging
+import json
+import re
 
 _logger = logging.getLogger(__name__)
 
@@ -22,17 +23,16 @@ try:
 except ImportError:
     HAS_PDF = False
 
-# الوراثة من الكنترولر الأصلي
 class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== SMART AI ROUTER (ODOO + GEMINI) =====')
+        _logger.info('===== SMART AI ROUTER: PHASE 2 (AUTONOMOUS DOCS) =====')
         
         prompt = ""
         attachments = request.env['ir.attachment'].sudo()
 
-        # 1. جلب الرسالة والمرفقات لفحصها
+        # ... (احتفظ بكود جلب الرسالة والمرفقات كما هو في كودك السابق) ...
         mail_message_id = kwargs.get('mail_message_id')
         if mail_message_id:
             message = request.env['mail.message'].sudo().browse(int(mail_message_id))
@@ -49,95 +49,106 @@ class AIControllerOverride(AIController):
         prompt_lower = prompt.lower()
         has_files = len(attachments) > 0
 
-        # ==========================================
-        # 🚦 شرطي المرور الذكي (The Router) 🚦
-        # ==========================================
-        
-        # قائمة الكلمات التي تدل على أن المستخدم يريد بيانات من قاعدة البيانات
-        # (تقدر تضيف أو تعدل عليها براحتك مستقبلاً)
-        db_keywords = [
-            'موظف', 'موظفين', 'مبيعات', 'عملاء', 'عميل', 'فواتير', 'فاتورة', 'مخزن',
-            'كم عدد', 'موظف عنا', 'employee', 'sales', 'customer', 'invoice', 'how many'
-        ]
-
-        # هل السؤال يحتوي على كلمة من القائمة؟
+        # شرطي المرور يوجه لأودو إذا كان استعلام قاعدة بيانات بدون ملفات
+        db_keywords = ['موظف', 'موظفين', 'مبيعات', 'عملاء', 'عميل', 'how many', 'sales']
         needs_database = any(keyword in prompt_lower for keyword in db_keywords)
 
-        # القرار: إذا طلب داتا ومافي ملفات -> روح لأودو (Odoo Native AI)
         if needs_database and not has_files:
-            _logger.info("🚦 ROUTER: Routing to Odoo Native AI (Database query detected)")
-            # تشغيل محرك أودو الأصلي وإرجاع النتيجة
             return super(AIControllerOverride, self).generate_response(**kwargs)
 
-        # القرار: غير كذا -> روح لـ Gemini (ملفات، أسئلة عامة، ترجمة، الخ)
-        _logger.info("🚦 ROUTER: Routing to Gemini AI (Files or General query detected)")
         # ==========================================
-
-        # --- مسار GEMINI ---
+        # 🚀 مسار GEMINI (قراءة المستندات والاستخراج)
+        # ==========================================
         extracted_text = ""
-        
-        # استخراج النص من الملفات المرفقة
         for att in attachments:
-            file_text = ""
-            if att.index_content:
-                file_text = att.index_content
-            else:
-                try:
+            # ... (احتفظ بكود استخراج النص من الـ PDF كما هو في كودك السابق) ...
+            try:
+                if 'pdf' in (att.mimetype or ''):
                     file_bytes = att.raw or (base64.b64decode(att.datas) if att.datas else b'')
-                    if file_bytes:
-                        if 'pdf' in (att.mimetype or ''):
-                            try:
-                                reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
-                                file_text = "".join([page.extract_text() or '' for page in reader.pages])
-                            except Exception: pass
-                        else:
-                            file_text = file_bytes.decode('utf-8', errors='ignore')
-                except Exception: pass
+                    reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
+                    extracted_text += "".join([page.extract_text() or '' for page in reader.pages])
+                elif att.index_content:
+                    extracted_text += att.index_content
+            except Exception as e:
+                _logger.warning(f"File extraction error: {e}")
 
-            if file_text:
-                extracted_text += f"\n--- [File: {att.name}] ---\n{file_text}\n"
+        # 🧠 البرومبت السحري (هنا بنأمر Gemini يرجع JSON إذا كان الطلب فاتورة)
+        system_prompt = """You are an advanced ERP AI Assistant. 
+        Read the provided file text. 
+        IF the user asks to create an invoice, bill, or receipt based on this file:
+        You MUST extract the 'Client/Customer Name' and the 'Total Amount'.
+        Then, you MUST reply ONLY with a valid JSON format like this exactly (no markdown, no extra text):
+        {"action": "create_invoice", "customer_name": "Extracted Name", "amount": 1234.50}
+        
+        IF the user asks a general question (not creating an invoice), just answer normally in text.
+        """
+        
+        final_prompt = f"{system_prompt}\n\n--- FILE CONTEXT ---\n{extracted_text}\n-------------------\n\nUser Question: {prompt}" if extracted_text else f"User Question: {prompt}"
 
-        # بناء البرومبت لـ Gemini
-        system_prompt = "You are a helpful AI assistant. Use the provided file context to answer the user's question. If no context is provided, answer normally."
-        final_prompt = f"{system_prompt}\n\n--- FILE CONTEXT ---\n{extracted_text}\n-------------------\n\nUser Question: {prompt}" if extracted_text else f"{system_prompt}\n\nUser Question: {prompt}"
-
-        # الاتصال بجوجل
-        if not HAS_GENAI:
-            return {'response': "Gemini SDK not available."}
-
+        if not HAS_GENAI: return {'response': "Gemini SDK missing."}
         api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
-        if not api_key:
-            return {'response': "Gemini API key missing."}
-
+        
         try:
             client = genai.Client(api_key=api_key)
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=final_prompt
-            )
-            result_text = getattr(response, "text", str(response))
-            _logger.info("SUCCESS: Text received from Gemini.")
+            response = client.models.generate_content(model="gemini-2.5-flash", contents=final_prompt)
+            result_text = getattr(response, "text", str(response)).strip()
             
-            # زراعة الرسالة في الشاشة (نفس حركتنا السحرية الأخيرة)
+            # ==========================================
+            # ⚙️ المعترض (The Interceptor): فحص مخرجات Gemini
+            # ==========================================
+            # تنظيف الـ JSON من أي علامات Markdown قد يضيفها Gemini
+            clean_json_str = re.sub(r'```json|```', '', result_text).strip()
+            
+            try:
+                # محاولة قراءة النص كـ JSON
+                parsed_data = json.loads(clean_json_str)
+                
+                # إذا كان JSON ويطلب إنشاء فاتورة، نزرعها في أودو فوراً!
+                if parsed_data.get('action') == 'create_invoice':
+                    c_name = parsed_data.get('customer_name')
+                    inv_amount = float(parsed_data.get('amount', 0.0))
+                    
+                    env = request.env
+                    partner = env['res.partner'].sudo().search([('name', '=ilike', c_name)], limit=1)
+                    if not partner:
+                        partner = env['res.partner'].sudo().create({'name': c_name})
+                        
+                    income_account = env['account.account'].sudo().search([('account_type', '=', 'income'), ('company_id', '=', env.company.id)], limit=1)
+                    
+                    invoice_vals = {
+                        'move_type': 'out_invoice',
+                        'partner_id': partner.id,
+                        'invoice_line_ids': [(0, 0, {
+                            'name': 'Invoice automatically extracted from PDF via AI',
+                            'quantity': 1.0,
+                            'price_unit': inv_amount,
+                            'account_id': income_account.id if income_account else False
+                        })]
+                    }
+                    new_inv = env['account.move'].sudo().create(invoice_vals)
+                    inv_url = f"/web#id={new_inv.id}&model=account.move&view_type=form"
+                    
+                    # نغير رسالة الذكاء الاصطناعي لتبشرك بالنجاح مع الرابط
+                    final_chat_message = f"✅ **Success!** I read the document, extracted the data, and automatically created the invoice for **{partner.name}** with amount **{inv_amount}**.\n\n[👉 CLICK HERE TO OPEN THE INVOICE]({inv_url})"
+                
+                else:
+                    final_chat_message = result_text # JSON لشيء آخر
+                    
+            except json.JSONDecodeError:
+                # إذا لم يكن JSON (يعني سؤال عام مثل ترجمة أو تلخيص)، نرد بالنص العادي
+                final_chat_message = result_text
+
+            # 💬 إرسال الرسالة النهائية للشات
             channel_id = kwargs.get('channel_id')
             if channel_id:
                 channel = request.env['discuss.channel'].sudo().browse(int(channel_id))
                 if channel.exists():
-                    html_body = result_text.replace('\n', '<br>')
+                    html_body = final_chat_message.replace('\n', '<br>')
                     bot_id = request.env.ref('base.partner_root').id
-                    channel.message_post(
-                        body=html_body,
-                        author_id=bot_id,
-                        message_type='comment',
-                        subtype_xmlid='mail.mt_comment'
-                    )
+                    channel.message_post(body=html_body, author_id=bot_id, message_type='comment', subtype_xmlid='mail.mt_comment')
                     
-            return {
-                'answer': result_text,
-                'response': result_text,
-                'status': 'success',
-            }
+            return {'answer': final_chat_message, 'response': final_chat_message, 'status': 'success'}
             
         except Exception as e:
-            _logger.exception("Gemini API error: %s", e)
-            return {'response': f"AI error: {e}"}
+            _logger.exception("AI Bridge Error: %s", e)
+            return {'response': f"System Error: {e}"}
