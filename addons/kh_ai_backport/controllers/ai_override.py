@@ -94,35 +94,27 @@ class AIControllerOverride(AIController):
                         'invoice_line_ids': invoice_lines
                     })
 
-                    # --- بناء اللينك بصيغة HTML حقيقية ---
+                    # --- بناء الرابط الصافي ---
                     base_url = env['ir.config_parameter'].sudo().get_param('web.base.url')
                     inv_url = f"{base_url}/web#id={new_inv.id}&model=account.move&view_type=form"
                     
-                    # صياغة الرسالة بـ HTML نظيف
-                    final_msg = f"""
-                    <div style="font-family: sans-serif;">
-                        <p>✅ <b>Invoice #{new_inv.id} Created!</b></p>
-                        <p>I have extracted all items from the document for <b>{partner.name}</b>.</p>
-                        <p><a href="{inv_url}" target="_blank" style="display: inline-block; padding: 8px 15px; background-color: #714B67; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">
-                            👉 CLICK HERE TO OPEN INVOICE
-                        </a></p>
-                    </div>
-                    """
+                    # رسالة نصية بسيطة بدون أي HTML
+                    final_msg = f"✅ Invoice #{new_inv.id} Created!\n\nExtracted items for {partner.name}.\n\nOPEN INVOICE: {inv_url}"
 
             except Exception:
-                # إذا كان رد نصي عادي، نضمن تنظيفه من أي Markdown tags
-                final_msg = result_text.replace('**', '').replace('###', '').replace('\n', '<br/>')
+                # تنظيف أي رموز غريبة من رد Gemini
+                final_msg = result_text.replace('*', '').replace('#', '')
 
-            # 4. النشر في القناة مع التأكد من عدم عمل escape للـ HTML
+            # 4. النشر في القناة (بدون أي تحويل HTML)
             channel_id = kwargs.get('channel_id')
             if channel_id:
                 channel = request.env['discuss.channel'].sudo().browse(int(channel_id))
                 if channel.exists():
+                    # إرسال النص كما هو، أودو سيحول الرابط لتلقائياً للينك أزرق
                     channel.message_post(
                         body=final_msg, 
                         author_id=request.env.ref('base.partner_root').id,
-                        message_type='comment',
-                        subtype_xmlid='mail.mt_comment'
+                        message_type='comment'
                     )
 
             return {'answer': final_msg, 'response': final_msg, 'status': 'success'}
@@ -130,3 +122,4 @@ class AIControllerOverride(AIController):
         except Exception as e:
             _logger.exception("AI Error")
             return {'response': f"System Error: {e}"}
+
