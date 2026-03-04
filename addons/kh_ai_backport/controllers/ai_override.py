@@ -94,25 +94,25 @@ class AIControllerOverride(AIController):
                         'invoice_line_ids': invoice_lines
                     })
 
-                    # --- بناء الرابط الصافي ---
+                    # 1. بناء الرابط بشكل احترافي (عشان يضمن يشتغل 100%)
                     base_url = env['ir.config_parameter'].sudo().get_param('web.base.url')
-                    inv_url = f"{base_url}/web#id={new_inv.id}&model=account.move&view_type=form"
+                    # التأكد من عدم وجود سلاش مزدوج
+                    inv_url = f"{base_url.rstrip('/')}/web#id={new_inv.id}&model=account.move&view_type=form"
                     
-                    # رسالة نصية بسيطة بدون أي HTML
-                    final_msg = f"✅ Invoice #{new_inv.id} Created!\n\nExtracted items for {partner.name}.\n\nOPEN INVOICE: {inv_url}"
+                    # 2. رسالة نصية نقية تماماً (بدون أي HTML أو Markdown معقد)
+                    final_msg = f"✅ Invoice Created: #{new_inv.id}\nCustomer: {partner.name}\n\nClick to open:\n{inv_url}"
 
-            except Exception:
-                # تنظيف أي رموز غريبة من رد Gemini
-                final_msg = result_text.replace('*', '').replace('#', '')
+            except Exception as e:
+                final_msg = f"Error during creation: {str(e)}"
 
-            # 4. النشر في القناة (بدون أي تحويل HTML)
+            # 3. النشر في القناة (بدون أي تحويل HTML أو إضافات)
             channel_id = kwargs.get('channel_id')
             if channel_id:
                 channel = request.env['discuss.channel'].sudo().browse(int(channel_id))
                 if channel.exists():
-                    # إرسال النص كما هو، أودو سيحول الرابط لتلقائياً للينك أزرق
+                    # إرسال النص الصافي - أودو Discuss بيحول أي URL بيبدأ بـ http تلقائياً للينك أزرق
                     channel.message_post(
-                        body=final_msg, 
+                        body=final_msg,
                         author_id=request.env.ref('base.partner_root').id,
                         message_type='comment'
                     )
