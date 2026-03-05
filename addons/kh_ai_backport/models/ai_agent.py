@@ -19,6 +19,17 @@ except ImportError:
     HAS_PDF = False
 
 
+class AiAgentSource(models.Model):
+    _inherit = 'ai.agent.source'
+
+    # 🛠️ نقوم بتعريف الحقل مرة أخرى مع تزويده بالخيارات التي يطلبها أودو
+    type = fields.Selection([
+        ('file', 'File'),
+        ('url', 'URL'),
+        ('manual', 'Manual Text')
+    ], string='Source Type', required=True, default='file')
+
+
 class AiAgent(models.Model):
     _inherit = 'ai.agent'
 
