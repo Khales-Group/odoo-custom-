@@ -7,7 +7,6 @@ import base64
 import logging
 import json
 import re
-
 _logger = logging.getLogger(__name__)
 
 try:
