@@ -21,7 +21,7 @@ class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== KH_AI: FORCED AUTO-OPEN MODE =====')
+        _logger.info('===== KH_AI: DUAL MODE (INVOICES & BILLS) =====')
         
         prompt = ""
         attachments = request.env['ir.attachment'].sudo()
@@ -47,9 +47,18 @@ class AIControllerOverride(AIController):
         if any(k in prompt_lower for k in ['موظف', 'مبيعات', 'how many']) and not has_files:
             return super(AIControllerOverride, self).generate_response(**kwargs)
 
-        # 2. إعداد Gemini Vision لاستخراج البيانات
-        system_prompt = """You are an ERP expert. Analyze the document.
-        Return ONLY JSON: {"action": "create_invoice", "customer_name": "X", "invoice_lines": [{"desc": "Y", "qty": 1, "price": 10}]}"""
+        # 2. إعداد Gemini Vision للتمييز بين الفاتورة والـ Bill
+        system_prompt = """You are an expert ERP accountant. Analyze the document visually.
+        1. Determine if it is a 'Customer Invoice' (we are selling) or a 'Vendor Bill' (we are buying/paying).
+        2. Extract the Name (Client for Invoices, Vendor for Bills).
+        3. Extract ALL line items (Description, Quantity, Unit Price).
+        
+        Reply ONLY with JSON:
+        {
+          "type": "out_invoice" OR "in_invoice",
+          "name": "Full Name",
+          "lines": [{"desc": "Item", "qty": 1, "price": 10}]
+        }"""
         
         gemini_contents = [f"{system_prompt}\n\nUser Question: {prompt}"]
         for att in attachments:
@@ -57,7 +66,7 @@ class AIControllerOverride(AIController):
             if file_bytes:
                 gemini_contents.append(types.Part.from_bytes(data=file_bytes, mime_type=att.mimetype or 'application/pdf'))
 
-        if not HAS_GENAI: return {'response': "Missing SDK"}
+        if not HAS_GENAI: return {'response': "Error: Gemini SDK Missing"}
         api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
 
         try:
@@ -68,62 +77,55 @@ class AIControllerOverride(AIController):
 
             try:
                 parsed_data = json.loads(clean_json_str)
-                if parsed_data.get('action') == 'create_invoice':
+                move_type = parsed_data.get('type') # 'out_invoice' or 'in_invoice'
+                
+                if move_type in ['out_invoice', 'in_invoice']:
                     env = request.env
-                    c_name = parsed_data.get('customer_name')
-                    
-                    partner = env['res.partner'].sudo().search([('name', '=ilike', c_name)], limit=1)
+                    # إنشاء/جلب الطرف الآخر (عميل أو مورد)
+                    partner = env['res.partner'].sudo().search([('name', '=ilike', parsed_data.get('name'))], limit=1)
                     if not partner:
-                        partner = env['res.partner'].sudo().create({'name': c_name})
+                        partner = env['res.partner'].sudo().create({'name': parsed_data.get('name')})
                     
-                    income_account = env['account.account'].sudo().search([
-                        ('account_type', '=', 'income'), 
+                    # اختيار نوع الحساب بناءً على نوع الحركة
+                    acc_type = 'income' if move_type == 'out_invoice' else 'expense'
+                    account = env['account.account'].sudo().search([
+                        ('account_type', '=', acc_type), 
                         ('company_ids', 'in', env.company.id)
                     ], limit=1)
                     
-                    lines = []
-                    for l in parsed_data.get('invoice_lines', []):
-                        lines.append((0, 0, {
-                            'name': l.get('desc', 'AI Item'),
+                    # بناء الأسطر
+                    invoice_lines = []
+                    for l in parsed_data.get('lines', []):
+                        invoice_lines.append((0, 0, {
+                            'name': l.get('desc', 'AI Extracted Line'),
                             'quantity': float(l.get('qty', 1.0)),
                             'price_unit': float(l.get('price', 0.0)),
-                            'account_id': income_account.id if income_account else False
+                            'account_id': account.id if account else False
                         }))
 
-                    # إنشاء الفاتورة
-                    new_inv = env['account.move'].sudo().create({
-                        'move_type': 'out_invoice',
+                    # إنشاء السجل (Invoice or Bill)
+                    new_move = env['account.move'].sudo().create({
+                        'move_type': move_type,
                         'partner_id': partner.id,
-                        'invoice_line_ids': lines
+                        'invoice_line_ids': invoice_lines
                     })
 
-                    # --- بناء الرابط الصافي والمباشر ---
-                    base_url = env['ir.config_parameter'].sudo().get_param('web.base.url')
-                    inv_url = f"{base_url.rstrip('/')}/web#id={new_inv.id}&model=account.move&view_type=form"
-                    
-                    # الرد النصي اللي رح يظهر في الشات ويحل مشكلة "No Response"
-                    success_msg = f"✅ Success! Invoice #{new_inv.id} created for {partner.name}.\nLink: {inv_url}"
-
-                    # 🚀 إرسال تنبيه "أودو" الرسمي (Sticky Notification) ليظهر فوق في الشاشة
-                    # هذا سيجعل المستخدم يرى النجاح فوراً حتى لو الشات علق
-                    request.env['bus.bus']._sendone(request.env.user.partner_id, 'simple_notification', {
-                        'title': 'AI Invoice Created',
-                        'message': f'Invoice for {partner.name} is ready.',
-                        'type': 'success',
-                        'sticky': True,
-                    })
-
+                    # إشعار النجاح وفتح الصفحة
                     return {
-                        'answer': success_msg,
-                        'response': success_msg,
+                        'type': 'ir.actions.act_window',
+                        'res_model': 'account.move',
+                        'res_id': new_move.id,
+                        'views': [[False, 'form']],
+                        'target': 'current',
+                        'answer': f"Success! Created a {move_type.replace('_', ' ')} for {partner.name}.",
+                        'response': "Opening the document now...",
                         'status': 'success'
                     }
 
-            except Exception as e:
-                _logger.error(f"JSON Parsing Error: {e}")
+            except Exception: pass
 
             return {'answer': result_text, 'response': result_text, 'status': 'success'}
 
         except Exception as e:
             _logger.exception("AI Error")
-            return {'response': f"Error: {e}"}
+            return {'response': f"Error: {str(e)}"}
