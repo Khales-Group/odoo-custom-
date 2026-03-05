@@ -21,11 +21,11 @@ class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== KH_AI: FIXED NOTIFICATIONS (INVOICE VS BILL) =====')
+        _logger.info('===== KH_AI: DEEP ANALYSIS MODE (BILL VS INVOICE) =====')
         
+        # 1. جلب المستندات (نفس المنطق السابق)
         prompt = ""
         attachments = request.env['ir.attachment'].sudo()
-
         mail_message_id = kwargs.get('mail_message_id')
         if mail_message_id:
             message = request.env['mail.message'].sudo().browse(int(mail_message_id))
@@ -39,24 +39,31 @@ class AIControllerOverride(AIController):
             if att_ids:
                 attachments = request.env['ir.attachment'].sudo().browse([int(i) for i in att_ids if str(i).isdigit()])
 
-        prompt_lower = prompt.lower()
-        has_files = len(attachments) > 0
+        # 2. البرومبت التحليلي (التفكير قبل التنفيذ)
+        system_prompt = """You are a senior auditor for Khales Group. 
+        Analyze the document visually and take your time to understand:
+        1. ROLES: Who is the SENDER (Vendor) and who is the RECEIVER (Customer)? 
+           - If Khales Group or Al Masar is the RECEIVER, this is a 'Vendor Bill' (type: in_invoice).
+           - If Khales Group is the SENDER, this is a 'Customer Invoice' (type: out_invoice).
+        2. TAXES: Look for VAT or Tax fields. Extract the exact VAT amount.
+        3. DATA: Extract Partner Name, TRN (Tax Registration Number), and all Table Lines.
 
-        if any(k in prompt_lower for k in ['موظف', 'مبيعات', 'how many']) and not has_files:
-            return super(AIControllerOverride, self).generate_response(**kwargs)
-
-        system_prompt = """You are an accountant for 'Khales Group'. Analyze documents:
-        - IF it is FROM another company TO 'Khales' or 'Al Masar': It's a Vendor Bill (type: 'in_invoice').
-        - IF it is FROM 'Khales' TO a client: It's a Customer Invoice (type: 'out_invoice').
-        Return ONLY JSON: {"type": "in_invoice" or "out_invoice", "partner_name": "Name", "lines": [{"desc": "X", "qty": 1, "price": 10}]}"""
+        Return ONLY JSON:
+        {
+          "move_type": "in_invoice" or "out_invoice",
+          "partner_name": "Exact Name",
+          "trn": "TRN Number if found",
+          "lines": [{"desc": "Item Name", "qty": 1, "price": 100.0}],
+          "vat_amount": 0.0
+        }"""
         
         gemini_contents = [f"{system_prompt}\n\nUser Question: {prompt}"]
         for att in attachments:
-            file_bytes = att.raw or (base64.decode(att.datas) if att.datas else b'')
+            file_bytes = att.raw or (base64.b64decode(att.datas) if att.datas else b'')
             if file_bytes:
                 gemini_contents.append(types.Part.from_bytes(data=file_bytes, mime_type=att.mimetype or 'application/pdf'))
 
-        if not HAS_GENAI: return {'response': "Missing SDK"}
+        if not HAS_GENAI: return {'response': "Error: SDK Missing"}
         api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
 
         try:
@@ -66,45 +73,56 @@ class AIControllerOverride(AIController):
             clean_json_str = re.sub(r'```json|```', '', result_text).strip()
 
             try:
-                parsed_data = json.loads(clean_json_str)
-                move_type = parsed_data.get('type')
+                data = json.loads(clean_json_str)
+                move_type = data.get('move_type')
                 
-                if move_type in ['out_invoice', 'in_invoice']:
+                if move_type in ['in_invoice', 'out_invoice']:
                     env = request.env
-                    p_name = parsed_data.get('partner_name')
-                    
-                    partner = env['res.partner'].sudo().search([('name', '=ilike', p_name)], limit=1)
+                    partner = env['res.partner'].sudo().search([('name', '=ilike', data.get('partner_name'))], limit=1)
                     if not partner:
-                        partner = env['res.partner'].sudo().create({'name': p_name})
+                        partner = env['res.partner'].sudo().create({
+                            'name': data.get('partner_name'),
+                            'vat': data.get('trn')
+                        })
                     
-                    acc_type = 'income' if move_type == 'out_invoice' else 'expense'
+                    # اختيار الحساب: Expense للمورد و Income للعميل
+                    acc_type = 'expense' if move_type == 'in_invoice' else 'income'
                     account = env['account.account'].sudo().search([
                         ('account_type', '=', acc_type), 
                         ('company_ids', 'in', env.company.id)
                     ], limit=1)
-                    
+
                     invoice_lines = []
-                    for l in parsed_data.get('lines', []):
+                    # إضافة أسطر المنتجات
+                    for l in data.get('lines', []):
                         invoice_lines.append((0, 0, {
-                            'name': l.get('desc', 'AI Line'),
+                            'name': l.get('desc'),
                             'quantity': float(l.get('qty', 1.0)),
                             'price_unit': float(l.get('price', 0.0)),
+                            'account_id': account.id if account else False
+                        }))
+                    
+                    # إضافة سطر الضريبة بشكل يدوي لضمان الدقة
+                    if data.get('vat_amount', 0) > 0:
+                        invoice_lines.append((0, 0, {
+                            'name': 'VAT (Extracted)',
+                            'quantity': 1.0,
+                            'price_unit': float(data.get('vat_amount')),
                             'account_id': account.id if account else False
                         }))
 
                     new_move = env['account.move'].sudo().create({
                         'move_type': move_type,
                         'partner_id': partner.id,
-                        'invoice_line_ids': invoice_lines
+                        'invoice_line_ids': invoice_lines,
+                        'ref': f"AI-REF-{data.get('trn', '')}"
                     })
 
-                    # --- تعديل مسمى التنبيه للمستخدم ---
+                    # إشعار نجاح ذكي
                     friendly_name = "Vendor Bill" if move_type == 'in_invoice' else "Customer Invoice"
-
-                    # 🚀 إرسال التنبيه الرسمي بالاسم الصحيح
                     env['bus.bus']._sendone(env.user.partner_id, 'simple_notification', {
-                        'title': 'AI Success',
-                        'message': f'Created {friendly_name} for {partner.name}',
+                        'title': 'Deep Analysis Complete',
+                        'message': f'Success! Created {friendly_name} for {partner.name}',
                         'type': 'success',
                         'sticky': True,
                     })
@@ -115,14 +133,11 @@ class AIControllerOverride(AIController):
                         'res_id': new_move.id,
                         'views': [[False, 'form']],
                         'target': 'current',
-                        'answer': f"✅ Success! Created {friendly_name} #{new_move.id} for {partner.name}.",
-                        'response': f"Opening {friendly_name}...",
                     }
 
             except Exception: pass
-
             return {'answer': result_text, 'response': result_text}
 
         except Exception as e:
             _logger.exception("AI Error")
-            return {'response': f"Error: {e}"}
+            return {'response': f"System Error: {e}"}
