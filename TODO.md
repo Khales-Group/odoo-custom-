@@ -1,20 +1,18 @@
-# TODO: Update Gemini SDK to New Google GenAI SDK
+# TODO - Invoice Fix Implementation
+
+## Task: Fix AI Invoice Response
+
+Replace the invoice creation section in ai_override.py to return text response + system notification
+
+## Steps:
+
+- [x] 1. Read and analyze current ai_override.py
+- [x] 2. Edit the file to replace the invoice creation section
+- [x] 3. Verify the changes
 
 ## Changes Required:
 
-### 1. Update Controller (addons/kh_ai_backport/controllers/ai_override.py)
+- [x] Returns text response with invoice link
+- [x] Sends sticky notification via bus.bus
 
-- [x] Change import to try `from google import genai` (new SDK) first
-- [ ] Remove the old SDK usage logic (the `elif hasattr(genai, 'configure')` block)
-- [ ] Use only the new SDK pattern with `client.models.generate_content()`
-
-### 2. Update Model (addons/kh_ai_backport/models/ai_agent.py)
-
-- [ ] Change import to `from google import genai`
-- [ ] Replace `genai.configure()` + `GenerativeModel` with `genai.Client`
-- [ ] Use `client.models.generate_content(model="gemini-2.0-flash", contents=prompt)`
-- [ ] Use `getattr(response, "text", str(response))` for safety
-
-## Status:
-
-- [ ] Task Completed
+## Status: ✅ COMPLETED

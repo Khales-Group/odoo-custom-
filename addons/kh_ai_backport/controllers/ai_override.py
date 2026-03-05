@@ -70,11 +70,16 @@ class AIControllerOverride(AIController):
                 parsed_data = json.loads(clean_json_str)
                 if parsed_data.get('action') == 'create_invoice':
                     env = request.env
-                    partner = env['res.partner'].sudo().search([('name', '=ilike', parsed_data.get('customer_name'))], limit=1)
-                    if not partner:
-                        partner = env['res.partner'].sudo().create({'name': parsed_data.get('customer_name')})
+                    c_name = parsed_data.get('customer_name')
                     
-                    income_account = env['account.account'].sudo().search([('account_type', '=', 'income'), ('company_ids', 'in', env.company.id)], limit=1)
+                    partner = env['res.partner'].sudo().search([('name', '=ilike', c_name)], limit=1)
+                    if not partner:
+                        partner = env['res.partner'].sudo().create({'name': c_name})
+                    
+                    income_account = env['account.account'].sudo().search([
+                        ('account_type', '=', 'income'), 
+                        ('company_ids', 'in', env.company.id)
+                    ], limit=1)
                     
                     lines = []
                     for l in parsed_data.get('invoice_lines', []):
@@ -92,21 +97,30 @@ class AIControllerOverride(AIController):
                         'invoice_line_ids': lines
                     })
 
-                    # ==========================================
-                    # 🚀 الحركة القاضية: إرجاع Action لفتح الصفحة 🚀
-                    # ==========================================
+                    # --- بناء الرابط الصافي والمباشر ---
+                    base_url = env['ir.config_parameter'].sudo().get_param('web.base.url')
+                    inv_url = f"{base_url.rstrip('/')}/web#id={new_inv.id}&model=account.move&view_type=form"
+                    
+                    # الرد النصي اللي رح يظهر في الشات ويحل مشكلة "No Response"
+                    success_msg = f"✅ Success! Invoice #{new_inv.id} created for {partner.name}.\nLink: {inv_url}"
+
+                    # 🚀 إرسال تنبيه "أودو" الرسمي (Sticky Notification) ليظهر فوق في الشاشة
+                    # هذا سيجعل المستخدم يرى النجاح فوراً حتى لو الشات علق
+                    request.env['bus.bus']._sendone(request.env.user.partner_id, 'simple_notification', {
+                        'title': 'AI Invoice Created',
+                        'message': f'Invoice for {partner.name} is ready.',
+                        'type': 'success',
+                        'sticky': True,
+                    })
+
                     return {
-                        'type': 'ir.actions.act_window',
-                        'res_model': 'account.move',
-                        'res_id': new_inv.id,
-                        'views': [[False, 'form']],
-                        'target': 'current',
-                        'answer': f"تم إنشاء الفاتورة رقم {new_inv.id} بنجاح. يتم تحويلك الآن...",
-                        'response': f"تم إنشاء الفاتورة. يتم فتحها الآن...",
+                        'answer': success_msg,
+                        'response': success_msg,
                         'status': 'success'
                     }
 
-            except Exception: pass
+            except Exception as e:
+                _logger.error(f"JSON Parsing Error: {e}")
 
             return {'answer': result_text, 'response': result_text, 'status': 'success'}
 
