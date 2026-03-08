@@ -29,7 +29,7 @@ class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== KH_AI: WEBSOCKET & PROMPT MASTER MODE =====')
+        _logger.info('===== KH_AI: SMART INTENT MASTER MODE =====')
         
         prompt = ""
         attachments = request.env['ir.attachment'].sudo()
@@ -49,9 +49,6 @@ class AIControllerOverride(AIController):
 
         has_files = len(attachments) > 0
 
-        # ==========================================
-        # 🛑 1. أسئلة الداتابيز (بدون مرفقات)
-        # ==========================================
         if not has_files:
             try:
                 return super(AIControllerOverride, self).generate_response(**kwargs)
@@ -60,15 +57,19 @@ class AIControllerOverride(AIController):
                 return {} 
 
         # ==========================================
-        # 🚀 2. معالجة الملفات (فواتير + شرح أكواد)
+        # 🚀 البرومبت العبقري (يفهم كلامك قبل ما يتصرف)
         # ==========================================
-        system_prompt = """You are 'Khales AI', a witty and helpful ERP assistant.
-        Analyze the user's message and attached documents.
+        system_prompt = """You are 'Khales AI', a smart ERP assistant.
+        Analyze BOTH the user's message AND the attached document carefully.
         
-        ALWAYS return a valid JSON object with EXACTLY this structure:
+        CRITICAL ROUTING RULES:
+        1. IF the user explicitly asks to explain, summarize, or read the document (e.g., "ماذا يحتوي", "شرح", "what is this", "explain"), set "intent" to "chat" EVEN IF the document is an invoice! Put your detailed explanation of the document in the "message" key. DO NOT create an invoice.
+        2. IF the user asks to create, record, or add a bill/invoice (e.g., "create", "إنشاء", "فاتورة", "سجل"), OR if they just upload an invoice with no message or a vague message, set "intent" to "create_invoice" and extract the data.
+        
+        ALWAYS return ONLY valid JSON:
         {
           "intent": "create_invoice" or "chat",
-          "message": "Write a friendly reply here in the user's language. If it's an invoice, say you are creating it. If it's a question, answer it clearly.",
+          "message": "Your friendly reply or detailed explanation goes here.",
           "invoice_data": {
             "move_type": "in_invoice" or "out_invoice",
             "partner_name": "Name",
@@ -76,12 +77,7 @@ class AIControllerOverride(AIController):
             "vat_amount": 0.0,
             "lines": [{"desc": "Item", "qty": 1, "price": 10}]
           }
-        }
-        
-        RULES:
-        - If the document is an invoice/bill, set intent to 'create_invoice' and fill 'invoice_data'.
-        - If it's code, an email, or a general question, set intent to 'chat'.
-        - The 'message' key is MANDATORY. Never leave it empty!"""
+        }"""
         
         gemini_contents = [f"{system_prompt}\n\nUser Message: {prompt}"]
         for att in attachments:
@@ -101,11 +97,9 @@ class AIControllerOverride(AIController):
             try:
                 data = json.loads(clean_json_str)
                 intent = data.get('intent', 'chat')
-                
-                # 💬 سحبنا الرسالة اللي كتبها الذكاء الاصطناعي (وغيرنا الجملة الاحتياطية عشان ما تعصب 😂)
-                chat_msg = data.get('message', 'تم استلام الملف وجاري معالجته بنجاح.')
+                chat_msg = data.get('message', 'تم استلام الملف.')
 
-                # 🚀 نشر الرسالة بقاعدة البيانات لتظهر الفقاعة فوراً
+                # نشر الرسالة بقاعدة البيانات لتظهر الفقاعة فوراً
                 if mail_message_id:
                     msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
                     if msg_record.model == 'discuss.channel':
@@ -114,7 +108,7 @@ class AIControllerOverride(AIController):
                         author_id = ai_agent.partner_id.id if ai_agent else request.env.user.partner_id.id
                         channel.message_post(body=chat_msg, author_id=author_id, message_type='comment')
 
-                # === مسار الفواتير ===
+                # مسار الفواتير (فقط إذا كانت النية create_invoice)
                 if intent == 'create_invoice' and data.get('invoice_data'):
                     inv_data = data['invoice_data']
                     move_type = inv_data.get('move_type', 'in_invoice')
@@ -142,7 +136,6 @@ class AIControllerOverride(AIController):
                 return {} 
 
             except json.JSONDecodeError:
-                # 🛡️ إذا فشل الجيسون، نطبع الرد كنص عادي عشان الشات ما يضل فاضي
                 if mail_message_id:
                     msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
                     if msg_record.model == 'discuss.channel':
