@@ -49,11 +49,18 @@ class AIControllerOverride(AIController):
         has_files = len(attachments) > 0
 
         # ==========================================
-        # 🛑 شرطي المرور (أهم سطر لحل المشكلة) 🛑
+        # 🛑 شرطي المرور (مع درع الحماية) 🛑
         # ==========================================
         # إذا مافي مرفقات، خلّي ذكاء أودو الأصلي يشتغل عشان يقرأ الداتابيز ويجاوبك عالمشاريع!
         if not has_files:
-            return super(AIControllerOverride, self).generate_response(**kwargs)
+            try:
+                # تحويل الطلب لذكاء أودو الأصلي
+                return super(AIControllerOverride, self).generate_response(**kwargs)
+            except Exception as e:
+                # إذا فشل ذكاء أودو الداخلي (مثل مشكلة الـ Loop)، نمنع الشاشة الحمراء
+                _logger.error(f"Native Odoo AI Failed: {e}")
+                error_msg = "عذراً، الذكاء الاصطناعي يواجه صعوبة في قراءة قاعدة البيانات حالياً. يرجى إعادة صياغة السؤال."
+                return {'answer': error_msg, 'response': error_msg, 'status': 'success'}
 
         # ==========================================
         # 🚀 إذا في مرفقات، Gemini بيستلم المهمة
