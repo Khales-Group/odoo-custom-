@@ -19,17 +19,6 @@ except ImportError:
     HAS_PDF = False
 
 
-class AiAgentSource(models.Model):
-    _inherit = 'ai.agent.source'
-
-    # 🛠️ نقوم بتعريف الحقل مرة أخرى مع تزويده بالخيارات التي يطلبها أودو
-    type = fields.Selection([
-        ('file', 'File'),
-        ('url', 'URL'),
-        ('manual', 'Manual Text')
-    ], string='Source Type', required=True, default='file')
-
-
 class AiAgent(models.Model):
     _inherit = 'ai.agent'
 
@@ -99,6 +88,7 @@ class AiAgent(models.Model):
         # 2. تجهيز السؤال النهائي
         final_prompt = f"System: Use context to answer precisely.\nContext:\n{combined_text}\n\nUser: {query}" if combined_text else query
 
+        # 3. جلب الرد من Gemini مباشرة
         try:
             # استخدام API Key الموجود في الإعدادات لضمان العمل على ويندوز
             api_key = self.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
