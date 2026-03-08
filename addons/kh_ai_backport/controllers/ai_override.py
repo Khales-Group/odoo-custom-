@@ -29,7 +29,7 @@ class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== KH_AI: ULTIMATE TRAFFIC COP MODE =====')
+        _logger.info('===== KH_AI: ULTIMATE TRAFFIC COP (WITH STATUS FIX) =====')
         
         prompt = ""
         attachments = request.env['ir.attachment'].sudo()
@@ -49,21 +49,18 @@ class AIControllerOverride(AIController):
         has_files = len(attachments) > 0
 
         # ==========================================
-        # 🛑 شرطي المرور (مع درع الحماية) 🛑
+        # 🛑 شرطي المرور (مع درع الحماية)
         # ==========================================
-        # إذا مافي مرفقات، خلّي ذكاء أودو الأصلي يشتغل عشان يقرأ الداتابيز ويجاوبك عالمشاريع!
         if not has_files:
             try:
-                # تحويل الطلب لذكاء أودو الأصلي
                 return super(AIControllerOverride, self).generate_response(**kwargs)
             except Exception as e:
-                # إذا فشل ذكاء أودو الداخلي (مثل مشكلة الـ Loop)، نمنع الشاشة الحمراء
                 _logger.error(f"Native Odoo AI Failed: {e}")
-                error_msg = "عذراً، الذكاء الاصطناعي يواجه صعوبة في قراءة قاعدة البيانات حالياً. يرجى إعادة صياغة السؤال."
+                error_msg = "عذراً، الذكاء الاصطناعي يواجه صعوبة في قراءة قاعدة البيانات حالياً."
                 return {'answer': error_msg, 'response': error_msg, 'status': 'success'}
 
         # ==========================================
-        # 🚀 إذا في مرفقات، Gemini بيستلم المهمة
+        # 🚀 معالجة المرفقات (Gemini)
         # ==========================================
         system_prompt = """You are 'Khales AI', an expert ERP assistant.
         Determine the user's INTENT based on the attached document:
@@ -89,7 +86,7 @@ class AIControllerOverride(AIController):
             if file_bytes:
                 gemini_contents.append(types.Part.from_bytes(data=file_bytes, mime_type=att.mimetype or 'application/pdf'))
 
-        if not HAS_GENAI: return {'answer': "Error: SDK Missing", 'response': "Error: SDK Missing"}
+        if not HAS_GENAI: return {'answer': "Error: SDK Missing", 'response': "Error: SDK Missing", 'status': 'success'}
         api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
 
         try:
@@ -140,14 +137,17 @@ class AIControllerOverride(AIController):
                         return {
                             'type': 'ir.actions.act_window', 'res_model': 'account.move', 'res_id': new_move.id,
                             'views': [[False, 'form']], 'target': 'current',
-                            'answer': f"✅ {chat_msg}", 'response': f"✅ {chat_msg}"
+                            'answer': f"✅ {chat_msg}", 'response': f"✅ {chat_msg}",
+                            'status': 'success' # مفتاح الـ Status
                         }
                 
-                return {'answer': chat_msg, 'response': chat_msg}
+                # إرجاع رد الدردشة مع الـ Status
+                return {'answer': chat_msg, 'response': chat_msg, 'status': 'success'}
 
             except json.JSONDecodeError:
-                return {'answer': result_text, 'response': result_text}
+                # إرجاع الرد العادي مع الـ Status
+                return {'answer': result_text, 'response': result_text, 'status': 'success'}
 
         except Exception as e:
             _logger.exception("AI Error")
-            return {'answer': f"System Error: {e}", 'response': f"System Error: {e}"}
+            return {'answer': f"System Error: {e}", 'response': f"System Error: {e}", 'status': 'success'}
