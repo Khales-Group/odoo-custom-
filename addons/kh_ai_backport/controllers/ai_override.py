@@ -29,7 +29,7 @@ class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== KH_AI: STRICT INTENT ROUTING MODE =====')
+        _logger.info('===== KH_AI: ULTIMATE TRAFFIC COP MODE =====')
         
         prompt = ""
         attachments = request.env['ir.attachment'].sudo()
@@ -46,16 +46,27 @@ class AIControllerOverride(AIController):
             if att_ids:
                 attachments = request.env['ir.attachment'].sudo().browse([int(i) for i in att_ids if str(i).isdigit()])
 
-        # 🚀 البرومبت العسكري: يجبر الـ AI على تحديد النية أولاً
-        system_prompt = """You are 'Khales AI', an expert ERP assistant.
-        Determine the user's INTENT based on their message and attachments:
-        1. 'create_invoice': User explicitly wants to create a bill/invoice, or uploaded a clear invoice document.
-        2. 'chat': User is greeting, asking a question, or uploaded non-invoice files (like code, HTML, general images).
+        has_files = len(attachments) > 0
 
-        You MUST ALWAYS reply in THIS EXACT JSON FORMAT ONLY:
+        # ==========================================
+        # 🛑 شرطي المرور (أهم سطر لحل المشكلة) 🛑
+        # ==========================================
+        # إذا مافي مرفقات، خلّي ذكاء أودو الأصلي يشتغل عشان يقرأ الداتابيز ويجاوبك عالمشاريع!
+        if not has_files:
+            return super(AIControllerOverride, self).generate_response(**kwargs)
+
+        # ==========================================
+        # 🚀 إذا في مرفقات، Gemini بيستلم المهمة
+        # ==========================================
+        system_prompt = """You are 'Khales AI', an expert ERP assistant.
+        Determine the user's INTENT based on the attached document:
+        1. 'create_invoice': Document is clearly a bill, invoice, or receipt.
+        2. 'chat': Document is code (HTML/Python), an email, or a general image.
+
+        You MUST reply in THIS EXACT JSON FORMAT ONLY:
         {
           "intent": "create_invoice" or "chat",
-          "message": "Your conversational reply (e.g., Hello! / Here is the code explanation... / I am extracting the invoice now.)",
+          "message": "Your explanation or reply",
           "invoice_data": {
             "move_type": "in_invoice" or "out_invoice",
             "partner_name": "Name",
@@ -79,15 +90,13 @@ class AIControllerOverride(AIController):
             response = client.models.generate_content(model="gemini-2.5-flash", contents=gemini_contents)
             result_text = getattr(response, "text", str(response)).strip()
             
-            # تنظيف الـ JSON
             clean_json_str = re.sub(r'```json|```', '', result_text).strip()
             
             try:
                 data = json.loads(clean_json_str)
                 intent = data.get('intent', 'chat')
-                chat_msg = data.get('message', 'تم معالجة الطلب.')
+                chat_msg = data.get('message', 'تم معالجة الملف.')
 
-                # ⚙️ تنفيذ الفاتورة فقط إذا كانت النية واضحة ومؤكدة
                 if intent == 'create_invoice' and data.get('invoice_data'):
                     inv_data = data['invoice_data']
                     move_type = inv_data.get('move_type')
@@ -127,11 +136,9 @@ class AIControllerOverride(AIController):
                             'answer': f"✅ {chat_msg}", 'response': f"✅ {chat_msg}"
                         }
                 
-                # 💬 إذا كانت النية مجرد دردشة (كود، سؤال عام، ترحيب)
                 return {'answer': chat_msg, 'response': chat_msg}
 
             except json.JSONDecodeError:
-                # 🛡️ شبكة أمان: إذا الـ AI عاند وما رجع JSON، بنعتبره دردشة عادية
                 return {'answer': result_text, 'response': result_text}
 
         except Exception as e:
