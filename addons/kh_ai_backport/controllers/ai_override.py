@@ -29,7 +29,7 @@ class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== KH_AI: THE WEBSOCKET FIX MODE =====')
+        _logger.info('===== KH_AI: WEBSOCKET & PROMPT MASTER MODE =====')
         
         prompt = ""
         attachments = request.env['ir.attachment'].sudo()
@@ -54,21 +54,36 @@ class AIControllerOverride(AIController):
         # ==========================================
         if not has_files:
             try:
-                # ترك أودو يجيب بيانات المشاريع والموظفين
                 return super(AIControllerOverride, self).generate_response(**kwargs)
             except Exception as e:
                 _logger.error(f"Native Odoo AI Failed: {e}")
-                return {} # نرجع فاضي عشان ما يضرب الشاشة الحمراء
+                return {} 
 
         # ==========================================
         # 🚀 2. معالجة الملفات (فواتير + شرح أكواد)
         # ==========================================
-        system_prompt = """You are 'Khales AI'. Analyze the attached document.
-        1. IF it is a Bill/Invoice: Return JSON with "intent": "invoice" and extract "move_type" (in_invoice/out_invoice), "partner_name", "trn", "vat_amount", "lines".
-        2. IF it is NOT an invoice (like HTML code, general image): Return JSON with "intent": "chat" and put your detailed explanation in "message".
-        Format strictly as JSON."""
+        system_prompt = """You are 'Khales AI', a witty and helpful ERP assistant.
+        Analyze the user's message and attached documents.
         
-        gemini_contents = [f"{system_prompt}\n\nUser Question: {prompt}"]
+        ALWAYS return a valid JSON object with EXACTLY this structure:
+        {
+          "intent": "create_invoice" or "chat",
+          "message": "Write a friendly reply here in the user's language. If it's an invoice, say you are creating it. If it's a question, answer it clearly.",
+          "invoice_data": {
+            "move_type": "in_invoice" or "out_invoice",
+            "partner_name": "Name",
+            "trn": "TRN",
+            "vat_amount": 0.0,
+            "lines": [{"desc": "Item", "qty": 1, "price": 10}]
+          }
+        }
+        
+        RULES:
+        - If the document is an invoice/bill, set intent to 'create_invoice' and fill 'invoice_data'.
+        - If it's code, an email, or a general question, set intent to 'chat'.
+        - The 'message' key is MANDATORY. Never leave it empty!"""
+        
+        gemini_contents = [f"{system_prompt}\n\nUser Message: {prompt}"]
         for att in attachments:
             file_bytes = att.raw or (base64.b64decode(att.datas) if att.datas else b'')
             if file_bytes:
@@ -86,9 +101,21 @@ class AIControllerOverride(AIController):
             try:
                 data = json.loads(clean_json_str)
                 intent = data.get('intent', 'chat')
+                
+                # 💬 سحبنا الرسالة اللي كتبها الذكاء الاصطناعي (وغيرنا الجملة الاحتياطية عشان ما تعصب 😂)
+                chat_msg = data.get('message', 'تم استلام الملف وجاري معالجته بنجاح.')
+
+                # 🚀 نشر الرسالة بقاعدة البيانات لتظهر الفقاعة فوراً
+                if mail_message_id:
+                    msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
+                    if msg_record.model == 'discuss.channel':
+                        channel = request.env['discuss.channel'].sudo().browse(msg_record.res_id)
+                        ai_agent = request.env['ai.agent'].sudo().search([('partner_id', '!=', False)], limit=1)
+                        author_id = ai_agent.partner_id.id if ai_agent else request.env.user.partner_id.id
+                        channel.message_post(body=chat_msg, author_id=author_id, message_type='comment')
 
                 # === مسار الفواتير ===
-                if intent == 'invoice' and data.get('invoice_data'):
+                if intent == 'create_invoice' and data.get('invoice_data'):
                     inv_data = data['invoice_data']
                     move_type = inv_data.get('move_type', 'in_invoice')
                     env = request.env
@@ -112,25 +139,17 @@ class AIControllerOverride(AIController):
 
                     return {'type': 'ir.actions.act_window', 'res_model': 'account.move', 'res_id': new_move.id, 'views': [[False, 'form']], 'target': 'current'}
 
-                # === مسار الدردشة وشرح الأكواد (السحر هنا) ===
-                else:
-                    chat_msg = data.get('message', 'عذراً، لم أتمكن من استخراج النص.')
-                    
-                    # نشر الرسالة بقاعدة البيانات لتظهر الفقاعة فوراً
-                    if mail_message_id:
-                        msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
-                        if msg_record.model == 'discuss.channel':
-                            channel = request.env['discuss.channel'].sudo().browse(msg_record.res_id)
-                            
-                            # استخدام الذكاء الاصطناعي كمرسل
-                            ai_agent = request.env['ai.agent'].sudo().search([('partner_id', '!=', False)], limit=1)
-                            author_id = ai_agent.partner_id.id if ai_agent else request.env.user.partner_id.id
-                            
-                            channel.message_post(body=chat_msg, author_id=author_id, message_type='comment')
-                    
-                    return {} # نرجع فاضي لأن الرسالة انطبعت وخلصت
+                return {} 
 
             except json.JSONDecodeError:
+                # 🛡️ إذا فشل الجيسون، نطبع الرد كنص عادي عشان الشات ما يضل فاضي
+                if mail_message_id:
+                    msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
+                    if msg_record.model == 'discuss.channel':
+                        channel = request.env['discuss.channel'].sudo().browse(msg_record.res_id)
+                        ai_agent = request.env['ai.agent'].sudo().search([('partner_id', '!=', False)], limit=1)
+                        author_id = ai_agent.partner_id.id if ai_agent else request.env.user.partner_id.id
+                        channel.message_post(body=result_text, author_id=author_id, message_type='comment')
                 return {}
 
         except Exception as e:
