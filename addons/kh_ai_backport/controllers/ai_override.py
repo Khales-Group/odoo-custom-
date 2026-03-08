@@ -19,14 +19,8 @@ try:
 except ImportError:
     HAS_GENAI = False
 
-try:
-    import PyPDF2
-    HAS_PDF = True
-except ImportError:
-    HAS_PDF = False
-
 # ==========================================
-# 🛠️ 1. حل مشكلة الـ AssertionError (Registry)
+# 🛠️ 1. حل مشكلة الـ Registry (عشان السيرفر ما يضرب)
 # ==========================================
 class AiAgentSource(models.Model):
     _inherit = 'ai.agent.source'
@@ -39,7 +33,7 @@ class AiAgentSource(models.Model):
 
 
 # ==========================================
-# 🚀 2. كودك القديم (الذي يعمل بنجاح تام)
+# 🚀 2. كودك القديم (مع إضافة مفتاح الرد وحارس الدردشة)
 # ==========================================
 class AIControllerOverride(AIController):
 
@@ -47,7 +41,6 @@ class AIControllerOverride(AIController):
     def generate_response(self, **kwargs):
         _logger.info('===== KH_AI: DEEP ANALYSIS MODE (BILL VS INVOICE) =====')
         
-        # 1. جلب المستندات (نفس المنطق السابق)
         prompt = ""
         attachments = request.env['ir.attachment'].sudo()
         mail_message_id = kwargs.get('mail_message_id')
@@ -63,7 +56,12 @@ class AIControllerOverride(AIController):
             if att_ids:
                 attachments = request.env['ir.attachment'].sudo().browse([int(i) for i in att_ids if str(i).isdigit()])
 
-        # 2. البرومبت التحليلي (التفكير قبل التنفيذ)
+        has_files = len(attachments) > 0
+
+        # 🌟 التعديل الأول: إذا مافي ملف، رد دردشة عادية (عشان hi تشتغل وما يألف فواتير)
+        if not has_files:
+            return super(AIControllerOverride, self).generate_response(**kwargs)
+
         system_prompt = """You are a senior auditor for Khales Group. 
         Analyze the document visually and take your time to understand:
         1. ROLES: Who is the SENDER (Vendor) and who is the RECEIVER (Customer)? 
@@ -109,7 +107,6 @@ class AIControllerOverride(AIController):
                             'vat': data.get('trn')
                         })
                     
-                    # اختيار الحساب: Expense للمورد و Income للعميل
                     acc_type = 'expense' if move_type == 'in_invoice' else 'income'
                     account = env['account.account'].sudo().search([
                         ('account_type', '=', acc_type), 
@@ -117,7 +114,6 @@ class AIControllerOverride(AIController):
                     ], limit=1)
 
                     invoice_lines = []
-                    # إضافة أسطر المنتجات
                     for l in data.get('lines', []):
                         invoice_lines.append((0, 0, {
                             'name': l.get('desc'),
@@ -126,7 +122,6 @@ class AIControllerOverride(AIController):
                             'account_id': account.id if account else False
                         }))
                     
-                    # إضافة سطر الضريبة بشكل يدوي لضمان الدقة
                     if data.get('vat_amount', 0) > 0:
                         invoice_lines.append((0, 0, {
                             'name': 'VAT (Extracted)',
@@ -142,7 +137,6 @@ class AIControllerOverride(AIController):
                         'ref': f"AI-REF-{data.get('trn', '')}"
                     })
 
-                    # إشعار نجاح ذكي
                     friendly_name = "Vendor Bill" if move_type == 'in_invoice' else "Customer Invoice"
                     env['bus.bus']._sendone(env.user.partner_id, 'simple_notification', {
                         'title': 'Deep Analysis Complete',
@@ -151,12 +145,15 @@ class AIControllerOverride(AIController):
                         'sticky': True,
                     })
 
+                    # 🌟 التعديل الثاني: أضفنا مفاتيح الرد عشان الشات ما يضل فاضي
                     return {
                         'type': 'ir.actions.act_window',
                         'res_model': 'account.move',
                         'res_id': new_move.id,
                         'views': [[False, 'form']],
                         'target': 'current',
+                        'answer': f"✅ تم استخراج الفاتورة بنجاح.",
+                        'response': f"✅ تم استخراج الفاتورة بنجاح."
                     }
 
             except Exception: pass
@@ -164,4 +161,4 @@ class AIControllerOverride(AIController):
 
         except Exception as e:
             _logger.exception("AI Error")
-            return {'response': f"System Error: {e}"}
+            return {'answer': f"System Error: {e}", 'response': f"System Error: {e}"}
