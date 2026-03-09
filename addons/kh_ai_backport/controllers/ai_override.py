@@ -5,7 +5,6 @@ from odoo.tools import html2plaintext
 from odoo.addons.ai.controllers.main import AIController
 import base64
 import logging
-import json
 import re
 
 _logger = logging.getLogger(__name__)
@@ -29,28 +28,26 @@ class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== KH_AI: CONTEXT MEMORY & CRM MODE =====')
+        _logger.info('===== KH_AI: FUNCTION CALLING (NATIVE TOOLS) MODE =====')
         
         prompt = ""
         current_attachments = request.env['ir.attachment'].sudo()
         history_attachments = request.env['ir.attachment'].sudo()
         chat_history_text = ""
-        
         mail_message_id = kwargs.get('mail_message_id')
         
+        # --- 1. بناء الذاكرة (Context Memory) ---
         if mail_message_id:
             msg = request.env['mail.message'].sudo().browse(int(mail_message_id))
             if msg.exists():
                 prompt = html2plaintext(msg.body) if msg.body else ""
                 current_attachments = msg.attachment_ids
                 
-                # 🧠 السحر هنا: بناء الذاكرة (سحب آخر 6 رسائل من نفس المحادثة)
                 if msg.model == 'discuss.channel':
                     history_msgs = request.env['mail.message'].sudo().search(
                         [('model', '=', 'discuss.channel'), ('res_id', '=', msg.res_id)],
                         order='id desc', limit=6
                     )
-                    # ترتيب زمني صحيح ليفهم سياق الحديث
                     for h_msg in reversed(history_msgs):
                         sender = "User" if h_msg.author_id.id == request.env.user.partner_id.id else "AI"
                         msg_body = html2plaintext(h_msg.body) if h_msg.body else ""
@@ -69,7 +66,7 @@ class AIControllerOverride(AIController):
 
         has_history_files = len(history_attachments) > 0
 
-        # 🛑 شرطي المرور الذكي: إذا مافي ملفات نهائياً في تاريخ المحادثة، حوّله لذكاء أودو الأصلي
+        # --- 2. شرطي المرور (لأسئلة الداتابيز العادية) ---
         if not has_history_files:
             try:
                 return super(AIControllerOverride, self).generate_response(**kwargs)
@@ -78,114 +75,77 @@ class AIControllerOverride(AIController):
                 return {} 
 
         # ==========================================
-        # 🚀 البرومبت الذكي (مع الذاكرة وصلاحية إنشاء الـ Leads)
+        # 🚀 3. تجهيز الأدوات لـ Gemini (Function Calling Tools)
         # ==========================================
-        system_prompt = """You are 'Khales AI', a smart ERP assistant.
-        You are provided with the CHAT HISTORY and attached documents. Read the history to understand the context of the user's latest request.
+        if not HAS_GENAI: return {}
         
-        CRITICAL RULES:
-        1. LANGUAGE LOCK: Reply in the SAME LANGUAGE as the user's latest message. (Arabic for Arabic, English for English).
-        2. 'chat' INTENT: If the user asks for a summary, explanation, or general question, set intent to 'chat'. Extract details into the "message" key. DO NOT create records.
-        3. 'create_invoice' INTENT: ONLY if the user EXPLICITLY asks to create/record a bill or invoice.
-        4. 'create_lead' INTENT: ONLY if the user EXPLICITLY asks to create a Lead/CRM opportunity (e.g., "create a lead", "أنشئ فرصة"). Extract the info requested.
+        # أداة 1: إنشاء الـ Lead
+        create_lead_tool = types.FunctionDeclaration(
+            name="ai_create_lead",
+            description="Call this function ONLY when the user explicitly asks to create or open a CRM Lead/Opportunity.",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "name": types.Schema(type=types.Type.STRING, description="Title of the lead"),
+                    "email": types.Schema(type=types.Type.STRING, description="Extracted email address"),
+                    "phone": types.Schema(type=types.Type.STRING, description="Extracted phone number"),
+                    "description": types.Schema(type=types.Type.STRING, description="Summary of the request"),
+                },
+                required=["name"]
+            )
+        )
+
+        # أداة 2: إنشاء الفاتورة
+        create_invoice_tool = types.FunctionDeclaration(
+            name="ai_create_invoice",
+            description="Call this function ONLY when the user explicitly asks to create, add, or record a vendor bill or customer invoice.",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "move_type": types.Schema(type=types.Type.STRING, description="Must be 'in_invoice' for bills or 'out_invoice' for invoices"),
+                    "partner_name": types.Schema(type=types.Type.STRING, description="Name of the vendor or customer"),
+                    "trn": types.Schema(type=types.Type.STRING, description="Tax Registration Number"),
+                },
+                required=["move_type", "partner_name"]
+            )
+        )
+
+        gemini_tools = types.Tool(function_declarations=[create_lead_tool, create_invoice_tool])
+
+        system_instruction = "You are 'Khales AI'. Read the chat history and documents. You have tools to create leads and invoices. USE TOOLS ONLY IF EXPLICITLY COMMANDED. Otherwise, just reply normally in the user's language."
         
-        ALWAYS return ONLY valid JSON:
-        {
-          "intent": "create_invoice" or "create_lead" or "chat",
-          "message": "ردك هنا بنفس لغة المستخدم.",
-          "invoice_data": {
-            "move_type": "in_invoice" or "out_invoice",
-            "partner_name": "Name",
-            "trn": "TRN",
-            "vat_amount": 0.0,
-            "lines": [{"desc": "Item", "qty": 1, "price": 10}]
-          },
-          "lead_data": {
-            "name": "Subject/Title of the lead based on document",
-            "email_from": "extracted email if any",
-            "phone": "extracted phone if any",
-            "description": "Short summary"
-          }
-        }"""
-        
-        # إرسال تاريخ المحادثة بالكامل لـ Gemini
-        gemini_contents = [f"{system_prompt}\n\n--- CHAT HISTORY ---\n{chat_history_text}\n--- END HISTORY ---"]
-        
-        # إرفاق جميع الملفات الموجودة في المحادثة الأخيرة
+        gemini_contents = [f"--- CHAT HISTORY ---\n{chat_history_text}\n--- END HISTORY ---"]
         for att in history_attachments:
             file_bytes = att.raw or (base64.b64decode(att.datas) if att.datas else b'')
             if file_bytes:
                 gemini_contents.append(types.Part.from_bytes(data=file_bytes, mime_type=att.mimetype or 'application/pdf'))
 
-        if not HAS_GENAI: return {}
         api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
 
         try:
             client = genai.Client(api_key=api_key)
-            response = client.models.generate_content(model="gemini-2.5-flash", contents=gemini_contents)
-            result_text = getattr(response, "text", str(response)).strip()
-            clean_json_str = re.sub(r'```json|```', '', result_text).strip()
             
-            try:
-                data = json.loads(clean_json_str)
-                intent = data.get('intent', 'chat')
-                chat_msg = data.get('message', 'تمت المعالجة.')
+            # إرسال الطلب مع تسليح Gemini بالأدوات
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=gemini_contents,
+                config=types.GenerateContentConfig(
+                    tools=[gemini_tools],
+                    system_instruction=system_instruction,
+                    temperature=0.1
+                )
+            )
 
-                # 🌟 مسار إنشاء فرصة (CRM Lead) 🌟
-                if intent == 'create_lead' and data.get('lead_data'):
-                    lead_data = data['lead_data']
-                    env = request.env
-                    
-                    new_lead = env['crm.lead'].sudo().create({
-                        'name': lead_data.get('name', 'AI Generated Lead'),
-                        'email_from': lead_data.get('email_from', ''),
-                        'phone': lead_data.get('phone', ''),
-                        'description': lead_data.get('description', ''),
-                    })
-                    env['bus.bus']._sendone(env.user.partner_id, 'simple_notification', {'title': 'Success', 'message': f'Created Lead: {new_lead.name}', 'type': 'success', 'sticky': True})
-
-                    # طباعة الرسالة بالشات قبل الفتح
-                    if mail_message_id:
-                        msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
-                        if msg_record.model == 'discuss.channel':
-                            channel = request.env['discuss.channel'].sudo().browse(msg_record.res_id)
-                            ai_agent = request.env['ai.agent'].sudo().search([('partner_id', '!=', False)], limit=1)
-                            author_id = ai_agent.partner_id.id if ai_agent else request.env.user.partner_id.id
-                            channel.message_post(body=chat_msg, author_id=author_id, message_type='comment')
-
-                    return {'type': 'ir.actions.act_window', 'res_model': 'crm.lead', 'res_id': new_lead.id, 'views': [[False, 'form']], 'target': 'current'}
-
-                # === مسار إنشاء الفاتورة ===
-                elif intent == 'create_invoice' and data.get('invoice_data'):
-                    inv_data = data['invoice_data']
-                    move_type = inv_data.get('move_type', 'in_invoice')
-                    env = request.env
-                    p_name = inv_data.get('partner_name') or 'Unknown Partner'
-                    partner = env['res.partner'].sudo().search([('name', '=ilike', p_name)], limit=1)
-                    if not partner: partner = env['res.partner'].sudo().create({'name': p_name, 'vat': inv_data.get('trn')})
-                    acc_type = 'expense' if move_type == 'in_invoice' else 'income'
-                    account = env['account.account'].sudo().search([('account_type', '=', acc_type), ('company_ids', 'in', env.company.id)], limit=1)
-
-                    invoice_lines = []
-                    for l in inv_data.get('lines', []):
-                        invoice_lines.append((0, 0, {'name': l.get('desc', 'Item'), 'quantity': float(l.get('qty', 1.0)), 'price_unit': float(l.get('price', 0.0)), 'account_id': account.id if account else False}))
-                    if inv_data.get('vat_amount', 0) > 0:
-                        invoice_lines.append((0, 0, {'name': 'VAT', 'quantity': 1.0, 'price_unit': float(inv_data.get('vat_amount')), 'account_id': account.id if account else False}))
-
-                    new_move = env['account.move'].sudo().create({'move_type': move_type, 'partner_id': partner.id, 'invoice_line_ids': invoice_lines, 'ref': f"AI-REF-{inv_data.get('trn', '')}"})
-                    env['bus.bus']._sendone(env.user.partner_id, 'simple_notification', {'title': 'Success', 'message': f'Created {move_type}', 'type': 'success', 'sticky': True})
-
-                    if mail_message_id:
-                        msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
-                        if msg_record.model == 'discuss.channel':
-                            channel = request.env['discuss.channel'].sudo().browse(msg_record.res_id)
-                            ai_agent = request.env['ai.agent'].sudo().search([('partner_id', '!=', False)], limit=1)
-                            author_id = ai_agent.partner_id.id if ai_agent else request.env.user.partner_id.id
-                            channel.message_post(body=chat_msg, author_id=author_id, message_type='comment')
-
-                    return {'type': 'ir.actions.act_window', 'res_model': 'account.move', 'res_id': new_move.id, 'views': [[False, 'form']], 'target': 'current'}
-
-                # === مسار الدردشة العادية ===
+            # ==========================================
+            # ⚙️ 4. تنفيذ الأوامر إذا قرر Gemini استخدام أداة
+            # ==========================================
+            if response.function_calls:
+                func = response.function_calls[0]
+                args = func.args
+                env = request.env
+                
+                # طباعة رسالة توضح إن الـ AI قرر يستخدم أداة
+                chat_msg = f"✅ يتم الآن تنفيذ الأداة: {func.name}..."
                 if mail_message_id:
                     msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
                     if msg_record.model == 'discuss.channel':
@@ -194,9 +154,40 @@ class AIControllerOverride(AIController):
                         author_id = ai_agent.partner_id.id if ai_agent else request.env.user.partner_id.id
                         channel.message_post(body=chat_msg, author_id=author_id, message_type='comment')
 
-                return {} 
+                # إذا ضغط Gemini على زر ai_create_lead
+                if func.name == "ai_create_lead":
+                    new_lead = env['crm.lead'].sudo().create({
+                        'name': args.get('name', 'AI Generated Lead'),
+                        'email_from': args.get('email', ''),
+                        'phone': args.get('phone', ''),
+                        'description': args.get('description', ''),
+                    })
+                    env['bus.bus']._sendone(env.user.partner_id, 'simple_notification', {'title': 'Tool Executed', 'message': f'Created Lead: {new_lead.name}', 'type': 'success', 'sticky': True})
+                    return {'type': 'ir.actions.act_window', 'res_model': 'crm.lead', 'res_id': new_lead.id, 'views': [[False, 'form']], 'target': 'current'}
 
-            except json.JSONDecodeError:
+                # إذا ضغط Gemini على زر ai_create_invoice
+                elif func.name == "ai_create_invoice":
+                    move_type = args.get('move_type', 'in_invoice')
+                    p_name = args.get('partner_name', 'Unknown')
+                    partner = env['res.partner'].sudo().search([('name', '=ilike', p_name)], limit=1)
+                    if not partner: partner = env['res.partner'].sudo().create({'name': p_name, 'vat': args.get('trn', '')})
+                    acc_type = 'expense' if move_type == 'in_invoice' else 'income'
+                    account = env['account.account'].sudo().search([('account_type', '=', acc_type), ('company_ids', 'in', env.company.id)], limit=1)
+
+                    new_move = env['account.move'].sudo().create({
+                        'move_type': move_type,
+                        'partner_id': partner.id,
+                        'invoice_line_ids': [(0, 0, {'name': 'AI Extracted Item', 'quantity': 1.0, 'price_unit': 0.0, 'account_id': account.id if account else False})],
+                        'ref': f"AI-REF-{args.get('trn', '')}"
+                    })
+                    env['bus.bus']._sendone(env.user.partner_id, 'simple_notification', {'title': 'Tool Executed', 'message': f'Created {move_type}', 'type': 'success', 'sticky': True})
+                    return {'type': 'ir.actions.act_window', 'res_model': 'account.move', 'res_id': new_move.id, 'views': [[False, 'form']], 'target': 'current'}
+
+            # ==========================================
+            # 💬 5. مسار الدردشة العادية (إذا لم يقم Gemini باستدعاء أي أداة)
+            # ==========================================
+            else:
+                result_text = getattr(response, "text", str(response)).strip()
                 if mail_message_id:
                     msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
                     if msg_record.model == 'discuss.channel':
