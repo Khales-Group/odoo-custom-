@@ -28,7 +28,7 @@ class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== KH_AI: FUNCTION CALLING (NATIVE TOOLS) MODE =====')
+        _logger.info('===== KH_AI: STRICT FUNCTION CALLING (TAMED) =====')
         
         prompt = ""
         current_attachments = request.env['ir.attachment'].sudo()
@@ -66,7 +66,7 @@ class AIControllerOverride(AIController):
 
         has_history_files = len(history_attachments) > 0
 
-        # --- 2. شرطي المرور (لأسئلة الداتابيز العادية) ---
+        # --- 2. شرطي المرور ---
         if not has_history_files:
             try:
                 return super(AIControllerOverride, self).generate_response(**kwargs)
@@ -75,14 +75,14 @@ class AIControllerOverride(AIController):
                 return {} 
 
         # ==========================================
-        # 🚀 3. تجهيز الأدوات لـ Gemini (Function Calling Tools)
+        # 🚀 3. تجهيز الأدوات لـ Gemini (مع تحذيرات صارمة جداً)
         # ==========================================
         if not HAS_GENAI: return {}
         
         # أداة 1: إنشاء الـ Lead
         create_lead_tool = types.FunctionDeclaration(
             name="ai_create_lead",
-            description="Call this function ONLY when the user explicitly asks to create or open a CRM Lead/Opportunity.",
+            description="CRITICAL DANGER: DO NOT use this tool if the user asks to 'read', 'explain', 'summarize', 'اقرأ', or 'اشرح'. ONLY use this tool if the user EXPLICITLY commands you to 'create a lead', 'أنشئ فرصة', or 'سوي ليد'.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
@@ -98,7 +98,7 @@ class AIControllerOverride(AIController):
         # أداة 2: إنشاء الفاتورة
         create_invoice_tool = types.FunctionDeclaration(
             name="ai_create_invoice",
-            description="Call this function ONLY when the user explicitly asks to create, add, or record a vendor bill or customer invoice.",
+            description="CRITICAL DANGER: DO NOT use this tool if the user asks to 'read', 'explain', 'summarize', 'اقرأ', or 'اشرح'. ONLY use this tool if the user EXPLICITLY commands you to 'create invoice', 'أنشئ فاتورة', or 'سجل الفاتورة'.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
@@ -112,7 +112,11 @@ class AIControllerOverride(AIController):
 
         gemini_tools = types.Tool(function_declarations=[create_lead_tool, create_invoice_tool])
 
-        system_instruction = "You are 'Khales AI'. Read the chat history and documents. You have tools to create leads and invoices. USE TOOLS ONLY IF EXPLICITLY COMMANDED. Otherwise, just reply normally in the user's language."
+        # تعليمات النظام الصارمة
+        system_instruction = """You are 'Khales AI', an expert ERP assistant. 
+        RULE 1: Your default mode is to CHAT and EXPLAIN. If the user says 'read', 'explain', 'what is this', 'اقرأ', 'اشرح', you MUST reply with a normal text explanation. DO NOT CALL ANY TOOLS.
+        RULE 2: Use tools ONLY when the user gives a direct action command like 'create', 'أنشئ', 'سوي'.
+        RULE 3: Reply in the EXACT SAME LANGUAGE as the user's latest prompt."""
         
         gemini_contents = [f"--- CHAT HISTORY ---\n{chat_history_text}\n--- END HISTORY ---"]
         for att in history_attachments:
@@ -125,7 +129,6 @@ class AIControllerOverride(AIController):
         try:
             client = genai.Client(api_key=api_key)
             
-            # إرسال الطلب مع تسليح Gemini بالأدوات
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=gemini_contents,
@@ -144,7 +147,6 @@ class AIControllerOverride(AIController):
                 args = func.args
                 env = request.env
                 
-                # طباعة رسالة توضح إن الـ AI قرر يستخدم أداة
                 chat_msg = f"✅ يتم الآن تنفيذ الأداة: {func.name}..."
                 if mail_message_id:
                     msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
@@ -154,7 +156,6 @@ class AIControllerOverride(AIController):
                         author_id = ai_agent.partner_id.id if ai_agent else request.env.user.partner_id.id
                         channel.message_post(body=chat_msg, author_id=author_id, message_type='comment')
 
-                # إذا ضغط Gemini على زر ai_create_lead
                 if func.name == "ai_create_lead":
                     new_lead = env['crm.lead'].sudo().create({
                         'name': args.get('name', 'AI Generated Lead'),
@@ -165,7 +166,6 @@ class AIControllerOverride(AIController):
                     env['bus.bus']._sendone(env.user.partner_id, 'simple_notification', {'title': 'Tool Executed', 'message': f'Created Lead: {new_lead.name}', 'type': 'success', 'sticky': True})
                     return {'type': 'ir.actions.act_window', 'res_model': 'crm.lead', 'res_id': new_lead.id, 'views': [[False, 'form']], 'target': 'current'}
 
-                # إذا ضغط Gemini على زر ai_create_invoice
                 elif func.name == "ai_create_invoice":
                     move_type = args.get('move_type', 'in_invoice')
                     p_name = args.get('partner_name', 'Unknown')
@@ -184,7 +184,7 @@ class AIControllerOverride(AIController):
                     return {'type': 'ir.actions.act_window', 'res_model': 'account.move', 'res_id': new_move.id, 'views': [[False, 'form']], 'target': 'current'}
 
             # ==========================================
-            # 💬 5. مسار الدردشة العادية (إذا لم يقم Gemini باستدعاء أي أداة)
+            # 💬 5. مسار الدردشة العادية (نجحنا في إيقاف الأداة)
             # ==========================================
             else:
                 result_text = getattr(response, "text", str(response)).strip()
