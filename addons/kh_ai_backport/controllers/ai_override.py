@@ -6,6 +6,7 @@ from odoo.addons.ai.controllers.main import AIController
 import base64
 import logging
 import re
+import json
 
 _logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== KH_AI: STRICT FUNCTION CALLING (TAMED) =====')
+        _logger.info('===== KH_AI: FLAWLESS FUNCTION CALLING MODE =====')
         
         prompt = ""
         current_attachments = request.env['ir.attachment'].sudo()
@@ -75,48 +76,61 @@ class AIControllerOverride(AIController):
                 return {} 
 
         # ==========================================
-        # 🚀 3. تجهيز الأدوات لـ Gemini (مع تحذيرات صارمة جداً)
+        # 🚀 3. تجهيز الأدوات لـ Gemini (تم إصلاح مشكلة الأسطر واللغة)
         # ==========================================
         if not HAS_GENAI: return {}
         
-        # أداة 1: إنشاء الـ Lead
         create_lead_tool = types.FunctionDeclaration(
             name="ai_create_lead",
-            description="CRITICAL DANGER: DO NOT use this tool if the user asks to 'read', 'explain', 'summarize', 'اقرأ', or 'اشرح'. ONLY use this tool if the user EXPLICITLY commands you to 'create a lead', 'أنشئ فرصة', or 'سوي ليد'.",
+            description="Use ONLY when user explicitly commands to create a lead/opportunity.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
                     "name": types.Schema(type=types.Type.STRING, description="Title of the lead"),
-                    "email": types.Schema(type=types.Type.STRING, description="Extracted email address"),
-                    "phone": types.Schema(type=types.Type.STRING, description="Extracted phone number"),
-                    "description": types.Schema(type=types.Type.STRING, description="Summary of the request"),
+                    "email": types.Schema(type=types.Type.STRING, description="Extracted email"),
+                    "phone": types.Schema(type=types.Type.STRING, description="Extracted phone"),
+                    "description": types.Schema(type=types.Type.STRING, description="Summary"),
+                    "message_to_user": types.Schema(type=types.Type.STRING, description="MANDATORY: Message to reply to the user. MUST BE IN THE SAME LANGUAGE AS THE USER'S PROMPT (e.g., Arabic).")
                 },
-                required=["name"]
+                required=["name", "message_to_user"]
             )
         )
 
-        # أداة 2: إنشاء الفاتورة
         create_invoice_tool = types.FunctionDeclaration(
             name="ai_create_invoice",
-            description="CRITICAL DANGER: DO NOT use this tool if the user asks to 'read', 'explain', 'summarize', 'اقرأ', or 'اشرح'. ONLY use this tool if the user EXPLICITLY commands you to 'create invoice', 'أنشئ فاتورة', or 'سجل الفاتورة'.",
+            description="Use ONLY when user explicitly commands to create an invoice or bill.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
-                    "move_type": types.Schema(type=types.Type.STRING, description="Must be 'in_invoice' for bills or 'out_invoice' for invoices"),
-                    "partner_name": types.Schema(type=types.Type.STRING, description="Name of the vendor or customer"),
+                    "move_type": types.Schema(type=types.Type.STRING, description="'in_invoice' for Vendor Bills (Khales pays), 'out_invoice' for Customer Invoices (Khales receives money)"),
+                    "partner_name": types.Schema(type=types.Type.STRING, description="Vendor or Customer name"),
                     "trn": types.Schema(type=types.Type.STRING, description="Tax Registration Number"),
+                    "vat_amount": types.Schema(type=types.Type.NUMBER, description="Total VAT amount"),
+                    "lines": types.Schema(
+                        type=types.Type.ARRAY,
+                        description="Invoice items list",
+                        items=types.Schema(
+                            type=types.Type.OBJECT,
+                            properties={
+                                "desc": types.Schema(type=types.Type.STRING),
+                                "qty": types.Schema(type=types.Type.NUMBER),
+                                "price": types.Schema(type=types.Type.NUMBER)
+                            }
+                        )
+                    ),
+                    "message_to_user": types.Schema(type=types.Type.STRING, description="MANDATORY: Friendly reply MUST BE IN THE SAME LANGUAGE AS THE USER'S PROMPT (e.g., strictly Arabic if user spoke Arabic). Explain if it's a Bill or Invoice.")
                 },
-                required=["move_type", "partner_name"]
+                required=["move_type", "partner_name", "message_to_user", "lines"]
             )
         )
 
         gemini_tools = types.Tool(function_declarations=[create_lead_tool, create_invoice_tool])
 
-        # تعليمات النظام الصارمة
-        system_instruction = """You are 'Khales AI', an expert ERP assistant. 
-        RULE 1: Your default mode is to CHAT and EXPLAIN. If the user says 'read', 'explain', 'what is this', 'اقرأ', 'اشرح', you MUST reply with a normal text explanation. DO NOT CALL ANY TOOLS.
-        RULE 2: Use tools ONLY when the user gives a direct action command like 'create', 'أنشئ', 'سوي'.
-        RULE 3: Reply in the EXACT SAME LANGUAGE as the user's latest prompt."""
+        system_instruction = """You are 'Khales AI'. 
+        CRITICAL RULES:
+        1. LANGUAGE: ALWAYS reply in the exact language the user used. If Arabic, use only Arabic.
+        2. INVOICE LINES: You must extract every single row from the invoice table into the 'lines' array.
+        3. TOOLS: Call tools ONLY if the user gives a direct command like 'create invoice', 'أنشئ فاتورة', 'سوي ليد'. If they ask to 'read' or 'اشرح', just chat normally without tools."""
         
         gemini_contents = [f"--- CHAT HISTORY ---\n{chat_history_text}\n--- END HISTORY ---"]
         for att in history_attachments:
@@ -128,7 +142,6 @@ class AIControllerOverride(AIController):
 
         try:
             client = genai.Client(api_key=api_key)
-            
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=gemini_contents,
@@ -140,14 +153,16 @@ class AIControllerOverride(AIController):
             )
 
             # ==========================================
-            # ⚙️ 4. تنفيذ الأوامر إذا قرر Gemini استخدام أداة
+            # ⚙️ 4. تنفيذ الأوامر بدقة تامة
             # ==========================================
             if response.function_calls:
                 func = response.function_calls[0]
                 args = func.args
                 env = request.env
                 
-                chat_msg = f"✅ يتم الآن تنفيذ الأداة: {func.name}..."
+                # الرد بلغتك أنت
+                chat_msg = args.get('message_to_user', "تم تنفيذ الطلب بنجاح.")
+                
                 if mail_message_id:
                     msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
                     if msg_record.model == 'discuss.channel':
@@ -163,28 +178,53 @@ class AIControllerOverride(AIController):
                         'phone': args.get('phone', ''),
                         'description': args.get('description', ''),
                     })
-                    env['bus.bus']._sendone(env.user.partner_id, 'simple_notification', {'title': 'Tool Executed', 'message': f'Created Lead: {new_lead.name}', 'type': 'success', 'sticky': True})
                     return {'type': 'ir.actions.act_window', 'res_model': 'crm.lead', 'res_id': new_lead.id, 'views': [[False, 'form']], 'target': 'current'}
 
                 elif func.name == "ai_create_invoice":
                     move_type = args.get('move_type', 'in_invoice')
                     p_name = args.get('partner_name', 'Unknown')
+                    trn = args.get('trn', '')
+                    vat_amount = float(args.get('vat_amount', 0.0))
+                    lines = args.get('lines', [])
+
                     partner = env['res.partner'].sudo().search([('name', '=ilike', p_name)], limit=1)
-                    if not partner: partner = env['res.partner'].sudo().create({'name': p_name, 'vat': args.get('trn', '')})
+                    if not partner: partner = env['res.partner'].sudo().create({'name': p_name, 'vat': trn})
+                    
                     acc_type = 'expense' if move_type == 'in_invoice' else 'income'
                     account = env['account.account'].sudo().search([('account_type', '=', acc_type), ('company_ids', 'in', env.company.id)], limit=1)
+
+                    invoice_lines = []
+                    # 💡 الحل العبقري: استخراج الأسطر بدقة
+                    for l in lines:
+                        invoice_lines.append((0, 0, {
+                            'name': l.get('desc', 'Product Item'),
+                            'quantity': float(l.get('qty', 1.0)),
+                            'price_unit': float(l.get('price', 0.0)),
+                            'account_id': account.id if account else False
+                        }))
+                    
+                    if vat_amount > 0:
+                        invoice_lines.append((0, 0, {
+                            'name': 'VAT / Tax',
+                            'quantity': 1.0,
+                            'price_unit': vat_amount,
+                            'account_id': account.id if account else False
+                        }))
+
+                    # لضمان عدم وجود فاتورة فارغة
+                    if not invoice_lines:
+                        invoice_lines.append((0, 0, {'name': 'Default Item', 'quantity': 1.0, 'price_unit': 0.0, 'account_id': account.id if account else False}))
 
                     new_move = env['account.move'].sudo().create({
                         'move_type': move_type,
                         'partner_id': partner.id,
-                        'invoice_line_ids': [(0, 0, {'name': 'AI Extracted Item', 'quantity': 1.0, 'price_unit': 0.0, 'account_id': account.id if account else False})],
-                        'ref': f"AI-REF-{args.get('trn', '')}"
+                        'invoice_line_ids': invoice_lines,
+                        'ref': f"AI-REF-{trn}"
                     })
-                    env['bus.bus']._sendone(env.user.partner_id, 'simple_notification', {'title': 'Tool Executed', 'message': f'Created {move_type}', 'type': 'success', 'sticky': True})
                     return {'type': 'ir.actions.act_window', 'res_model': 'account.move', 'res_id': new_move.id, 'views': [[False, 'form']], 'target': 'current'}
 
             # ==========================================
-            # 💬 5. مسار الدردشة العادية (نجحنا في إيقاف الأداة)
+            # 💬 5. مسار الدردشة العادية
             # ==========================================
             else:
                 result_text = getattr(response, "text", str(response)).strip()
