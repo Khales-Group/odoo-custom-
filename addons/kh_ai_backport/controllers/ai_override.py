@@ -29,7 +29,7 @@ class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== KH_AI: FLAWLESS FUNCTION CALLING MODE =====')
+        _logger.info('===== KH_AI: BLIND OBEDIENCE MODE =====')
         
         prompt = ""
         current_attachments = request.env['ir.attachment'].sudo()
@@ -67,7 +67,6 @@ class AIControllerOverride(AIController):
 
         has_history_files = len(history_attachments) > 0
 
-        # --- 2. شرطي المرور ---
         if not has_history_files:
             try:
                 return super(AIControllerOverride, self).generate_response(**kwargs)
@@ -76,7 +75,7 @@ class AIControllerOverride(AIController):
                 return {} 
 
         # ==========================================
-        # 🚀 3. تجهيز الأدوات لـ Gemini (تم إصلاح مشكلة الأسطر واللغة)
+        # 🚀 3. تجهيز الأدوات لـ Gemini (مع إجبار الطاعة)
         # ==========================================
         if not HAS_GENAI: return {}
         
@@ -90,7 +89,7 @@ class AIControllerOverride(AIController):
                     "email": types.Schema(type=types.Type.STRING, description="Extracted email"),
                     "phone": types.Schema(type=types.Type.STRING, description="Extracted phone"),
                     "description": types.Schema(type=types.Type.STRING, description="Summary"),
-                    "message_to_user": types.Schema(type=types.Type.STRING, description="MANDATORY: Message to reply to the user. MUST BE IN THE SAME LANGUAGE AS THE USER'S PROMPT (e.g., Arabic).")
+                    "message_to_user": types.Schema(type=types.Type.STRING, description="Message to reply to the user. MUST BE IN THE SAME LANGUAGE AS THE USER.")
                 },
                 required=["name", "message_to_user"]
             )
@@ -102,7 +101,7 @@ class AIControllerOverride(AIController):
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
-                    "move_type": types.Schema(type=types.Type.STRING, description="'in_invoice' for Vendor Bills (Khales pays), 'out_invoice' for Customer Invoices (Khales receives money)"),
+                    "move_type": types.Schema(type=types.Type.STRING, description="BLIND OBEDIENCE: If user says 'invoice' or 'فاتورة', FORCE 'out_invoice'. If user says 'bill' or 'بيل' or 'فاتورة مشتريات', FORCE 'in_invoice'."),
                     "partner_name": types.Schema(type=types.Type.STRING, description="Vendor or Customer name"),
                     "trn": types.Schema(type=types.Type.STRING, description="Tax Registration Number"),
                     "vat_amount": types.Schema(type=types.Type.NUMBER, description="Total VAT amount"),
@@ -118,7 +117,7 @@ class AIControllerOverride(AIController):
                             }
                         )
                     ),
-                    "message_to_user": types.Schema(type=types.Type.STRING, description="MANDATORY: Friendly reply MUST BE IN THE SAME LANGUAGE AS THE USER'S PROMPT (e.g., strictly Arabic if user spoke Arabic). Explain if it's a Bill or Invoice.")
+                    "message_to_user": types.Schema(type=types.Type.STRING, description="Friendly reply MUST BE IN THE SAME LANGUAGE AS THE USER.")
                 },
                 required=["move_type", "partner_name", "message_to_user", "lines"]
             )
@@ -126,11 +125,12 @@ class AIControllerOverride(AIController):
 
         gemini_tools = types.Tool(function_declarations=[create_lead_tool, create_invoice_tool])
 
-        system_instruction = """You are 'Khales AI'. 
-        CRITICAL RULES:
-        1. LANGUAGE: ALWAYS reply in the exact language the user used. If Arabic, use only Arabic.
-        2. INVOICE LINES: You must extract every single row from the invoice table into the 'lines' array.
-        3. TOOLS: Call tools ONLY if the user gives a direct command like 'create invoice', 'أنشئ فاتورة', 'سوي ليد'. If they ask to 'read' or 'اشرح', just chat normally without tools."""
+        # 🛑 التعليمات العسكرية الصارمة 🛑
+        system_instruction = """You are 'Khales AI', a strictly obedient assistant.
+        CRITICAL DANGER RULES:
+        1. IGNORE SHORT WORDS: If the user's message is just conversational like 'cool', 'thanks', 'ok', 'شكرا', 'تمام', 'حلو', DO NOT CALL ANY TOOLS! Just reply 'You are welcome' or 'العفو' in normal chat.
+        2. BLIND OBEDIENCE FOR INVOICE TYPE: Ignore accounting logic! If the user literally types 'invoice' or 'فاتورة' without specifying, YOU MUST use 'out_invoice'. If they type 'bill' or 'بيل', YOU MUST use 'in_invoice'.
+        3. ALWAYS reply in the exact language the user used in their latest message."""
         
         gemini_contents = [f"--- CHAT HISTORY ---\n{chat_history_text}\n--- END HISTORY ---"]
         for att in history_attachments:
@@ -148,7 +148,7 @@ class AIControllerOverride(AIController):
                 config=types.GenerateContentConfig(
                     tools=[gemini_tools],
                     system_instruction=system_instruction,
-                    temperature=0.1
+                    temperature=0.0 # قللنا نسبة الإبداع للصفر عشان ينفذ بالحرف
                 )
             )
 
@@ -160,7 +160,6 @@ class AIControllerOverride(AIController):
                 args = func.args
                 env = request.env
                 
-                # الرد بلغتك أنت
                 chat_msg = args.get('message_to_user', "تم تنفيذ الطلب بنجاح.")
                 
                 if mail_message_id:
@@ -181,7 +180,7 @@ class AIControllerOverride(AIController):
                     return {'type': 'ir.actions.act_window', 'res_model': 'crm.lead', 'res_id': new_lead.id, 'views': [[False, 'form']], 'target': 'current'}
 
                 elif func.name == "ai_create_invoice":
-                    move_type = args.get('move_type', 'in_invoice')
+                    move_type = args.get('move_type', 'out_invoice') # الديفولت صار Customer Invoice
                     p_name = args.get('partner_name', 'Unknown')
                     trn = args.get('trn', '')
                     vat_amount = float(args.get('vat_amount', 0.0))
@@ -194,7 +193,6 @@ class AIControllerOverride(AIController):
                     account = env['account.account'].sudo().search([('account_type', '=', acc_type), ('company_ids', 'in', env.company.id)], limit=1)
 
                     invoice_lines = []
-                    # 💡 الحل العبقري: استخراج الأسطر بدقة
                     for l in lines:
                         invoice_lines.append((0, 0, {
                             'name': l.get('desc', 'Product Item'),
@@ -211,7 +209,6 @@ class AIControllerOverride(AIController):
                             'account_id': account.id if account else False
                         }))
 
-                    # لضمان عدم وجود فاتورة فارغة
                     if not invoice_lines:
                         invoice_lines.append((0, 0, {'name': 'Default Item', 'quantity': 1.0, 'price_unit': 0.0, 'account_id': account.id if account else False}))
 
@@ -224,7 +221,7 @@ class AIControllerOverride(AIController):
                     return {'type': 'ir.actions.act_window', 'res_model': 'account.move', 'res_id': new_move.id, 'views': [[False, 'form']], 'target': 'current'}
 
             # ==========================================
-            # 💬 5. مسار الدردشة العادية
+            # 💬 5. مسار الدردشة (للردود القصيرة زي cool)
             # ==========================================
             else:
                 result_text = getattr(response, "text", str(response)).strip()
