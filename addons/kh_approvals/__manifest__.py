@@ -12,7 +12,7 @@
         'security/ir.model.access.csv',
         'security/kh_approvals_rules.xml',
         'security/wizard_access.xml',
-        'views/menu.xml',
+        'views/menu.xml','views/project_project_views.xml',
         'views/approval_request_views.xml',
         'views/approval_rule_views.xml',
         'views/department_views.xml',

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_project_khales_inherit_form" model="ir.ui.view">
+        <field name="name">project.project.form.khales</field>
+        <field name="model">project.project</field>
+        <field name="inherit_id" ref="project.edit_project"/>
+        <field name="arch" type="xml">
+            
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button class="oe_stat_button" icon="fa-map-marker" type="object" name="action_view_site_visit_tab">
+                    <div class="o_stat_info">
+                        <span class="o_stat_text">Site Visit</span>
+                        <field name="x_site_visit_state" widget="badge" 
+                               decoration-success="x_site_visit_state == 'done'" 
+                               decoration-warning="x_site_visit_state == 'pending'"/>
+                    </div>
+                </button>
+            </xpath>
+
+            <xpath expr="//notebook" position="inside">
+                <page string="Site Visit Control" name="site_visit_khales">
+                    <sheet>
+                        <group>
+                            <group string="Planning (Manager Section)">
+                                <field name="x_site_visit_engineer_id" 
+                                       readonly="x_site_visit_state == 'done'"
+                                       placeholder="Select Engineer..."/>
+                                <field name="x_site_visit_date" 
+                                       readonly="x_site_visit_state == 'done'"/>
+                            </group>
+                            <group string="Execution (Engineer Section)">
+                                <button name="action_mark_visit_done" 
+                                        string="Mark as Done" 
+                                        type="object" 
+                                        class="btn-primary" 
+                                        invisible="x_site_visit_state == 'done' or not x_site_visit_engineer_id"/>
+                                <span invisible="x_site_visit_state == 'pending'" class="text-success">
+                                    <i class="fa fa-check-circle"/> This visit is finalized.
+                                </span>
+                            </group>
+                        </group>
+                        <group string="Visit Report &amp; Notes">
+                            <field name="x_site_visit_note" 
+                                   placeholder="يا هندسة اكتب شو صار معك بالموقع بالتفصيل..." 
+                                   readonly="x_site_visit_state == 'done'" 
+                                   nolabel="1"/>
+                        </group>
+                    </sheet>
+                </page>
+            </xpath>
+            
+        </field>
+    </record>
+</odoo>

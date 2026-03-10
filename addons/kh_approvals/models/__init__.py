@@ -14,3 +14,4 @@ from . import res_users  # <--- MAKE SURE THIS LINE EXISTS
 from . import fix_project_task
 from . import tender
 from . import tender_controller
+from . import project_project
