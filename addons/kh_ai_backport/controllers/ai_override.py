@@ -3,6 +3,7 @@ from odoo import models, fields, http, api
 from odoo.http import request
 from odoo.tools import html2plaintext
 from odoo.addons.ai.controllers.main import AIController
+from odoo.exceptions import AccessError # استيراد إيرور الصلاحيات
 import base64
 import logging
 import re
@@ -29,7 +30,7 @@ class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== KH_AI: ULTIMATE TOOL STRIPPING MODE =====')
+        _logger.info('===== KH_AI: SECURE ACCESS RIGHTS MODE =====')
         
         prompt = ""
         current_attachments = request.env['ir.attachment'].sudo()
@@ -37,7 +38,7 @@ class AIControllerOverride(AIController):
         chat_history_text = ""
         mail_message_id = kwargs.get('mail_message_id')
         
-        # --- 1. بناء الذاكرة (Context Memory) ---
+        # --- 1. بناء الذاكرة ---
         if mail_message_id:
             msg = request.env['mail.message'].sudo().browse(int(mail_message_id))
             if msg.exists():
@@ -67,7 +68,7 @@ class AIControllerOverride(AIController):
 
         has_history_files = len(history_attachments) > 0
 
-        # --- 2. شرطي المرور لأسئلة الداتابيز ---
+        # --- 2. شرطي المرور ---
         if not has_history_files:
             try:
                 return super(AIControllerOverride, self).generate_response(**kwargs)
@@ -75,13 +76,9 @@ class AIControllerOverride(AIController):
                 _logger.error(f"Native Odoo AI Failed: {e}")
                 return {} 
 
-        # ==========================================
-        # 🛑 3. الفلتر القسري (ربط إيدين الذكاء الاصطناعي) 🛑
-        # ==========================================
+        # --- 3. الفلتر القسري (ربط إيدين الذكاء الاصطناعي) ---
         prompt_lower = prompt.lower()
-        # هذي الكلمات لو انذكرت، مستحيل يشتغل أي Tool
         safe_words = ['read', 'explain', 'what', 'summarize', 'اقرا', 'اقرأ', 'اشرح', 'ماذا', 'شو', 'طيب', 'cool', 'thanks', 'ok', 'شكرا', 'تمام', 'حلو']
-        
         force_chat_only = any(word in prompt_lower for word in safe_words)
 
         if not HAS_GENAI: return {}
@@ -96,7 +93,7 @@ class AIControllerOverride(AIController):
                     "email": types.Schema(type=types.Type.STRING),
                     "phone": types.Schema(type=types.Type.STRING),
                     "description": types.Schema(type=types.Type.STRING),
-                    "message_to_user": types.Schema(type=types.Type.STRING, description="Message in user's language.")
+                    "message_to_user": types.Schema(type=types.Type.STRING)
                 },
                 required=["name", "message_to_user"]
             )
@@ -123,7 +120,7 @@ class AIControllerOverride(AIController):
                             }
                         )
                     ),
-                    "message_to_user": types.Schema(type=types.Type.STRING, description="Message in user's language.")
+                    "message_to_user": types.Schema(type=types.Type.STRING)
                 },
                 required=["move_type", "partner_name", "message_to_user", "lines"]
             )
@@ -145,14 +142,7 @@ class AIControllerOverride(AIController):
 
         try:
             client = genai.Client(api_key=api_key)
-            
-            # 💡 السحر هنا: بناء إعدادات الطلب ديناميكياً
-            gen_config_args = {
-                "system_instruction": system_instruction,
-                "temperature": 0.0
-            }
-            
-            # إذا لم يكتب المستخدم كلمة من كلمات الدردشة، نسمح بإرسال الأدوات
+            gen_config_args = {"system_instruction": system_instruction, "temperature": 0.0}
             if not force_chat_only:
                 gen_config_args["tools"] = [gemini_tools]
                 
@@ -163,75 +153,81 @@ class AIControllerOverride(AIController):
             )
 
             # ==========================================
-            # ⚙️ 4. مسار تنفيذ الأدوات (إذا سُمح لها بالعمل)
+            # ⚙️ 4. مسار تنفيذ الأدوات (مع حماية الصلاحيات)
             # ==========================================
             if response.function_calls:
                 func = response.function_calls[0]
                 args = func.args
-                env = request.env
+                env = request.env # نستخدم بيئة المستخدم الحالي (بدون sudo)
                 
-                chat_msg = args.get('message_to_user', "تم تنفيذ الطلب بنجاح.")
+                chat_msg = args.get('message_to_user', "جاري التنفيذ...")
                 
-                if mail_message_id:
-                    msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
-                    if msg_record.model == 'discuss.channel':
-                        channel = request.env['discuss.channel'].sudo().browse(msg_record.res_id)
-                        ai_agent = request.env['ai.agent'].sudo().search([('partner_id', '!=', False)], limit=1)
-                        author_id = ai_agent.partner_id.id if ai_agent else request.env.user.partner_id.id
-                        channel.message_post(body=chat_msg, author_id=author_id, message_type='comment')
+                def post_msg(text):
+                    if mail_message_id:
+                        msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
+                        if msg_record.model == 'discuss.channel':
+                            channel = request.env['discuss.channel'].sudo().browse(msg_record.res_id)
+                            ai_agent = request.env['ai.agent'].sudo().search([('partner_id', '!=', False)], limit=1)
+                            author_id = ai_agent.partner_id.id if ai_agent else request.env.user.partner_id.id
+                            channel.message_post(body=text, author_id=author_id, message_type='comment')
 
-                if func.name == "ai_create_lead":
-                    new_lead = env['crm.lead'].sudo().create({
-                        'name': args.get('name', 'AI Generated Lead'),
-                        'email_from': args.get('email', ''),
-                        'phone': args.get('phone', ''),
-                        'description': args.get('description', ''),
-                    })
-                    return {'type': 'ir.actions.act_window', 'res_model': 'crm.lead', 'res_id': new_lead.id, 'views': [[False, 'form']], 'target': 'current'}
+                post_msg(chat_msg)
 
-                elif func.name == "ai_create_invoice":
-                    move_type = args.get('move_type', 'out_invoice')
-                    p_name = args.get('partner_name', 'Unknown')
-                    trn = args.get('trn', '')
-                    vat_amount = float(args.get('vat_amount', 0.0))
-                    lines = args.get('lines', [])
+                try:
+                    if func.name == "ai_create_lead":
+                        # شلنا الـ sudo() من الإنشاء!
+                        new_lead = env['crm.lead'].create({
+                            'name': args.get('name', 'AI Generated Lead'),
+                            'email_from': args.get('email', ''),
+                            'phone': args.get('phone', ''),
+                            'description': args.get('description', ''),
+                        })
+                        return {'type': 'ir.actions.act_window', 'res_model': 'crm.lead', 'res_id': new_lead.id, 'views': [[False, 'form']], 'target': 'current'}
 
-                    partner = env['res.partner'].sudo().search([('name', '=ilike', p_name)], limit=1)
-                    if not partner: partner = env['res.partner'].sudo().create({'name': p_name, 'vat': trn})
-                    
-                    acc_type = 'expense' if move_type == 'in_invoice' else 'income'
-                    account = env['account.account'].sudo().search([('account_type', '=', acc_type), ('company_ids', 'in', env.company.id)], limit=1)
+                    elif func.name == "ai_create_invoice":
+                        move_type = args.get('move_type', 'out_invoice')
+                        p_name = args.get('partner_name', 'Unknown')
+                        trn = args.get('trn', '')
+                        vat_amount = float(args.get('vat_amount', 0.0))
+                        lines = args.get('lines', [])
 
-                    invoice_lines = []
-                    for l in lines:
-                        invoice_lines.append((0, 0, {
-                            'name': l.get('desc', 'Product Item'),
-                            'quantity': float(l.get('qty', 1.0)),
-                            'price_unit': float(l.get('price', 0.0)),
-                            'account_id': account.id if account else False
-                        }))
-                    
-                    if vat_amount > 0:
-                        invoice_lines.append((0, 0, {
-                            'name': 'VAT / Tax',
-                            'quantity': 1.0,
-                            'price_unit': vat_amount,
-                            'account_id': account.id if account else False
-                        }))
+                        # البحث عن الشريك بـ sudo مسموح عشان ما يضرب إيرور قراءة، بس الإنشاء بصلاحية المستخدم
+                        partner = env['res.partner'].sudo().search([('name', '=ilike', p_name)], limit=1)
+                        if not partner: partner = env['res.partner'].create({'name': p_name, 'vat': trn})
+                        
+                        acc_type = 'expense' if move_type == 'in_invoice' else 'income'
+                        account = env['account.account'].sudo().search([('account_type', '=', acc_type), ('company_ids', 'in', env.company.id)], limit=1)
 
-                    if not invoice_lines:
-                        invoice_lines.append((0, 0, {'name': 'Default Item', 'quantity': 1.0, 'price_unit': 0.0, 'account_id': account.id if account else False}))
+                        invoice_lines = []
+                        for l in lines:
+                            invoice_lines.append((0, 0, {
+                                'name': l.get('desc', 'Product Item'),
+                                'quantity': float(l.get('qty', 1.0)),
+                                'price_unit': float(l.get('price', 0.0)),
+                                'account_id': account.id if account else False
+                            }))
+                        if vat_amount > 0:
+                            invoice_lines.append((0, 0, {'name': 'VAT / Tax', 'quantity': 1.0, 'price_unit': vat_amount, 'account_id': account.id if account else False}))
+                        if not invoice_lines:
+                            invoice_lines.append((0, 0, {'name': 'Default Item', 'quantity': 1.0, 'price_unit': 0.0, 'account_id': account.id if account else False}))
 
-                    new_move = env['account.move'].sudo().create({
-                        'move_type': move_type,
-                        'partner_id': partner.id,
-                        'invoice_line_ids': invoice_lines,
-                        'ref': f"AI-REF-{trn}"
-                    })
-                    return {'type': 'ir.actions.act_window', 'res_model': 'account.move', 'res_id': new_move.id, 'views': [[False, 'form']], 'target': 'current'}
+                        # شلنا الـ sudo() من الإنشاء هنا كمان!
+                        new_move = env['account.move'].create({
+                            'move_type': move_type,
+                            'partner_id': partner.id,
+                            'invoice_line_ids': invoice_lines,
+                            'ref': f"AI-REF-{trn}"
+                        })
+                        return {'type': 'ir.actions.act_window', 'res_model': 'account.move', 'res_id': new_move.id, 'views': [[False, 'form']], 'target': 'current'}
+
+                except AccessError:
+                    # 🛡️ شبكة الأمان: إذا أودو رفض الإنشاء بسبب الصلاحيات
+                    error_msg = "⛔ عذراً، ليس لديك الصلاحيات الكافية لإنشاء هذا السجل في النظام."
+                    post_msg(error_msg)
+                    return {}
 
             # ==========================================
-            # 💬 5. مسار الدردشة (الآن محمي 100%)
+            # 💬 5. مسار الدردشة
             # ==========================================
             else:
                 result_text = getattr(response, "text", str(response)).strip()
