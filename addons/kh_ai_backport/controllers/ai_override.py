@@ -3,7 +3,7 @@ from odoo import models, fields, http, api
 from odoo.http import request
 from odoo.tools import html2plaintext
 from odoo.addons.ai.controllers.main import AIController
-from odoo.exceptions import AccessError # استيراد إيرور الصلاحيات
+from odoo.exceptions import AccessError
 import base64
 import logging
 import re
@@ -30,7 +30,7 @@ class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== KH_AI: SECURE ACCESS RIGHTS MODE =====')
+        _logger.info('===== KH_AI: LOGICAL FLOW SECURE MODE =====')
         
         prompt = ""
         current_attachments = request.env['ir.attachment'].sudo()
@@ -76,7 +76,7 @@ class AIControllerOverride(AIController):
                 _logger.error(f"Native Odoo AI Failed: {e}")
                 return {} 
 
-        # --- 3. الفلتر القسري (ربط إيدين الذكاء الاصطناعي) ---
+        # --- 3. الفلتر القسري ---
         prompt_lower = prompt.lower()
         safe_words = ['read', 'explain', 'what', 'summarize', 'اقرا', 'اقرأ', 'اشرح', 'ماذا', 'شو', 'طيب', 'cool', 'thanks', 'ok', 'شكرا', 'تمام', 'حلو']
         force_chat_only = any(word in prompt_lower for word in safe_words)
@@ -153,14 +153,14 @@ class AIControllerOverride(AIController):
             )
 
             # ==========================================
-            # ⚙️ 4. مسار تنفيذ الأدوات (مع حماية الصلاحيات)
+            # ⚙️ 4. مسار تنفيذ الأدوات 
             # ==========================================
             if response.function_calls:
                 func = response.function_calls[0]
                 args = func.args
-                env = request.env # نستخدم بيئة المستخدم الحالي (بدون sudo)
+                env = request.env
                 
-                chat_msg = args.get('message_to_user', "جاري التنفيذ...")
+                chat_msg = args.get('message_to_user', "تم التنفيذ.")
                 
                 def post_msg(text):
                     if mail_message_id:
@@ -171,17 +171,16 @@ class AIControllerOverride(AIController):
                             author_id = ai_agent.partner_id.id if ai_agent else request.env.user.partner_id.id
                             channel.message_post(body=text, author_id=author_id, message_type='comment')
 
-                post_msg(chat_msg)
-
+                # 💡 التعديل هنا: حاول تنشئ أولاً، وإذا نجحت اطبع رسالة النجاح
                 try:
                     if func.name == "ai_create_lead":
-                        # شلنا الـ sudo() من الإنشاء!
                         new_lead = env['crm.lead'].create({
                             'name': args.get('name', 'AI Generated Lead'),
                             'email_from': args.get('email', ''),
                             'phone': args.get('phone', ''),
                             'description': args.get('description', ''),
                         })
+                        post_msg(chat_msg) # طباعة رسالة النجاح بعد نجاح الإنشاء
                         return {'type': 'ir.actions.act_window', 'res_model': 'crm.lead', 'res_id': new_lead.id, 'views': [[False, 'form']], 'target': 'current'}
 
                     elif func.name == "ai_create_invoice":
@@ -191,7 +190,6 @@ class AIControllerOverride(AIController):
                         vat_amount = float(args.get('vat_amount', 0.0))
                         lines = args.get('lines', [])
 
-                        # البحث عن الشريك بـ sudo مسموح عشان ما يضرب إيرور قراءة، بس الإنشاء بصلاحية المستخدم
                         partner = env['res.partner'].sudo().search([('name', '=ilike', p_name)], limit=1)
                         if not partner: partner = env['res.partner'].create({'name': p_name, 'vat': trn})
                         
@@ -211,19 +209,19 @@ class AIControllerOverride(AIController):
                         if not invoice_lines:
                             invoice_lines.append((0, 0, {'name': 'Default Item', 'quantity': 1.0, 'price_unit': 0.0, 'account_id': account.id if account else False}))
 
-                        # شلنا الـ sudo() من الإنشاء هنا كمان!
                         new_move = env['account.move'].create({
                             'move_type': move_type,
                             'partner_id': partner.id,
                             'invoice_line_ids': invoice_lines,
                             'ref': f"AI-REF-{trn}"
                         })
+                        
+                        post_msg(chat_msg) # طباعة رسالة النجاح بعد نجاح الإنشاء بالداتابيز
                         return {'type': 'ir.actions.act_window', 'res_model': 'account.move', 'res_id': new_move.id, 'views': [[False, 'form']], 'target': 'current'}
 
                 except AccessError:
-                    # 🛡️ شبكة الأمان: إذا أودو رفض الإنشاء بسبب الصلاحيات
                     error_msg = "⛔ عذراً، ليس لديك الصلاحيات الكافية لإنشاء هذا السجل في النظام."
-                    post_msg(error_msg)
+                    post_msg(error_msg) # يطبع الإيرور فقط ويسحب على رسالة الذكاء الاصطناعي
                     return {}
 
             # ==========================================
