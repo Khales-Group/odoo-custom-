@@ -29,7 +29,7 @@ class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== KH_AI: BLIND OBEDIENCE MODE =====')
+        _logger.info('===== KH_AI: ULTIMATE TOOL STRIPPING MODE =====')
         
         prompt = ""
         current_attachments = request.env['ir.attachment'].sudo()
@@ -67,6 +67,7 @@ class AIControllerOverride(AIController):
 
         has_history_files = len(history_attachments) > 0
 
+        # --- 2. شرطي المرور لأسئلة الداتابيز ---
         if not has_history_files:
             try:
                 return super(AIControllerOverride, self).generate_response(**kwargs)
@@ -75,21 +76,27 @@ class AIControllerOverride(AIController):
                 return {} 
 
         # ==========================================
-        # 🚀 3. تجهيز الأدوات لـ Gemini (مع إجبار الطاعة)
+        # 🛑 3. الفلتر القسري (ربط إيدين الذكاء الاصطناعي) 🛑
         # ==========================================
+        prompt_lower = prompt.lower()
+        # هذي الكلمات لو انذكرت، مستحيل يشتغل أي Tool
+        safe_words = ['read', 'explain', 'what', 'summarize', 'اقرا', 'اقرأ', 'اشرح', 'ماذا', 'شو', 'طيب', 'cool', 'thanks', 'ok', 'شكرا', 'تمام', 'حلو']
+        
+        force_chat_only = any(word in prompt_lower for word in safe_words)
+
         if not HAS_GENAI: return {}
         
         create_lead_tool = types.FunctionDeclaration(
             name="ai_create_lead",
-            description="Use ONLY when user explicitly commands to create a lead/opportunity.",
+            description="Create a CRM Lead. Only use if explicitly commanded.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
-                    "name": types.Schema(type=types.Type.STRING, description="Title of the lead"),
-                    "email": types.Schema(type=types.Type.STRING, description="Extracted email"),
-                    "phone": types.Schema(type=types.Type.STRING, description="Extracted phone"),
-                    "description": types.Schema(type=types.Type.STRING, description="Summary"),
-                    "message_to_user": types.Schema(type=types.Type.STRING, description="Message to reply to the user. MUST BE IN THE SAME LANGUAGE AS THE USER.")
+                    "name": types.Schema(type=types.Type.STRING),
+                    "email": types.Schema(type=types.Type.STRING),
+                    "phone": types.Schema(type=types.Type.STRING),
+                    "description": types.Schema(type=types.Type.STRING),
+                    "message_to_user": types.Schema(type=types.Type.STRING, description="Message in user's language.")
                 },
                 required=["name", "message_to_user"]
             )
@@ -97,17 +104,16 @@ class AIControllerOverride(AIController):
 
         create_invoice_tool = types.FunctionDeclaration(
             name="ai_create_invoice",
-            description="Use ONLY when user explicitly commands to create an invoice or bill.",
+            description="Create a bill or invoice. Only use if explicitly commanded.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
-                    "move_type": types.Schema(type=types.Type.STRING, description="BLIND OBEDIENCE: If user says 'invoice' or 'فاتورة', FORCE 'out_invoice'. If user says 'bill' or 'بيل' or 'فاتورة مشتريات', FORCE 'in_invoice'."),
-                    "partner_name": types.Schema(type=types.Type.STRING, description="Vendor or Customer name"),
-                    "trn": types.Schema(type=types.Type.STRING, description="Tax Registration Number"),
-                    "vat_amount": types.Schema(type=types.Type.NUMBER, description="Total VAT amount"),
+                    "move_type": types.Schema(type=types.Type.STRING, description="'in_invoice' or 'out_invoice'"),
+                    "partner_name": types.Schema(type=types.Type.STRING),
+                    "trn": types.Schema(type=types.Type.STRING),
+                    "vat_amount": types.Schema(type=types.Type.NUMBER),
                     "lines": types.Schema(
                         type=types.Type.ARRAY,
-                        description="Invoice items list",
                         items=types.Schema(
                             type=types.Type.OBJECT,
                             properties={
@@ -117,7 +123,7 @@ class AIControllerOverride(AIController):
                             }
                         )
                     ),
-                    "message_to_user": types.Schema(type=types.Type.STRING, description="Friendly reply MUST BE IN THE SAME LANGUAGE AS THE USER.")
+                    "message_to_user": types.Schema(type=types.Type.STRING, description="Message in user's language.")
                 },
                 required=["move_type", "partner_name", "message_to_user", "lines"]
             )
@@ -125,12 +131,9 @@ class AIControllerOverride(AIController):
 
         gemini_tools = types.Tool(function_declarations=[create_lead_tool, create_invoice_tool])
 
-        # 🛑 التعليمات العسكرية الصارمة 🛑
-        system_instruction = """You are 'Khales AI', a strictly obedient assistant.
-        CRITICAL DANGER RULES:
-        1. IGNORE SHORT WORDS: If the user's message is just conversational like 'cool', 'thanks', 'ok', 'شكرا', 'تمام', 'حلو', DO NOT CALL ANY TOOLS! Just reply 'You are welcome' or 'العفو' in normal chat.
-        2. BLIND OBEDIENCE FOR INVOICE TYPE: Ignore accounting logic! If the user literally types 'invoice' or 'فاتورة' without specifying, YOU MUST use 'out_invoice'. If they type 'bill' or 'بيل', YOU MUST use 'in_invoice'.
-        3. ALWAYS reply in the exact language the user used in their latest message."""
+        system_instruction = """You are 'Khales AI'. 
+        If the user asks to explain or read a document, read it and reply normally in the exact same language they used. 
+        Do not make assumptions."""
         
         gemini_contents = [f"--- CHAT HISTORY ---\n{chat_history_text}\n--- END HISTORY ---"]
         for att in history_attachments:
@@ -142,18 +145,25 @@ class AIControllerOverride(AIController):
 
         try:
             client = genai.Client(api_key=api_key)
+            
+            # 💡 السحر هنا: بناء إعدادات الطلب ديناميكياً
+            gen_config_args = {
+                "system_instruction": system_instruction,
+                "temperature": 0.0
+            }
+            
+            # إذا لم يكتب المستخدم كلمة من كلمات الدردشة، نسمح بإرسال الأدوات
+            if not force_chat_only:
+                gen_config_args["tools"] = [gemini_tools]
+                
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=gemini_contents,
-                config=types.GenerateContentConfig(
-                    tools=[gemini_tools],
-                    system_instruction=system_instruction,
-                    temperature=0.0 # قللنا نسبة الإبداع للصفر عشان ينفذ بالحرف
-                )
+                config=types.GenerateContentConfig(**gen_config_args)
             )
 
             # ==========================================
-            # ⚙️ 4. تنفيذ الأوامر بدقة تامة
+            # ⚙️ 4. مسار تنفيذ الأدوات (إذا سُمح لها بالعمل)
             # ==========================================
             if response.function_calls:
                 func = response.function_calls[0]
@@ -180,7 +190,7 @@ class AIControllerOverride(AIController):
                     return {'type': 'ir.actions.act_window', 'res_model': 'crm.lead', 'res_id': new_lead.id, 'views': [[False, 'form']], 'target': 'current'}
 
                 elif func.name == "ai_create_invoice":
-                    move_type = args.get('move_type', 'out_invoice') # الديفولت صار Customer Invoice
+                    move_type = args.get('move_type', 'out_invoice')
                     p_name = args.get('partner_name', 'Unknown')
                     trn = args.get('trn', '')
                     vat_amount = float(args.get('vat_amount', 0.0))
@@ -221,7 +231,7 @@ class AIControllerOverride(AIController):
                     return {'type': 'ir.actions.act_window', 'res_model': 'account.move', 'res_id': new_move.id, 'views': [[False, 'form']], 'target': 'current'}
 
             # ==========================================
-            # 💬 5. مسار الدردشة (للردود القصيرة زي cool)
+            # 💬 5. مسار الدردشة (الآن محمي 100%)
             # ==========================================
             else:
                 result_text = getattr(response, "text", str(response)).strip()
