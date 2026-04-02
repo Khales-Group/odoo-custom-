@@ -1,18 +1,9 @@
-# TODO - Invoice Fix Implementation
-
-## Task: Fix AI Invoice Response
-
-Replace the invoice creation section in ai_override.py to return text response + system notification
+# Fix Non-Admin Filter Bypass in Approvals
 
 ## Steps:
 
-- [x] 1. Read and analyze current ai_override.py
-- [x] 2. Edit the file to replace the invoice creation section
-- [x] 3. Verify the changes
-
-## Changes Required:
-
-- [x] Returns text response with invoice link
-- [x] Sends sticky notification via bus.bus
-
-## Status: ✅ COMPLETED
+- [x] 1. Edit addons/kh_approvals/views/menu.xml: Add domain to action_kh_approval_requests_my_v2
+- [ ] 2. Upgrade kh_approvals module
+- [ ] 3. Test as non-admin user
+- [ ] 4. Verify manager access unchanged
+- [ ] 5. Mark complete
