@@ -16,7 +16,6 @@
 
     <record id="group_kh_approvals_accountant" model="res.groups">
         <field name="name">Approvals Accountant</field>
-        <field name="implied_ids" eval="[(4, ref('kh_approvals.group_kh_approvals_manager'))]"/>
     </record>
 
   </data>
