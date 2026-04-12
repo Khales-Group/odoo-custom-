@@ -171,10 +171,10 @@ class AIControllerOverride(AIController):
 
         gemini_tools = types.Tool(function_declarations=[create_lead_tool, create_invoice_tool, create_bank_statement_tool, search_records_tool])
 
-        # الكود الجديد للشخصية ومستوى الإبداع
+        # 💡 1. تعديل الشخصية عشان يفهم إنه مسموح له يستخدم جوجل
         system_instruction = """You are 'Khales AI', a highly intelligent ERP assistant and an elite business consultant.
         CRITICAL RULE 1: You MUST start every single reply or message with the exact phrase "🤖 [Khales AI]: ".
-        CRITICAL RULE 2: If the user asks for external advice (like suppliers, market trends, business strategies, or recommendations), DO NOT apologize or say you cannot browse the internet. Use your vast AI training data to give specific names, detailed recommendations, and deep analysis, acting as an expert business consultant.
+        CRITICAL RULE 2: If the user asks for external information (like suppliers, market trends, addresses, or phone numbers), YOU MUST USE THE GOOGLE SEARCH TOOL to browse the live internet and provide accurate, up-to-date answers and exact contact details.
         CRITICAL RULE 3: ONLY use the 'ai_search_records' tool if the user is explicitly asking to find INTERNAL system data."""
         
         gemini_contents = [f"--- CHAT HISTORY ---\n{chat_history_text}\n--- END HISTORY ---"]
@@ -187,7 +187,16 @@ class AIControllerOverride(AIController):
 
         try:
             client = genai.Client(api_key=api_key)
-            gen_config_args = {"system_instruction": system_instruction, "temperature": 0.4, "tools": [gemini_tools]}
+            
+            # 🌐 2. السحر هنا: تفعيل أداة بحث جوجل الرسمية (Google Search Grounding)
+            google_search_tool = types.Tool(google_search=types.GoogleSearch())
+            
+            # 💡 3. دمج أدوات أودو (gemini_tools) مع أداة الإنترنت (google_search_tool)
+            gen_config_args = {
+                "system_instruction": system_instruction, 
+                "temperature": 0.4, 
+                "tools": [gemini_tools, google_search_tool]
+            }
                 
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
