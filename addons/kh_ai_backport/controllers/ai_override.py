@@ -30,7 +30,7 @@ class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('===== KH_AI: ULTIMATE ERP AUTOMATION MODE (CRM + INVOICING + BANK) =====')
+        _logger.info('===== KH_AI: GOD MODE (PHASE 1) FULL VERSION =====')
         
         prompt = ""
         current_attachments = request.env['ir.attachment'].sudo()
@@ -69,21 +69,19 @@ class AIControllerOverride(AIController):
         has_history_files = len(history_attachments) > 0
 
         # --- 2. شرطي المرور ---
-        if not has_history_files:
+        if not has_history_files and "ابحث" not in prompt and "search" not in prompt.lower():
             try:
                 return super(AIControllerOverride, self).generate_response(**kwargs)
             except Exception as e:
                 _logger.error(f"Native Odoo AI Failed: {e}")
                 return {} 
 
-        # --- 3. الفلتر القسري لحماية الدردشة ---
-        prompt_lower = prompt.lower()
-        safe_words = ['read', 'explain', 'what', 'summarize', 'اقرا', 'اقرأ', 'اشرح', 'ماذا', 'شو', 'طيب', 'cool', 'thanks', 'ok', 'شكرا', 'تمام', 'حلو']
-        force_chat_only = any(word in prompt_lower for word in safe_words)
-
         if not HAS_GENAI: return {}
         
-        # 🛠️ الأداة الأولى: Leads
+        # ==========================================
+        # 🛠️ 3. تعريف الأدوات الأربعة (Tools)
+        # ==========================================
+        
         create_lead_tool = types.FunctionDeclaration(
             name="ai_create_lead",
             description="Create a CRM Lead. Only use if explicitly commanded.",
@@ -100,7 +98,6 @@ class AIControllerOverride(AIController):
             )
         )
 
-        # 🛠️ الأداة الثانية: Invoices & Bills
         create_invoice_tool = types.FunctionDeclaration(
             name="ai_create_invoice",
             description="Create a bill or invoice. Only use if explicitly commanded.",
@@ -128,40 +125,51 @@ class AIControllerOverride(AIController):
             )
         )
 
-        # 🏦 🛠️ الأداة الثالثة (الجديدة): كشوفات الحساب البنكية (Bank Statements)
         create_bank_statement_tool = types.FunctionDeclaration(
             name="ai_create_bank_statement",
-            description="Create an Accounting Bank Statement. Only use if the user explicitly commands to create a bank statement (كشف حساب).",
+            description="Create an Accounting Bank Statement. Only use if explicitly commanded.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
-                    "reference": types.Schema(type=types.Type.STRING, description="Name/Reference of the statement, e.g., 'Bank Statement Mar-Apr 2026'"),
-                    "date": types.Schema(type=types.Type.STRING, description="Date of the statement in YYYY-MM-DD format"),
-                    "starting_balance": types.Schema(type=types.Type.NUMBER, description="Opening balance of the statement"),
-                    "ending_balance": types.Schema(type=types.Type.NUMBER, description="Closing balance of the statement"),
+                    "reference": types.Schema(type=types.Type.STRING),
+                    "date": types.Schema(type=types.Type.STRING),
+                    "starting_balance": types.Schema(type=types.Type.NUMBER),
+                    "ending_balance": types.Schema(type=types.Type.NUMBER),
                     "lines": types.Schema(
                         type=types.Type.ARRAY,
-                        description="Array of all transactions in the statement",
                         items=types.Schema(
                             type=types.Type.OBJECT,
                             properties={
-                                "date": types.Schema(type=types.Type.STRING, description="Transaction date YYYY-MM-DD"),
-                                "label": types.Schema(type=types.Type.STRING, description="Description/Details of the transaction"),
-                                "amount": types.Schema(type=types.Type.NUMBER, description="CRITICAL: Use a NEGATIVE number (-) for Debits/Withdrawals, and a POSITIVE number (+) for Credits/Deposits.")
+                                "date": types.Schema(type=types.Type.STRING),
+                                "label": types.Schema(type=types.Type.STRING),
+                                "amount": types.Schema(type=types.Type.NUMBER, description="CRITICAL: Use a NEGATIVE number (-) for Debits, and a POSITIVE number (+) for Credits.")
                             }
                         )
                     ),
-                    "message_to_user": types.Schema(type=types.Type.STRING, description="Friendly reply in the user's language.")
+                    "message_to_user": types.Schema(type=types.Type.STRING)
                 },
                 required=["reference", "date", "starting_balance", "ending_balance", "message_to_user", "lines"]
             )
         )
 
-        gemini_tools = types.Tool(function_declarations=[create_lead_tool, create_invoice_tool, create_bank_statement_tool])
+        search_records_tool = types.FunctionDeclaration(
+            name="ai_search_records",
+            description="Search the Odoo database for records (like customers, leads, invoices). Use this when the user asks 'find', 'search', 'ابحث', 'دور'.",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "model_name": types.Schema(type=types.Type.STRING, description="The Odoo technical model name (e.g., 'res.partner', 'crm.lead', 'account.move')"),
+                    "keyword": types.Schema(type=types.Type.STRING, description="The text to search for.")
+                },
+                required=["model_name", "keyword"]
+            )
+        )
 
-        system_instruction = """You are 'Khales AI'. 
-        If the user asks to explain or read a document, read it and reply normally in the exact same language they used. 
-        Do not make assumptions. Call tools only when explicitly commanded (e.g. 'create bank statement', 'أنشئ كشف حساب')."""
+        gemini_tools = types.Tool(function_declarations=[create_lead_tool, create_invoice_tool, create_bank_statement_tool, search_records_tool])
+
+        system_instruction = """You are 'Khales AI', a smart ERP assistant.
+        CRITICAL RULE: You MUST start every single reply or message with the exact phrase "🤖 [Khales AI]: ". This is your signature.
+        If the user asks you to search or find something, use the 'ai_search_records' tool."""
         
         gemini_contents = [f"--- CHAT HISTORY ---\n{chat_history_text}\n--- END HISTORY ---"]
         for att in history_attachments:
@@ -173,10 +181,7 @@ class AIControllerOverride(AIController):
 
         try:
             client = genai.Client(api_key=api_key)
-            gen_config_args = {"system_instruction": system_instruction, "temperature": 0.0}
-            
-            if not force_chat_only:
-                gen_config_args["tools"] = [gemini_tools]
+            gen_config_args = {"system_instruction": system_instruction, "temperature": 0.0, "tools": [gemini_tools]}
                 
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
@@ -185,14 +190,16 @@ class AIControllerOverride(AIController):
             )
 
             # ==========================================
-            # ⚙️ 4. مسار تنفيذ الأدوات
+            # ⚙️ 4. مسار تنفيذ الأدوات الكامل
             # ==========================================
             if response.function_calls:
                 func = response.function_calls[0]
                 args = func.args
                 env = request.env
                 
-                chat_msg = args.get('message_to_user', "تم التنفيذ.")
+                chat_msg = args.get('message_to_user', "🤖 [Khales AI]: يتم التنفيذ...")
+                if not chat_msg.startswith("🤖"):
+                    chat_msg = f"🤖 [Khales AI]: {chat_msg}"
                 
                 def post_msg(text):
                     if mail_message_id:
@@ -204,7 +211,7 @@ class AIControllerOverride(AIController):
                             channel.message_post(body=text, author_id=author_id, message_type='comment')
 
                 try:
-                    # ---- مسار إنشاء الفرص البيعية ----
+                    # 1. إنشاء Lead
                     if func.name == "ai_create_lead":
                         new_lead = env['crm.lead'].create({
                             'name': args.get('name', 'AI Generated Lead'),
@@ -215,7 +222,7 @@ class AIControllerOverride(AIController):
                         post_msg(chat_msg)
                         return {'type': 'ir.actions.act_window', 'res_model': 'crm.lead', 'res_id': new_lead.id, 'views': [[False, 'form']], 'target': 'current'}
 
-                    # ---- مسار إنشاء الفواتير ----
+                    # 2. إنشاء Invoice
                     elif func.name == "ai_create_invoice":
                         move_type = args.get('move_type', 'out_invoice')
                         p_name = args.get('partner_name', 'Unknown')
@@ -252,7 +259,7 @@ class AIControllerOverride(AIController):
                         post_msg(chat_msg)
                         return {'type': 'ir.actions.act_window', 'res_model': 'account.move', 'res_id': new_move.id, 'views': [[False, 'form']], 'target': 'current'}
 
-                    # 🏦 ---- مسار إنشاء كشوفات الحساب البنكية (الجديد) ---- 🏦
+                    # 3. إنشاء Bank Statement
                     elif func.name == "ai_create_bank_statement":
                         reference = args.get('reference', 'AI Bank Statement')
                         stmt_date = args.get('date', fields.Date.today())
@@ -260,13 +267,11 @@ class AIControllerOverride(AIController):
                         end_bal = float(args.get('ending_balance', 0.0))
                         lines = args.get('lines', [])
 
-                        # البحث عن دفتر اليومية الخاص بالبنك (Bank Journal)
                         journal = env['account.journal'].sudo().search([('type', '=', 'bank'), ('company_id', '=', env.company.id)], limit=1)
                         if not journal:
-                            post_msg("⛔ عذراً، لم أتمكن من العثور على دفتر يومية للبنك (Bank Journal) في النظام.")
+                            post_msg("🤖 [Khales AI]: ⛔ عذراً، لم أتمكن من العثور على دفتر يومية للبنك (Bank Journal) في النظام.")
                             return {}
 
-                        # تجهيز أسطر الكشف
                         statement_lines = []
                         for l in lines:
                             statement_lines.append((0, 0, {
@@ -275,7 +280,6 @@ class AIControllerOverride(AIController):
                                 'amount': float(l.get('amount', 0.0)),
                             }))
 
-                        # إنشاء كشف الحساب
                         new_statement = env['account.bank.statement'].create({
                             'name': reference,
                             'date': stmt_date,
@@ -288,16 +292,42 @@ class AIControllerOverride(AIController):
                         post_msg(chat_msg)
                         return {'type': 'ir.actions.act_window', 'res_model': 'account.bank.statement', 'res_id': new_statement.id, 'views': [[False, 'form']], 'target': 'current'}
 
+                    # 4. البحث في الداتابيز
+                    elif func.name == "ai_search_records":
+                        model_name = args.get('model_name')
+                        keyword = args.get('keyword', '')
+                        
+                        allowed_models = ['res.partner', 'crm.lead', 'account.move', 'project.task']
+                        
+                        if model_name not in allowed_models:
+                            post_msg(f"🤖 [Khales AI]: عذراً، لا أمتلك صلاحية للبحث في سجلات النظام من نوع ({model_name}).")
+                            return {}
+
+                        domain = [('name', 'ilike', keyword)] if keyword else []
+                        records = env[model_name].search_read(domain, limit=5, fields=['display_name'])
+                        
+                        if records:
+                            reply_text = f"🤖 [Khales AI]: بحثت عن '{keyword}' ووجدت هذه السجلات:\n"
+                            for r in records:
+                                reply_text += f"- {r.get('display_name')}\n"
+                        else:
+                            reply_text = f"🤖 [Khales AI]: بحثت في النظام ولم أجد أي شيء يطابق '{keyword}'."
+                        
+                        post_msg(reply_text)
+                        return {}
+
                 except AccessError:
-                    error_msg = "⛔ عذراً، ليس لديك الصلاحيات الكافية لإنشاء هذا السجل في النظام."
-                    post_msg(error_msg)
+                    post_msg("🤖 [Khales AI]: ⛔ عذراً، ليس لديك الصلاحيات الكافية في النظام.")
                     return {}
 
             # ==========================================
-            # 💬 5. مسار الدردشة
+            # 💬 5. مسار الدردشة العادية
             # ==========================================
             else:
                 result_text = getattr(response, "text", str(response)).strip()
+                if not result_text.startswith("🤖"):
+                    result_text = f"🤖 [Khales AI]:\n{result_text}"
+                    
                 if mail_message_id:
                     msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
                     if msg_record.model == 'discuss.channel':
