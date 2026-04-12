@@ -10,7 +10,7 @@
     },
     'data': [
         'security/ir.model.access.csv',  # Add this exactly here
-        'views/ai_agent_views.xml',
+        # 'views/ai_agent_views.xml',
     ],
     'assets': {
         'web.assets_backend': [
