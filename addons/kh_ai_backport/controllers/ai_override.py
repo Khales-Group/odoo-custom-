@@ -227,13 +227,18 @@ class AIControllerOverride(AIController):
                     chat_msg = f"🤖 [Khales AI]: {chat_msg}"
                 
                 def post_msg(text):
+                    # --- 🎨 سحر التنسيق (Markdown to HTML) ---
+                    html_text = text.replace('\\n', '<br/>')
+                    html_text = re.sub(r'\\*\\*(.*?)\\*\\*', r'<b>\\1</b>', html_text)
+                    html_text = f"<div style='line-height: 1.6;'>{html_text}</div>"
+                    
                     if mail_message_id:
                         msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
                         if msg_record.model == 'discuss.channel':
                             channel = request.env['discuss.channel'].sudo().browse(msg_record.res_id)
                             ai_agent = request.env['ai.agent'].sudo().search([('partner_id', '!=', False)], limit=1)
                             author_id = ai_agent.partner_id.id if ai_agent else request.env.user.partner_id.id
-                            channel.message_post(body=text, author_id=author_id, message_type='comment')
+                            channel.message_post(body=html_text, author_id=author_id, message_type='comment')
 
                 try:
                     # 1. إنشاء Lead
