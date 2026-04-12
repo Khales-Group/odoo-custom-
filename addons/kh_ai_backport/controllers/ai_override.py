@@ -191,11 +191,21 @@ class AIControllerOverride(AIController):
             # 🌐 2. السحر هنا: تفعيل أداة بحث جوجل الرسمية (Google Search Grounding)
             google_search_tool = types.Tool(google_search=types.GoogleSearch())
             
-            # 💡 3. دمج أدوات أودو (gemini_tools) مع أداة الإنترنت (google_search_tool)
+            # 🧠 2. الموجه الذكي (Smart Router) لتجنب تعارض جوجل
+            prompt_lower = prompt.lower()
+            external_keywords = ['ارقام', 'موردين', 'ارخص', 'افضل', 'شركات', 'دبي', 'الشارقة', 'انترنت', 'بحث عام']
+            
+            # تحديد نية المستخدم لاختيار الأداة المناسبة
+            if any(word in prompt_lower for word in external_keywords):
+                selected_tools = [google_search_tool]
+            else:
+                selected_tools = [gemini_tools]
+            
+            # 💡 3. إرسال الطلب مع الأداة المناسبة فقط
             gen_config_args = {
                 "system_instruction": system_instruction, 
                 "temperature": 0.4, 
-                "tools": [gemini_tools, google_search_tool]
+                "tools": selected_tools
             }
                 
             response = client.models.generate_content(
