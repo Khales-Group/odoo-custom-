@@ -8,6 +8,8 @@ import base64
 import logging
 import re
 import json
+# --- التعديل هنا: استدعاء مكتبة التنسيق الآمن من أودو ---
+from markupsafe import Markup 
 
 _logger = logging.getLogger(__name__)
 
@@ -69,15 +71,6 @@ class AIControllerOverride(AIController):
         has_history_files = len(history_attachments) > 0
 
         # --- 2. شرطي المرور (GOD MODE - Odoo Fallback DISABLED) ---
-        # search_words = ['ابحث', 'search', 'دور', 'find', 'مين', 'هات', 'عرض', 'display']
-        # is_search_intent = any(word in prompt_lower for word in search_words)
-
-        # if not has_history_files and not is_search_intent:
-        #     try:
-        #         return super(AIControllerOverride, self).generate_response(**kwargs)
-        #     except Exception as e:
-        #         _logger.error(f"Native Odoo AI Failed: {e}")
-        #         return {}
         prompt_lower = prompt.lower()
 
         if not HAS_GENAI: return {}
@@ -192,7 +185,6 @@ class AIControllerOverride(AIController):
             google_search_tool = types.Tool(google_search=types.GoogleSearch())
             
             # 🧠 2. الموجه الذكي (Smart Router) لتجنب تعارض جوجل
-            prompt_lower = prompt.lower()
             external_keywords = ['ارقام', 'موردين', 'ارخص', 'افضل', 'شركات', 'دبي', 'الشارقة', 'انترنت', 'بحث عام']
             
             # تحديد نية المستخدم لاختيار الأداة المناسبة
@@ -227,7 +219,7 @@ class AIControllerOverride(AIController):
                     chat_msg = f"🤖 [Khales AI]: {chat_msg}"
                 
                 def post_msg(text):
-                    # --- 🎨 سحر التنسيق (تم إصلاح المشكلة هنا بإزالة الدبل سلاش) ---
+                    # --- 🎨 سحر التنسيق  ---
                     html_text = text.replace('\n', '<br/>')
                     html_text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', html_text)
                     html_text = f"<div style='line-height: 1.6;'>{html_text}</div>"
@@ -238,7 +230,8 @@ class AIControllerOverride(AIController):
                             channel = request.env['discuss.channel'].sudo().browse(msg_record.res_id)
                             ai_agent = request.env['ai.agent'].sudo().search([('partner_id', '!=', False)], limit=1)
                             author_id = ai_agent.partner_id.id if ai_agent else request.env.user.partner_id.id
-                            channel.message_post(body=html_text, author_id=author_id, message_type='comment')
+                            # --- التعديل هنا: تغليف الرسالة بـ Markup ---
+                            channel.message_post(body=Markup(html_text), author_id=author_id, message_type='comment')
 
                 try:
                     # 1. إنشاء Lead
@@ -351,40 +344,35 @@ class AIControllerOverride(AIController):
                     return {}
 
             # ==========================================
-            # 💬 5. مسار الدردشة العادية (المطور مع التنسيق HTML)
+            # 💬 5. مسار الدردشة العادية 
             # ==========================================
             else:
                 result_text = getattr(response, "text", str(response)).strip()
                 
-                # إضافة الختم إذا لم يكن موجوداً
                 if not result_text.startswith("🤖"):
                     result_text = f"🤖 [Khales AI]:\n\n{result_text}"
-                
-                # --- 🎨 سحر التنسيق (Markdown to HTML) ---
+                    
+                # --- 🎨 سحر التنسيق  ---
                 html_text = result_text
-                # تحويل الخط العريض مع لون أودو
                 html_text = re.sub(r'\*\*(.*?)\*\*', r'<b style="color: #017E84;">\1</b>', html_text)
-                # تحويل النقاط للترتيب
                 html_text = html_text.replace('\n* ', '<br/>• ')
                 html_text = html_text.replace('\n- ', '<br/>• ')
-                # تحويل الأسطر الجديدة
                 html_text = html_text.replace('\n', '<br/>')
                 
-                # تغليف النص النهائي
                 final_html = f"<div style='line-height: 1.8; font-size: 14px;'>{html_text}</div>"
-                    
+                
                 if mail_message_id:
                     msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
                     if msg_record.model == 'discuss.channel':
                         channel = request.env['discuss.channel'].sudo().browse(msg_record.res_id)
                         ai_agent = request.env['ai.agent'].sudo().search([('partner_id', '!=', False)], limit=1)
                         author_id = ai_agent.partner_id.id if ai_agent else request.env.user.partner_id.id
-                        channel.message_post(body=final_html, author_id=author_id, message_type='comment')
+                        # --- التعديل هنا: تغليف الرسالة بـ Markup ---
+                        channel.message_post(body=Markup(final_html), author_id=author_id, message_type='comment')
                 return {}
 
         except Exception as e:
             _logger.exception("AI Error")
-            # --- طباعة الخطأ في الشات ---
             error_msg = f"<div style='color: red;'>🤖 <b>[Khales AI - System Error]:</b><br/>حدث خطأ في الاتصال بـ Gemini:<br/>{str(e)}</div>"
             if mail_message_id:
                 try:
@@ -393,7 +381,8 @@ class AIControllerOverride(AIController):
                         channel = request.env['discuss.channel'].sudo().browse(msg_record.res_id)
                         ai_agent = request.env['ai.agent'].sudo().search([('partner_id', '!=', False)], limit=1)
                         author_id = ai_agent.partner_id.id if ai_agent else request.env.user.partner_id.id
-                        channel.message_post(body=error_msg, author_id=author_id, message_type='comment')
+                        # --- التعديل هنا: تغليف الرسالة بـ Markup ---
+                        channel.message_post(body=Markup(error_msg), author_id=author_id, message_type='comment')
                 except:
                     pass
             return {}
