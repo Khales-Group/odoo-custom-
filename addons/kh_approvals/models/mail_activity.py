@@ -39,8 +39,8 @@ class MailActivity(models.Model):
             if action == 'done':
                 if not act.user_id:
                     raise UserError(_("هذا النشاط غير مسند لأحد ولا يمكن إنهاؤه."))
-                if act.user_id.id != user.id:
-                    raise UserError(_("فقط المستخدم المسند إليه النشاط يمكنه إنهاؤه."))
+                if act.user_id.id != user.id and act.create_uid.id != user.id:
+                    raise UserError(_("فقط المستخدم المسند إليه أو منشئ النشاط يمكنه إنهاؤه."))
             
             elif action == 'unlink':
                 if act.create_uid.id != user.id and act.user_id.id != user.id:

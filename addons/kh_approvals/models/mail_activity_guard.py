@@ -42,8 +42,8 @@ class MailActivity(models.Model):
             if action == 'done':
                 if not act.user_id:
                     raise UserError(_("This activity is not assigned to anyone and cannot be marked as done."))
-                if act.user_id.id != user.id:
-                    raise UserError(_("Only the assigned user can mark this activity as done."))
+                if act.user_id.id != user.id and act.create_uid.id != user.id:
+                    raise UserError(_("Only the assigned user or activity creator can mark this activity as done."))
             
             elif action == 'unlink':
                 if act.create_uid.id != user.id and act.user_id.id != user.id:

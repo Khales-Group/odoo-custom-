@@ -1,11 +1,1 @@
-# Fix Non-Admin Filter Bypass in Approvals
-
-## Steps:
-
-- [x] 1. Edit addons/kh_approvals/views/menu.xml: Add domain to action_kh_approval_requests_my_v2
-- [x] 1b. Add domain to action_kh_approval_requests_to_approve_v2 (To Approve tab)
-- [x] 1c. Grant Accountant group full manager access
-- [ ] 2. Upgrade kh_approvals module
-- [ ] 3. Test as non-admin user
-- [ ] 4. Verify manager access unchanged
-- [ ] 5. Mark complete
+# Activity Permissions Update: Allow Creator to Mark Done\n\n**Status: In Progress**\n\n## Steps:\n\n- [x] Create TODO.md with plan\n- [ ] Update mail_activity_guard.py\n- [ ] Update mail_activity.py \n- [ ] Test changes\n- [ ] Complete task\n
