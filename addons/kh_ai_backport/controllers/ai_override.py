@@ -68,17 +68,17 @@ class AIControllerOverride(AIController):
 
         has_history_files = len(history_attachments) > 0
 
-        # --- 2. شرطي المرور (المطور) ---
-        prompt_lower = prompt.lower()
-        search_words = ['ابحث', 'search', 'دور', 'find', 'مين', 'هات', 'عرض', 'display']
-        is_search_intent = any(word in prompt_lower for word in search_words)
+        # --- 2. شرطي المرور (GOD MODE - Odoo Fallback DISABLED) ---
+        # search_words = ['ابحث', 'search', 'دور', 'find', 'مين', 'هات', 'عرض', 'display']
+        # is_search_intent = any(word in prompt_lower for word in search_words)
 
-        if not has_history_files and not is_search_intent:
-            try:
-                return super(AIControllerOverride, self).generate_response(**kwargs)
-            except Exception as e:
-                _logger.error(f"Native Odoo AI Failed: {e}")
-                return {}
+        # if not has_history_files and not is_search_intent:
+        #     try:
+        #         return super(AIControllerOverride, self).generate_response(**kwargs)
+        #     except Exception as e:
+        #         _logger.error(f"Native Odoo AI Failed: {e}")
+        #         return {}
+        prompt_lower = prompt.lower()
 
         if not HAS_GENAI: return {}
         
