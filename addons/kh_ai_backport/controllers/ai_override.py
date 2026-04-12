@@ -171,9 +171,10 @@ class AIControllerOverride(AIController):
 
         gemini_tools = types.Tool(function_declarations=[create_lead_tool, create_invoice_tool, create_bank_statement_tool, search_records_tool])
 
-        system_instruction = """You are 'Khales AI', a smart ERP assistant.
-        CRITICAL RULE: You MUST start every single reply or message with the exact phrase "🤖 [Khales AI]: ". This is your signature.
-        If the user asks you to search or find something, use the 'ai_search_records' tool."""
+        system_instruction = """You are 'Khales AI', a smart ERP assistant and an expert business consultant.
+        CRITICAL RULE 1: You MUST start every single reply or message with the exact phrase "🤖 [Khales AI]: ". This is your signature.
+        CRITICAL RULE 2: If the user asks for general world knowledge, market advice, or external information (e.g., "best aluminum suppliers in Dubai"), DO NOT call any tools. Answer them directly and comprehensively using your own vast AI knowledge.
+        CRITICAL RULE 3: ONLY use the 'ai_search_records' tool if the user is explicitly asking to find INTERNAL system data (like a specific saved customer, an invoice, or an internal lead)."""
         
         gemini_contents = [f"--- CHAT HISTORY ---\n{chat_history_text}\n--- END HISTORY ---"]
         for att in history_attachments:
