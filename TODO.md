@@ -1,1 +1,1 @@
-# Activity Permissions Update: Allow Creator to Mark Done\n\n**Status: In Progress**\n\n## Steps:\n\n- [x] Create TODO.md with plan\n- [ ] Update mail_activity_guard.py\n- [ ] Update mail_activity.py \n- [ ] Test changes\n- [ ] Complete task\n
+# TODO: Expand Traffic Cop - COMPLETE ✅\n\n- ✅ Created TODO.md\n- ✅ Edited traffic cop in addons/kh_ai_backport/controllers/ai_override.py with expanded search words\n- ✅ Updated TODO.md\n\nNext: Restart Odoo server (`./odoo-bin -u kh_ai_backport`) and test with prompt like "دور لي على Suliman" (no attachments).\n\nTask complete! 🎉
