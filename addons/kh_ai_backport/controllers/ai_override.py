@@ -354,4 +354,16 @@ class AIControllerOverride(AIController):
 
         except Exception as e:
             _logger.exception("AI Error")
+            # --- التعديل هنا: طباعة الخطأ في الشات بدل السكوت ---
+            error_msg = f"🤖 [Khales AI - System Error]:\\nحدث خطأ في الاتصال بـ Gemini:\\n{str(e)}"
+            if mail_message_id:
+                try:
+                    msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
+                    if msg_record.model == 'discuss.channel':
+                        channel = request.env['discuss.channel'].sudo().browse(msg_record.res_id)
+                        ai_agent = request.env['ai.agent'].sudo().search([('partner_id', '!=', False)], limit=1)
+                        author_id = ai_agent.partner_id.id if ai_agent else request.env.user.partner_id.id
+                        channel.message_post(body=error_msg, author_id=author_id, message_type='comment')
+                except:
+                    pass
             return {}
