@@ -227,9 +227,9 @@ class AIControllerOverride(AIController):
                     chat_msg = f"🤖 [Khales AI]: {chat_msg}"
                 
                 def post_msg(text):
-                    # --- 🎨 سحر التنسيق (Markdown to HTML) ---
-                    html_text = text.replace('\\n', '<br/>')
-                    html_text = re.sub(r'\\*\\*(.*?)\\*\\*', r'<b>\\1</b>', html_text)
+                    # --- 🎨 سحر التنسيق (تم إصلاح المشكلة هنا بإزالة الدبل سلاش) ---
+                    html_text = text.replace('\n', '<br/>')
+                    html_text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', html_text)
                     html_text = f"<div style='line-height: 1.6;'>{html_text}</div>"
                     
                     if mail_message_id:
@@ -351,12 +351,27 @@ class AIControllerOverride(AIController):
                     return {}
 
             # ==========================================
-            # 💬 5. مسار الدردشة العادية
+            # 💬 5. مسار الدردشة العادية (المطور مع التنسيق HTML)
             # ==========================================
             else:
                 result_text = getattr(response, "text", str(response)).strip()
+                
+                # إضافة الختم إذا لم يكن موجوداً
                 if not result_text.startswith("🤖"):
-                    result_text = f"🤖 [Khales AI]:\n{result_text}"
+                    result_text = f"🤖 [Khales AI]:\n\n{result_text}"
+                
+                # --- 🎨 سحر التنسيق (Markdown to HTML) ---
+                html_text = result_text
+                # تحويل الخط العريض مع لون أودو
+                html_text = re.sub(r'\*\*(.*?)\*\*', r'<b style="color: #017E84;">\1</b>', html_text)
+                # تحويل النقاط للترتيب
+                html_text = html_text.replace('\n* ', '<br/>• ')
+                html_text = html_text.replace('\n- ', '<br/>• ')
+                # تحويل الأسطر الجديدة
+                html_text = html_text.replace('\n', '<br/>')
+                
+                # تغليف النص النهائي
+                final_html = f"<div style='line-height: 1.8; font-size: 14px;'>{html_text}</div>"
                     
                 if mail_message_id:
                     msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
@@ -364,13 +379,13 @@ class AIControllerOverride(AIController):
                         channel = request.env['discuss.channel'].sudo().browse(msg_record.res_id)
                         ai_agent = request.env['ai.agent'].sudo().search([('partner_id', '!=', False)], limit=1)
                         author_id = ai_agent.partner_id.id if ai_agent else request.env.user.partner_id.id
-                        channel.message_post(body=result_text, author_id=author_id, message_type='comment')
+                        channel.message_post(body=final_html, author_id=author_id, message_type='comment')
                 return {}
 
         except Exception as e:
             _logger.exception("AI Error")
-            # --- التعديل هنا: طباعة الخطأ في الشات بدل السكوت ---
-            error_msg = f"🤖 [Khales AI - System Error]:\\nحدث خطأ في الاتصال بـ Gemini:\\n{str(e)}"
+            # --- طباعة الخطأ في الشات ---
+            error_msg = f"<div style='color: red;'>🤖 <b>[Khales AI - System Error]:</b><br/>حدث خطأ في الاتصال بـ Gemini:<br/>{str(e)}</div>"
             if mail_message_id:
                 try:
                     msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
