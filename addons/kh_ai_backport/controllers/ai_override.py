@@ -162,13 +162,37 @@ class AIControllerOverride(AIController):
             )
         )
 
-        gemini_tools = types.Tool(function_declarations=[create_lead_tool, create_invoice_tool, create_bank_statement_tool, search_records_tool])
+        create_rfq_tool = types.FunctionDeclaration(
+            name="ai_create_rfq",
+            description="Create a Request for Quotation (RFQ) / Purchase Order. Use this when the user asks to create an RFQ, order products, or send a BOQ to a supplier.",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "vendor_name": types.Schema(type=types.Type.STRING),
+                    "products": types.Schema(
+                        type=types.Type.ARRAY,
+                        items=types.Schema(
+                            type=types.Type.OBJECT,
+                            properties={
+                                "name": types.Schema(type=types.Type.STRING),
+                                "qty": types.Schema(type=types.Type.NUMBER)
+                            }
+                        )
+                    ),
+                    "message_to_user": types.Schema(type=types.Type.STRING)
+                },
+                required=["vendor_name", "products", "message_to_user"]
+            )
+        )
+
+        gemini_tools = types.Tool(function_declarations=[create_lead_tool, create_invoice_tool, create_bank_statement_tool, search_records_tool, create_rfq_tool])
 
         # 💡 1. تعديل الشخصية عشان يفهم إنه مسموح له يستخدم جوجل
         system_instruction = """You are 'Khales AI', a highly intelligent ERP assistant and an elite business consultant.
         CRITICAL RULE 1: You MUST start every single reply or message with the exact phrase "🤖 [Khales AI]: ".
         CRITICAL RULE 2: If the user asks for external information (like suppliers, market trends, addresses, or phone numbers), YOU MUST USE THE GOOGLE SEARCH TOOL to browse the live internet and provide accurate, up-to-date answers and exact contact details.
-        CRITICAL RULE 3: ONLY use the 'ai_search_records' tool if the user is explicitly asking to find INTERNAL system data."""
+        CRITICAL RULE 3: ONLY use the 'ai_search_records' tool if the user is explicitly asking to find INTERNAL system data.
+        CRITICAL RULE 4: If the user asks to create an RFQ, PO, or order products, extract the vendor and products and use the 'ai_create_rfq' tool."""
         
         gemini_contents = [f"--- CHAT HISTORY ---\n{chat_history_text}\n--- END HISTORY ---"]
         for att in history_attachments:
@@ -186,9 +210,12 @@ class AIControllerOverride(AIController):
             
             # 🧠 2. الموجه الذكي (Smart Router) لتجنب تعارض جوجل
             external_keywords = ['ارقام', 'موردين', 'ارخص', 'افضل', 'شركات', 'دبي', 'الشارقة', 'انترنت', 'بحث عام']
+            action_keywords = ['تسعير', 'rfq', 'فاتورة', 'شراء', 'boq', 'po', 'order', 'طلب']
             
             # تحديد نية المستخدم لاختيار الأداة المناسبة
-            if any(word in prompt_lower for word in external_keywords):
+            if any(word in prompt_lower for word in action_keywords):
+                selected_tools = [gemini_tools]
+            elif any(word in prompt_lower for word in external_keywords):
                 selected_tools = [google_search_tool]
             else:
                 selected_tools = [gemini_tools]
@@ -370,7 +397,6 @@ class AIControllerOverride(AIController):
                         # --- التعديل هنا: تغليف الرسالة بـ Markup ---
                         channel.message_post(body=Markup(final_html), author_id=author_id, message_type='comment')
                 return {}
-
         except Exception as e:
             _logger.exception("AI Error")
             error_msg = f"<div style='color: red;'>🤖 <b>[Khales AI - System Error]:</b><br/>حدث خطأ في الاتصال بـ Gemini:<br/>{str(e)}</div>"
