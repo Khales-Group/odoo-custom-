@@ -360,7 +360,7 @@ def _to_html(text: str) -> Markup:
 #  MAIN CONTROLLER
 # ══════════════════════════════════════════════════════════════════
 
-class KhalesAIController(AIController):
+class AIControllerOverride(AIController):
 
     # ─────────────────────────────────────────────────────────────
     # ROUTE
