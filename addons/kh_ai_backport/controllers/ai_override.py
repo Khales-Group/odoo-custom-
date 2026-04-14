@@ -940,7 +940,7 @@ class AIControllerOverride(AIController):
                 title = "أفضل المنتجات مبيعاً"
                 env.cr.execute("""
                     SELECT
-                        pt.name->>'en_US'                       AS product,
+                        COALESCE(pt.name->>'en_US', pt.name->>'ar_001', pt.name::text) AS product,
                         SUM(aml.quantity)                       AS qty_sold,
                         SUM(aml.quantity * aml.price_unit)      AS revenue
                     FROM account_move_line aml
@@ -975,7 +975,7 @@ class AIControllerOverride(AIController):
                 title = "تحليل المصروفات"
                 env.cr.execute("""
                     SELECT
-                        aa.name->>'en_US'                       AS account,
+                        COALESCE(aa.name->>'en_US', aa.name->>'ar_001', aa.name::text) AS account,
                         SUM(aml.debit - aml.credit)             AS amount
                     FROM account_move_line aml
                     JOIN account_account aa ON aa.id = aml.account_id
@@ -1105,15 +1105,21 @@ class AIControllerOverride(AIController):
             elif report == 'project_cost':
                 title = "تكاليف المشاريع"
                 # Detect analytic link: try task-based first (Odoo 17+), then analytic account
+                # Odoo 17+: project names stored as JSONB translated fields
+                # Filter only projects starting with 'PROJECT:' per business convention
                 env.cr.execute("""
                     SELECT
-                        pp.name                                     AS project,
+                        COALESCE(
+                            pp.name->>'en_US',
+                            pp.name->>'ar_001',
+                            pp.name::text
+                        )                                           AS project,
                         SUM(aal.amount)                             AS total_cost,
                         SUM(aal.unit_amount)                        AS total_hours,
                         COUNT(DISTINCT aal.employee_id)             AS team_size
                     FROM account_analytic_line aal
-                    JOIN project_task pt2  ON pt2.id  = aal.task_id
-                    JOIN project_project pp ON pp.id = pt2.project_id
+                    JOIN project_task pt2   ON pt2.id  = aal.task_id
+                    JOIN project_project pp ON pp.id   = pt2.project_id
                     WHERE aal.date BETWEEN %s AND %s
                       AND pp.company_id = %s
                       AND aal.task_id IS NOT NULL
@@ -1123,14 +1129,18 @@ class AIControllerOverride(AIController):
                 """, (date_from, date_to, env.company.id, limit))
                 rows = env.cr.dictfetchall()
 
-                # Fallback: try direct project_id column on analytic line (some Odoo configs)
+                # Fallback: direct project_id on analytic line
                 if not rows:
                     env.cr.execute("""
                         SELECT
-                            pp.name                             AS project,
-                            SUM(aal.amount)                     AS total_cost,
-                            SUM(aal.unit_amount)                AS total_hours,
-                            COUNT(DISTINCT aal.employee_id)     AS team_size
+                            COALESCE(
+                                pp.name->>'en_US',
+                                pp.name->>'ar_001',
+                                pp.name::text
+                            )                                       AS project,
+                            SUM(aal.amount)                         AS total_cost,
+                            SUM(aal.unit_amount)                    AS total_hours,
+                            COUNT(DISTINCT aal.employee_id)         AS team_size
                         FROM account_analytic_line aal
                         JOIN project_project pp ON pp.id = aal.project_id
                         WHERE aal.date BETWEEN %s AND %s
@@ -1141,6 +1151,17 @@ class AIControllerOverride(AIController):
                         LIMIT %s
                     """, (date_from, date_to, env.company.id, limit))
                     rows = env.cr.dictfetchall()
+
+                # Fallback 2: no analytic data — read projects directly filtered by name prefix
+                if not rows:
+                    projects_orm = env['project.project'].search_read(
+                        [('company_id', '=', env.company.id)],
+                        fields=['name', 'allocated_hours'],
+                        limit=limit,
+                    )
+                    # Filter to PROJECT: prefix
+                    projects_orm = [p for p in projects_orm if str(p['name']).startswith('PROJECT:')]
+                    rows = [{'project': p['name'], 'total_cost': 0, 'total_hours': p.get('allocated_hours') or 0, 'team_size': 0} for p in projects_orm]
 
                 if not rows:
                     # Fallback: try without analytic account link
@@ -1163,6 +1184,30 @@ class AIControllerOverride(AIController):
                         )
                     self._post_message("\n".join(lines), mail_message_id)
                 else:
+                    def _clean_name(val):
+                        """Clean JSONB name artifacts like {'en_US': 'X'}"""
+                        import json as _json
+                        if isinstance(val, dict):
+                            return val.get('en_US') or val.get('ar_001') or next(iter(val.values()), str(val))
+                        s = str(val)
+                        if s.startswith('{') and ':' in s:
+                            try:
+                                d = _json.loads(s.replace("'", '"'))
+                                return d.get('en_US') or next(iter(d.values()), s)
+                            except Exception:
+                                pass
+                        return s
+
+                    # Only show PROJECT: prefixed projects
+                    rows = [r for r in rows if _clean_name(r['project']).startswith('PROJECT:')]
+
+                    if not rows:
+                        self._post_message(
+                            f"{AGENT_PERSONA}: 🔍 لم أجد مشاريع تبدأ بـ 'PROJECT:' أو لا توجد بيانات تحليلية مرتبطة بها.",
+                            mail_message_id
+                        )
+                        return {}
+
                     lines = [
                         f"{AGENT_PERSONA}: 📊 **{title}**",
                         f"الفترة: {date_from} → {date_to}\n",
@@ -1173,7 +1218,8 @@ class AIControllerOverride(AIController):
                         cost  = float(r['total_cost']  or 0)
                         hours = float(r['total_hours'] or 0)
                         team  = int(r['team_size']     or 0)
-                        lines.append(f"| {i} | {r['project']} | {cost:,.0f} | {hours:,.1f} h | {team} |")
+                        name  = _clean_name(r['project'])
+                        lines.append(f"| {i} | {name} | {cost:,.0f} | {hours:,.1f} h | {team} |")
                     self._post_message("\n".join(lines), mail_message_id)
 
             # ── 9. Timesheet Hours by Project/Employee ─────────────
