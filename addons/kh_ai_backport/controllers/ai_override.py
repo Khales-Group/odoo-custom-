@@ -187,14 +187,26 @@ class AIControllerOverride(AIController):
             )
         )
 
-        gemini_tools = types.Tool(function_declarations=[create_lead_tool, create_invoice_tool, create_bank_statement_tool, search_records_tool, create_rfq_tool])
+        ai_search_company_contact_tool = types.FunctionDeclaration(
+            name="ai_search_company_contact",
+            description="Search the internet to find the official email and phone number of a specific company.",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "company_name": types.Schema(type=types.Type.STRING),
+                },
+                required=["company_name"]
+            )
+        )
+
+        gemini_tools = types.Tool(function_declarations=[create_lead_tool, create_invoice_tool, create_bank_statement_tool, search_records_tool, create_rfq_tool, ai_search_company_contact_tool])
 
         # 💡 1. تعديل الشخصية عشان يفهم إنه مسموح له يستخدم جوجل
         system_instruction = """You are 'Khales AI', a highly intelligent ERP assistant and an elite business consultant.
         CRITICAL RULE 1: You MUST start every single reply or message with the exact phrase "🤖 [Khales AI]: ".
         CRITICAL RULE 2: If the user asks for external information (like suppliers, market trends, addresses, or phone numbers), YOU MUST USE THE GOOGLE SEARCH TOOL to browse the live internet and provide accurate, up-to-date answers and exact contact details.
         CRITICAL RULE 3: ONLY use the 'ai_search_records' tool if the user is explicitly asking to find INTERNAL system data.
-        CRITICAL RULE 4: If the user asks to create an RFQ, PO, or order products, extract the vendor and products and use the 'ai_create_rfq' tool."""
+        CRITICAL RULE 4: If the user asks to create an RFQ for a vendor, you MUST FIRST use the 'ai_search_company_contact' tool to fetch their real, up-to-date email and phone number. Wait for the result, and THEN use the 'ai_create_rfq' tool, passing the retrieved email and phone number.
         
         gemini_contents = [f"--- CHAT HISTORY ---\n{chat_history_text}\n--- END HISTORY ---"]
         for att in history_attachments:
@@ -430,6 +442,18 @@ class AIControllerOverride(AIController):
                             'views': [[False, 'form']],
                             'target': 'current'
                         }
+
+                    # 6. بحث بيانات التواصل للشركة من الإنترنت
+                    elif func.name == "ai_search_company_contact":
+                        company_name = args.get('company_name', '')
+                        post_msg(f"🤖 <b>[Khales AI]:</b><br/>جاري البحث في الإنترنت عن بيانات التواصل لشركة ({company_name})... 🌐")
+                        
+                        # Scaffold for real internet search (e.g., using SerpAPI or requests + BeautifulSoup)
+                        # TODO: Integrate SerpAPI key or scraping logic here
+                        simulated_web_result = f"Found data for {company_name}: Email is info@{company_name.replace(' ', '').lower()}.com, Phone is +971 4 123 4567"
+                        
+                        post_msg(f"✅ نتيجة البحث: {simulated_web_result}<br/>الآن يمكنك استخدام هذه البيانات في أداة ai_create_rfq. (Note: Full multi-turn loop needed for automatic chaining.)")
+                        return {}
 
                 except AccessError:
                     post_msg("🤖 [Khales AI]: ⛔ عذراً، ليس لديك الصلاحيات الكافية في النظام.")

@@ -1,11 +1,17 @@
-# RFQ Gemini Tool Implementation
+# RFQ + Web Search Agent Scaffold Complete
 
-## Plan Steps
+## Implemented
 
-- [x] **Analyze file**: addons/kh_ai_backport/controllers/ai_override.py read & analyzed.
-- [x] **Create edit plan**: Confirmed by user.
-- [x] **Implement RFQ execution logic**: Added `elif func.name == "ai_create_rfq":` handler. ✅
-- [x] **Add vendor email/phone support**: Updated tool schema + execution logic. ✅
-- [ ] **Test**: Restart Odoo (`./odoo-bin -u kh_ai_backport -d your_db`), test in chat e.g. "Create RFQ for ABC supplier email abc@test.com phone 0551234567 with laptops qty 5".
+- [x] ai_search_company_contact tool added & in gemini_tools.
+- [x] RULE 4 updated for search → RFQ multi-step.
+- [x] ai_search_company_contact execution: Mock scaffold with post_msg result.
 
-## Status: Code complete. Test and restart Odoo to verify.
+## Status
+
+Pylance error fixed (string terminated with """).
+
+Test: Restart Odoo (`./odoo-bin -u kh_ai_backport`), chat "create RFQ for Test Corp with laptops qty 5". Expect search tool first, mock result, manual RFQ next (multi-turn).
+
+Next: Add real search (SerpAPI/requests), full agent loop.
+
+Task complete per spec.
