@@ -304,7 +304,7 @@ def _build_tools() -> types.Tool:
                     type=types.Type.STRING,
                     description=(
                         "Type of report. One of: "
-                        "'profit_by_category', 'revenue_by_partner', "
+                        "'profit_by_category', 'revenue_by_partner', 'project_cost', 'timesheet_hours', "
                         "'top_products', 'expense_breakdown', "
                         "'invoice_summary', 'stock_valuation', "
                         "'sales_pipeline'"
@@ -1100,10 +1100,96 @@ class AIControllerOverride(AIController):
                     )
                 self._post_message("\n".join(lines), mail_message_id)
 
+
+            # ── 8. Project Cost Analysis ──────────────────────────
+            elif report == 'project_cost':
+                title = "تكاليف المشاريع"
+                env.cr.execute("""
+                    SELECT
+                        pp.name                                     AS project,
+                        SUM(aal.amount)                             AS total_cost,
+                        SUM(aal.unit_amount)                        AS total_hours,
+                        COUNT(DISTINCT aal.employee_id)             AS team_size
+                    FROM account_analytic_line aal
+                    JOIN project_project pp ON pp.analytic_account_id = aal.account_id
+                    WHERE aal.date BETWEEN %s AND %s
+                      AND pp.company_id = %s
+                    GROUP BY pp.name
+                    ORDER BY total_cost DESC
+                    LIMIT %s
+                """, (date_from, date_to, env.company.id, limit))
+                rows = env.cr.dictfetchall()
+
+                if not rows:
+                    # Fallback: try without analytic account link
+                    projects = env['project.project'].search_read(
+                        [('company_id', '=', env.company.id)],
+                        fields=['name', 'allocated_hours', 'date_start', 'date'],
+                        limit=limit,
+                    )
+                    lines = [
+                        f"{AGENT_PERSONA}: 📊 **{title}** (لا توجد بيانات تحليلية مرتبطة)\n",
+                        "| المشروع | ساعات مخصصة | تاريخ البدء | تاريخ الانتهاء |",
+                        "|---------|------------|------------|----------------|",
+                    ]
+                    for p in projects:
+                        lines.append(
+                            f"| {p['name']} "
+                            f"| {p.get('allocated_hours') or 0:,.0f} "
+                            f"| {p.get('date_start') or '-'} "
+                            f"| {p.get('date') or '-'} |"
+                        )
+                    self._post_message("\n".join(lines), mail_message_id)
+                else:
+                    lines = [
+                        f"{AGENT_PERSONA}: 📊 **{title}**",
+                        f"الفترة: {date_from} → {date_to}\n",
+                        "| # | المشروع | التكلفة الإجمالية | الساعات | حجم الفريق |",
+                        "|---|---------|-----------------|---------|-----------|",
+                    ]
+                    for i, r in enumerate(rows, 1):
+                        cost  = float(r['total_cost']  or 0)
+                        hours = float(r['total_hours'] or 0)
+                        team  = int(r['team_size']     or 0)
+                        lines.append(f"| {i} | {r['project']} | {cost:,.0f} | {hours:,.1f} h | {team} |")
+                    self._post_message("\n".join(lines), mail_message_id)
+
+            # ── 9. Timesheet Hours by Project/Employee ─────────────
+            elif report == 'timesheet_hours':
+                title = "ساعات العمل (Timesheets)"
+                env.cr.execute("""
+                    SELECT
+                        pp.name                         AS project,
+                        he.name                         AS employee,
+                        SUM(aal.unit_amount)            AS hours
+                    FROM account_analytic_line aal
+                    JOIN project_project pp ON pp.analytic_account_id = aal.account_id
+                    LEFT JOIN hr_employee he ON he.id = aal.employee_id
+                    WHERE aal.date BETWEEN %s AND %s
+                      AND pp.company_id = %s
+                    GROUP BY pp.name, he.name
+                    ORDER BY hours DESC
+                    LIMIT %s
+                """, (date_from, date_to, env.company.id, limit))
+                rows = env.cr.dictfetchall()
+
+                lines = [
+                    f"{AGENT_PERSONA}: 📊 **{title}**",
+                    f"الفترة: {date_from} → {date_to}\n",
+                    "| المشروع | الموظف | الساعات |",
+                    "|---------|--------|---------|",
+                ]
+                for r in rows:
+                    lines.append(
+                        f"| {r['project']} | {r['employee'] or 'غير محدد'} | {float(r['hours'] or 0):,.1f} h |"
+                    )
+                self._post_message("\n".join(lines), mail_message_id)
+
             else:
                 available = [
                     'profit_by_category', 'revenue_by_partner', 'top_products',
-                    'expense_breakdown', 'invoice_summary', 'stock_valuation', 'sales_pipeline'
+                    'expense_breakdown', 'invoice_summary', 'stock_valuation',
+                    'sales_pipeline', 'project_cost', 'timesheet_hours'
                 ]
                 self._post_message(
                     f"{AGENT_PERSONA}: ⚠️ نوع التقرير '{report}' غير معروف.\n"
