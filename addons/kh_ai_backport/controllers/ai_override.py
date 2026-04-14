@@ -335,14 +335,52 @@ class KhalesAIController(AIController):
         try:
             client = genai.Client(api_key=api_key)
 
-            config = types.GenerateContentConfig(
-                system_instruction=SYSTEM_INSTRUCTION,
-                temperature=0.3,
-                tools=[
-                    _build_tools(),
-                    types.Tool(google_search=types.GoogleSearch()),  # Gemini Grounding مجاني
-                ],
+            # ══════════════════════════════════════════════════════
+            # TWO-PASS ROUTER
+            # Gemini لا يسمح بدمج google_search مع function_declarations
+            # في نفس الطلب. الحل: Pass 1 يصنّف النية، Pass 2 ينفّذ.
+            # ══════════════════════════════════════════════════════
+
+            # ── Pass 1: Classify intent (بدون أدوات) ─────────────
+            last_user_msg = ""
+            for line in reversed(chat_history.splitlines()):
+                if line.startswith("User:"):
+                    last_user_msg = line[5:].strip()
+                    break
+
+            classifier_prompt = (
+                "Classify this user request into ONE category:\n"
+                "- ODOO_ACTION  -> create/update/delete Odoo records\n"
+                "- ODOO_READ    -> search/find/list internal Odoo data\n"
+                "- WEB_SEARCH   -> external info (prices, contacts, news)\n"
+                "- CHAT         -> general question, advice, analysis\n\n"
+                f"User message: {last_user_msg}\n\n"
+                "Reply with ONLY the category name, nothing else."
             )
+
+            classify_resp = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=[classifier_prompt],
+                config=types.GenerateContentConfig(temperature=0.0),
+            )
+            intent = (getattr(classify_resp, 'text', '') or '').strip().upper()
+            _logger.info(f"KH_AI: intent -> {intent}")
+
+            # ── Pass 2: Execute with correct tool set ─────────────
+            if intent in ('ODOO_ACTION', 'ODOO_READ'):
+                # Function Calling — بدون google_search
+                config = types.GenerateContentConfig(
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    temperature=0.3,
+                    tools=[_build_tools()],
+                )
+            else:
+                # Google Search Grounding — بدون function_declarations
+                config = types.GenerateContentConfig(
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    temperature=0.4,
+                    tools=[types.Tool(google_search=types.GoogleSearch())],
+                )
 
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
