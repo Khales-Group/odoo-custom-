@@ -366,6 +366,54 @@ class AIControllerOverride(AIController):
                         post_msg(reply_text)
                         return {}
 
+                    # 5. إنشاء RFQ / Purchase Order
+                    elif func.name == "ai_create_rfq":
+                        vendor_name = args.get('vendor_name', '')
+                        products = args.get('products', [])
+                        
+                        # Find or create vendor
+                        vendor = env['res.partner'].sudo().search([('name', '=ilike', vendor_name)], limit=1)
+                        if not vendor:
+                            vendor = env['res.partner'].sudo().create({
+                                'name': vendor_name,
+                                'is_company': True,
+                            })
+                        
+                        # Build order lines
+                        order_lines = []
+                        for prod_data in products:
+                            prod_name = prod_data.get('name', '')
+                            qty = float(prod_data.get('qty', 1.0))
+                            
+                            # Find or create product
+                            product = env['product.product'].sudo().search([('name', '=ilike', prod_name)], limit=1)
+                            if not product:
+                                product = env['product.product'].sudo().create({
+                                    'name': prod_name,
+                                    'type': 'consu',
+                                })
+                            
+                            order_lines.append((0, 0, {
+                                'product_id': product.id,
+                                'name': product.name,
+                                'product_qty': qty,
+                            }))
+                        
+                        # Create purchase order
+                        new_rfq = env['purchase.order'].sudo().create({
+                            'partner_id': vendor.id,
+                            'order_line': order_lines,
+                        })
+                        
+                        post_msg(chat_msg)
+                        return {
+                            'type': 'ir.actions.act_window',
+                            'res_model': 'purchase.order',
+                            'res_id': new_rfq.id,
+                            'views': [[False, 'form']],
+                            'target': 'current'
+                        }
+
                 except AccessError:
                     post_msg("🤖 [Khales AI]: ⛔ عذراً، ليس لديك الصلاحيات الكافية في النظام.")
                     return {}
