@@ -207,7 +207,7 @@ class AIControllerOverride(AIController):
         CRITICAL RULE 2: If the user asks for external information (like suppliers, market trends, addresses, or phone numbers), YOU MUST USE THE GOOGLE SEARCH TOOL to browse the live internet and provide accurate, up-to-date answers and exact contact details.
         CRITICAL RULE 3: ONLY use the 'ai_search_records' tool if the user is explicitly asking to find INTERNAL system data.
         CRITICAL RULE 4: If the user asks to create an RFQ for a vendor, you MUST FIRST use the 'ai_search_company_contact' tool to fetch their real, up-to-date email and phone number. Wait for the result, and THEN use the 'ai_create_rfq' tool, passing the retrieved email and phone number.
-        
+        """
         gemini_contents = [f"--- CHAT HISTORY ---\n{chat_history_text}\n--- END HISTORY ---"]
         for att in history_attachments:
             file_bytes = att.raw or (base64.b64decode(att.datas) if att.datas else b'')
