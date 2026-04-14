@@ -85,6 +85,17 @@ Use when user asks to "find", "search", "show", "list", "ابحث", "دور", "�
 - You choose the model_name from your knowledge of Odoo models
 - You can filter by any field
 
+### ANALYTICS Tool (ai_analytics):
+Use when user asks for reports, margins, trends, KPIs, breakdowns:
+- "profit margins by category" → report_type='profit_by_category'
+- "top selling products"       → report_type='top_products'
+- "revenue by customer"        → report_type='revenue_by_partner'
+- "expense breakdown"          → report_type='expense_breakdown'
+- "invoice summary"            → report_type='invoice_summary'
+- "stock valuation"            → report_type='stock_valuation'
+- "sales pipeline"             → report_type='sales_pipeline'
+ALWAYS use this tool for any financial analysis question instead of saying "I cannot calculate".
+
 ### WRITE Tools (Fixed):
 Only use when user EXPLICITLY commands creation/modification:
 - ai_create_lead        → "أنشئ lead", "create lead"
@@ -276,12 +287,53 @@ def _build_tools() -> types.Tool:
         )
     )
 
+
+    # ── ANALYTICS ────────────────────────────────────────────────
+    ai_analytics = types.FunctionDeclaration(
+        name="ai_analytics",
+        description=(
+            "Run financial/business analytics on Odoo data. "
+            "Use for: profit margins, revenue by category, sales trends, "
+            "top customers, stock valuation, expense breakdown, KPIs. "
+            "This tool does the heavy SQL-level grouping and calculation."
+        ),
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "report_type": types.Schema(
+                    type=types.Type.STRING,
+                    description=(
+                        "Type of report. One of: "
+                        "'profit_by_category', 'revenue_by_partner', "
+                        "'top_products', 'expense_breakdown', "
+                        "'invoice_summary', 'stock_valuation', "
+                        "'sales_pipeline'"
+                    )
+                ),
+                "date_from": types.Schema(
+                    type=types.Type.STRING,
+                    description="Start date YYYY-MM-DD (optional, defaults to start of current year)"
+                ),
+                "date_to": types.Schema(
+                    type=types.Type.STRING,
+                    description="End date YYYY-MM-DD (optional, defaults to today)"
+                ),
+                "limit": types.Schema(
+                    type=types.Type.INTEGER,
+                    description="Max rows to return (default 10)"
+                ),
+            },
+            required=["report_type"]
+        )
+    )
+
     return types.Tool(function_declarations=[
         ai_dynamic_read,
         ai_create_lead,
         ai_create_invoice,
         ai_create_bank_stmt,
         ai_create_rfq,
+        ai_analytics,
     ])
 
 
@@ -508,6 +560,8 @@ class KhalesAIController(AIController):
                 return self._tool_create_bank_stmt(args, mail_message_id)
             elif name == "ai_create_rfq":
                 return self._tool_create_rfq(args, mail_message_id)
+            elif name == "ai_analytics":
+                return self._tool_analytics(args, mail_message_id)
             else:
                 self._post_message(f"⛔ أداة غير معروفة: {name}", mail_message_id)
                 return {}
@@ -783,3 +837,285 @@ class KhalesAIController(AIController):
             'views': [[False, 'form']],
             'target': 'current',
         }
+
+    # ── ANALYTICS ────────────────────────────────────────────────
+    def _tool_analytics(self, args, mail_message_id):
+        """تحليلات مالية وتجارية مباشرة من Odoo ORM"""
+        env       = request.env
+        report    = args.get('report_type', '')
+        date_from = args.get('date_from') or fields.Date.today().replace(month=1, day=1).strftime('%Y-%m-%d')
+        date_to   = args.get('date_to')   or str(fields.Date.today())
+        limit     = min(int(args.get('limit', 10)), 50)
+
+        try:
+            rows  = []
+            title = report.replace('_', ' ').title()
+
+            # ── 1. Profit Margin by Product Category ─────────────
+            if report == 'profit_by_category':
+                title = "هوامش الربح حسب فئة المنتج"
+                # نجمع من سطور الفواتير المؤكدة
+                env.cr.execute("""
+                    SELECT
+                        pc.complete_name                        AS category,
+                        SUM(aml.quantity * aml.price_unit)      AS revenue,
+                        SUM(aml.quantity * pp.standard_price)   AS cost,
+                        SUM(aml.quantity * aml.price_unit)
+                          - SUM(aml.quantity * pp.standard_price) AS profit
+                    FROM account_move_line aml
+                    JOIN account_move am      ON am.id  = aml.move_id
+                    JOIN product_product pp   ON pp.id  = aml.product_id
+                    JOIN product_template pt  ON pt.id  = pp.product_tmpl_id
+                    JOIN product_category pc  ON pc.id  = pt.categ_id
+                    WHERE am.move_type = 'out_invoice'
+                      AND am.state     = 'posted'
+                      AND am.invoice_date BETWEEN %s AND %s
+                      AND aml.product_id IS NOT NULL
+                      AND am.company_id = %s
+                    GROUP BY pc.complete_name
+                    ORDER BY profit DESC
+                    LIMIT %s
+                """, (date_from, date_to, env.company.id, limit))
+                rows = env.cr.dictfetchall()
+
+                if not rows:
+                    self._post_message(
+                        f"{AGENT_PERSONA}: 📊 لا توجد بيانات فواتير مؤكدة في الفترة {date_from} → {date_to}",
+                        mail_message_id
+                    )
+                    return {}
+
+                lines = [
+                    f"{AGENT_PERSONA}: 📊 **{title}**",
+                    f"الفترة: {date_from} → {date_to}\n",
+                    "| الفئة | الإيراد | التكلفة | الربح | هامش % |",
+                    "|-------|---------|---------|-------|--------|",
+                ]
+                for r in rows:
+                    rev    = float(r['revenue'] or 0)
+                    cost   = float(r['cost']    or 0)
+                    profit = float(r['profit']  or 0)
+                    margin = round((profit / rev * 100), 1) if rev else 0
+                    margin_icon = "🟢" if margin >= 20 else "🟡" if margin >= 10 else "🔴"
+                    lines.append(
+                        f"| {r['category']} | {rev:,.0f} | {cost:,.0f} | {profit:,.0f} | {margin_icon} {margin}% |"
+                    )
+                self._post_message("\n".join(lines), mail_message_id)
+
+            # ── 2. Revenue by Partner (Top Customers) ─────────────
+            elif report == 'revenue_by_partner':
+                title = "الإيراد حسب العميل"
+                env.cr.execute("""
+                    SELECT
+                        rp.name                                 AS partner,
+                        COUNT(am.id)                            AS invoice_count,
+                        SUM(am.amount_untaxed)                  AS revenue,
+                        SUM(am.amount_tax)                      AS tax
+                    FROM account_move am
+                    JOIN res_partner rp ON rp.id = am.partner_id
+                    WHERE am.move_type = 'out_invoice'
+                      AND am.state     = 'posted'
+                      AND am.invoice_date BETWEEN %s AND %s
+                      AND am.company_id = %s
+                    GROUP BY rp.name
+                    ORDER BY revenue DESC
+                    LIMIT %s
+                """, (date_from, date_to, env.company.id, limit))
+                rows = env.cr.dictfetchall()
+
+                lines = [
+                    f"{AGENT_PERSONA}: 📊 **{title}**",
+                    f"الفترة: {date_from} → {date_to}\n",
+                    "| العميل | عدد الفواتير | الإيراد (بدون ضريبة) | الضريبة |",
+                    "|--------|-------------|----------------------|---------|",
+                ]
+                for r in rows:
+                    lines.append(
+                        f"| {r['partner']} | {r['invoice_count']} | {float(r['revenue'] or 0):,.0f} | {float(r['tax'] or 0):,.0f} |"
+                    )
+                self._post_message("\n".join(lines), mail_message_id)
+
+            # ── 3. Top Products by Revenue ─────────────────────────
+            elif report == 'top_products':
+                title = "أفضل المنتجات مبيعاً"
+                env.cr.execute("""
+                    SELECT
+                        pt.name->>'en_US'                       AS product,
+                        SUM(aml.quantity)                       AS qty_sold,
+                        SUM(aml.quantity * aml.price_unit)      AS revenue
+                    FROM account_move_line aml
+                    JOIN account_move am      ON am.id  = aml.move_id
+                    JOIN product_product pp   ON pp.id  = aml.product_id
+                    JOIN product_template pt  ON pt.id  = pp.product_tmpl_id
+                    WHERE am.move_type = 'out_invoice'
+                      AND am.state     = 'posted'
+                      AND am.invoice_date BETWEEN %s AND %s
+                      AND aml.product_id IS NOT NULL
+                      AND am.company_id = %s
+                    GROUP BY pt.name->>'en_US'
+                    ORDER BY revenue DESC
+                    LIMIT %s
+                """, (date_from, date_to, env.company.id, limit))
+                rows = env.cr.dictfetchall()
+
+                lines = [
+                    f"{AGENT_PERSONA}: 📊 **{title}**",
+                    f"الفترة: {date_from} → {date_to}\n",
+                    "| # | المنتج | الكمية | الإيراد |",
+                    "|---|--------|--------|---------|",
+                ]
+                for i, r in enumerate(rows, 1):
+                    lines.append(
+                        f"| {i} | {r['product']} | {float(r['qty_sold'] or 0):,.1f} | {float(r['revenue'] or 0):,.0f} |"
+                    )
+                self._post_message("\n".join(lines), mail_message_id)
+
+            # ── 4. Expense Breakdown ───────────────────────────────
+            elif report == 'expense_breakdown':
+                title = "تحليل المصروفات"
+                env.cr.execute("""
+                    SELECT
+                        aa.name->>'en_US'                       AS account,
+                        SUM(aml.debit - aml.credit)             AS amount
+                    FROM account_move_line aml
+                    JOIN account_account aa ON aa.id = aml.account_id
+                    JOIN account_move am     ON am.id = aml.move_id
+                    WHERE aa.account_type IN ('expense', 'expense_depreciation', 'expense_direct_cost')
+                      AND am.state = 'posted'
+                      AND am.date BETWEEN %s AND %s
+                      AND am.company_id = %s
+                    GROUP BY aa.name->>'en_US'
+                    ORDER BY amount DESC
+                    LIMIT %s
+                """, (date_from, date_to, env.company.id, limit))
+                rows = env.cr.dictfetchall()
+
+                total = sum(float(r['amount'] or 0) for r in rows)
+                lines = [
+                    f"{AGENT_PERSONA}: 📊 **{title}**",
+                    f"الفترة: {date_from} → {date_to}\n",
+                    "| الحساب | المبلغ | النسبة % |",
+                    "|--------|--------|----------|",
+                ]
+                for r in rows:
+                    amt  = float(r['amount'] or 0)
+                    pct  = round(amt / total * 100, 1) if total else 0
+                    lines.append(f"| {r['account']} | {amt:,.0f} | {pct}% |")
+                lines.append(f"| **الإجمالي** | **{total:,.0f}** | **100%** |")
+                self._post_message("\n".join(lines), mail_message_id)
+
+            # ── 5. Invoice Summary ─────────────────────────────────
+            elif report == 'invoice_summary':
+                title = "ملخص الفواتير"
+                env.cr.execute("""
+                    SELECT
+                        move_type,
+                        state,
+                        COUNT(*)            AS count,
+                        SUM(amount_total)   AS total
+                    FROM account_move
+                    WHERE move_type IN ('out_invoice', 'in_invoice', 'out_refund', 'in_refund')
+                      AND invoice_date BETWEEN %s AND %s
+                      AND company_id = %s
+                    GROUP BY move_type, state
+                    ORDER BY move_type, state
+                """, (date_from, date_to, env.company.id))
+                rows = env.cr.dictfetchall()
+
+                type_labels = {
+                    'out_invoice': 'فاتورة عميل', 'in_invoice': 'فاتورة مورد',
+                    'out_refund': 'إشعار دائن', 'in_refund': 'إشعار مدين',
+                }
+                state_labels = {'draft': 'مسودة', 'posted': 'مؤكدة', 'cancel': 'ملغاة'}
+                lines = [
+                    f"{AGENT_PERSONA}: 📊 **{title}**",
+                    f"الفترة: {date_from} → {date_to}\n",
+                    "| النوع | الحالة | العدد | الإجمالي |",
+                    "|------|--------|-------|---------|",
+                ]
+                for r in rows:
+                    lines.append(
+                        f"| {type_labels.get(r['move_type'], r['move_type'])} "
+                        f"| {state_labels.get(r['state'], r['state'])} "
+                        f"| {r['count']} | {float(r['total'] or 0):,.0f} |"
+                    )
+                self._post_message("\n".join(lines), mail_message_id)
+
+            # ── 6. Stock Valuation ─────────────────────────────────
+            elif report == 'stock_valuation':
+                title = "تقييم المخزون"
+                products = env['product.product'].search_read(
+                    [('type', 'in', ['product', 'consu']), ('qty_available', '>', 0)],
+                    fields=['name', 'qty_available', 'standard_price', 'categ_id'],
+                    limit=limit,
+                    order='qty_available desc',
+                )
+                lines = [
+                    f"{AGENT_PERSONA}: 📊 **{title}**\n",
+                    "| المنتج | الكمية | سعر التكلفة | القيمة الإجمالية |",
+                    "|--------|--------|-------------|-----------------|",
+                ]
+                total_val = 0
+                for p in products:
+                    qty  = float(p['qty_available'])
+                    cost = float(p['standard_price'])
+                    val  = qty * cost
+                    total_val += val
+                    cat  = p['categ_id'][1] if p.get('categ_id') else '-'
+                    lines.append(f"| {p['name']} ({cat}) | {qty:,.1f} | {cost:,.2f} | {val:,.0f} |")
+                lines.append(f"| **إجمالي المخزون** | — | — | **{total_val:,.0f}** |")
+                self._post_message("\n".join(lines), mail_message_id)
+
+            # ── 7. Sales Pipeline ──────────────────────────────────
+            elif report == 'sales_pipeline':
+                title = "خط أنابيب المبيعات (CRM)"
+                env.cr.execute("""
+                    SELECT
+                        cs.name                                 AS stage,
+                        COUNT(cl.id)                            AS count,
+                        SUM(cl.expected_revenue)                AS expected,
+                        AVG(cl.probability)                     AS avg_prob
+                    FROM crm_lead cl
+                    JOIN crm_stage cs ON cs.id = cl.stage_id
+                    WHERE cl.type = 'opportunity'
+                      AND cl.active = true
+                      AND cl.company_id = %s
+                    GROUP BY cs.name, cs.sequence
+                    ORDER BY cs.sequence
+                """, (env.company.id,))
+                rows = env.cr.dictfetchall()
+
+                lines = [
+                    f"{AGENT_PERSONA}: 📊 **{title}**\n",
+                    "| المرحلة | العدد | الإيراد المتوقع | احتمالية الإغلاق |",
+                    "|---------|-------|----------------|-----------------|",
+                ]
+                for r in rows:
+                    prob = round(float(r['avg_prob'] or 0), 0)
+                    prob_icon = "🟢" if prob >= 70 else "🟡" if prob >= 40 else "🔴"
+                    lines.append(
+                        f"| {r['stage']} | {r['count']} "
+                        f"| {float(r['expected'] or 0):,.0f} "
+                        f"| {prob_icon} {prob}% |"
+                    )
+                self._post_message("\n".join(lines), mail_message_id)
+
+            else:
+                available = [
+                    'profit_by_category', 'revenue_by_partner', 'top_products',
+                    'expense_breakdown', 'invoice_summary', 'stock_valuation', 'sales_pipeline'
+                ]
+                self._post_message(
+                    f"{AGENT_PERSONA}: ⚠️ نوع التقرير '{report}' غير معروف.\n"
+                    f"الأنواع المتاحة: {', '.join(available)}",
+                    mail_message_id
+                )
+
+        except Exception as e:
+            _logger.exception("KH_AI: analytics error")
+            self._post_message(
+                f"{AGENT_PERSONA}: ⛔ خطأ في التحليل:\n{e}",
+                mail_message_id
+            )
+
+        return {}
