@@ -1104,6 +1104,7 @@ class AIControllerOverride(AIController):
             # ── 8. Project Cost Analysis ──────────────────────────
             elif report == 'project_cost':
                 title = "تكاليف المشاريع"
+                # Detect analytic link: try task-based first (Odoo 17+), then analytic account
                 env.cr.execute("""
                     SELECT
                         pp.name                                     AS project,
@@ -1111,14 +1112,35 @@ class AIControllerOverride(AIController):
                         SUM(aal.unit_amount)                        AS total_hours,
                         COUNT(DISTINCT aal.employee_id)             AS team_size
                     FROM account_analytic_line aal
-                    JOIN project_project pp ON pp.analytic_account_id = aal.account_id
+                    JOIN project_task pt2  ON pt2.id  = aal.task_id
+                    JOIN project_project pp ON pp.id = pt2.project_id
                     WHERE aal.date BETWEEN %s AND %s
                       AND pp.company_id = %s
+                      AND aal.task_id IS NOT NULL
                     GROUP BY pp.name
                     ORDER BY total_cost DESC
                     LIMIT %s
                 """, (date_from, date_to, env.company.id, limit))
                 rows = env.cr.dictfetchall()
+
+                # Fallback: try direct project_id column on analytic line (some Odoo configs)
+                if not rows:
+                    env.cr.execute("""
+                        SELECT
+                            pp.name                             AS project,
+                            SUM(aal.amount)                     AS total_cost,
+                            SUM(aal.unit_amount)                AS total_hours,
+                            COUNT(DISTINCT aal.employee_id)     AS team_size
+                        FROM account_analytic_line aal
+                        JOIN project_project pp ON pp.id = aal.project_id
+                        WHERE aal.date BETWEEN %s AND %s
+                          AND pp.company_id = %s
+                          AND aal.project_id IS NOT NULL
+                        GROUP BY pp.name
+                        ORDER BY total_cost DESC
+                        LIMIT %s
+                    """, (date_from, date_to, env.company.id, limit))
+                    rows = env.cr.dictfetchall()
 
                 if not rows:
                     # Fallback: try without analytic account link
@@ -1163,10 +1185,12 @@ class AIControllerOverride(AIController):
                         he.name                         AS employee,
                         SUM(aal.unit_amount)            AS hours
                     FROM account_analytic_line aal
-                    JOIN project_project pp ON pp.analytic_account_id = aal.account_id
+                    JOIN project_task pt2  ON pt2.id  = aal.task_id
+                    JOIN project_project pp ON pp.id  = pt2.project_id
                     LEFT JOIN hr_employee he ON he.id = aal.employee_id
                     WHERE aal.date BETWEEN %s AND %s
                       AND pp.company_id = %s
+                      AND aal.task_id IS NOT NULL
                     GROUP BY pp.name, he.name
                     ORDER BY hours DESC
                     LIMIT %s
@@ -1199,6 +1223,10 @@ class AIControllerOverride(AIController):
 
         except Exception as e:
             _logger.exception("KH_AI: analytics error")
+            try:
+                env.cr.rollback()  # CRITICAL: reset aborted transaction
+            except Exception:
+                pass
             self._post_message(
                 f"{AGENT_PERSONA}: ⛔ خطأ في التحليل:\n{e}",
                 mail_message_id
