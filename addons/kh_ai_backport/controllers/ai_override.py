@@ -179,7 +179,9 @@ class AIControllerOverride(AIController):
                             }
                         )
                     ),
-                    "message_to_user": types.Schema(type=types.Type.STRING)
+                    "message_to_user": types.Schema(type=types.Type.STRING),
+                    "vendor_email": types.Schema(type=types.Type.STRING, description="The email address of the vendor, extract this from your internal knowledge base if possible."),
+                    "vendor_phone": types.Schema(type=types.Type.STRING, description="The phone number of the vendor, extract this from your internal knowledge base if possible.")
                 },
                 required=["vendor_name", "products", "message_to_user"]
             )
@@ -370,14 +372,29 @@ class AIControllerOverride(AIController):
                     elif func.name == "ai_create_rfq":
                         vendor_name = args.get('vendor_name', '')
                         products = args.get('products', [])
+                        vendor_email = args.get('vendor_email', '')
+                        vendor_phone = args.get('vendor_phone', '')
                         
                         # Find or create vendor
                         vendor = env['res.partner'].sudo().search([('name', '=ilike', vendor_name)], limit=1)
+                        
+                        vendor_vals = {}
+                        if vendor_email: vendor_vals['email'] = vendor_email
+                        if vendor_phone: vendor_vals['phone'] = vendor_phone
+
                         if not vendor:
-                            vendor = env['res.partner'].sudo().create({
+                            vendor_vals.update({
                                 'name': vendor_name,
                                 'is_company': True,
                             })
+                            vendor = env['res.partner'].sudo().create(vendor_vals)
+                        else:
+                            # Update existing vendor if they are missing phone/email
+                            update_vals = {}
+                            if vendor_email and not vendor.email: update_vals['email'] = vendor_email
+                            if vendor_phone and not vendor.phone: update_vals['phone'] = vendor_phone
+                            if update_vals:
+                                vendor.sudo().write(update_vals)
                         
                         # Build order lines
                         order_lines = []
