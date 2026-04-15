@@ -1286,27 +1286,47 @@ class AIControllerOverride(AIController):
                     )
                     return {}
 
-                # البحث الذكي: كلمات متعددة، حقلين، domain صحيح
-                words = [w for w in project_keyword.split() if len(w) > 1]
-                if not words:
-                    words = [project_keyword]
+                # البحث الذكي: رقم المشروع أولاً، ثم الكلمة المفردة
+                import re as _re
+                _keyword = project_keyword.strip()
 
-                def _build_search_domain(words, company_id):
-                    """Correct Odoo domain: AND(company, OR(all search conditions))"""
-                    conditions = []
-                    for w in words:
-                        conditions.append(('name', 'ilike', w))
-                        conditions.append(('partner_id.name', 'ilike', w))
-                    if len(conditions) == 1:
-                        or_part = conditions
+                # 1. إذا في رقم مشروع (5 أرقام) → ابحث بيه مباشرة (الأدق)
+                _num_match = _re.search(r'\b(\d{4,5})\b', _keyword)
+                if _num_match:
+                    _search_term = _num_match.group(1)
+                else:
+                    # 2. خذ أطول كلمة إنجليزية (عادةً اسم العائلة)
+                    _eng_words = [w for w in _keyword.split() if _re.match(r'[A-Za-z]{4,}', w)
+                                  and w.lower() not in ('project', 'matar', 'ahmed', 'ahmad', 'the')]
+                    if _eng_words:
+                        _search_term = max(_eng_words, key=len)
                     else:
-                        or_part = ['|'] * (len(conditions) - 1) + conditions
-                    return ['&', ('company_id', '=', company_id)] + or_part
+                        # 3. للعربي: جرب كل الكلمات بـ OR (حد أقصى 3 كلمات)
+                        _all_words = [w for w in _keyword.split() if len(w) > 2][:3]
+                        _search_term = _all_words[-1] if _all_words else _keyword
+                        # آخر كلمة عادةً اسم العائلة (الأهم في البحث)
+
+                _logger.info(f"KH_AI project search: keyword='{_keyword}' → term='{_search_term}'")
+
+                # بناء domain — إذا عندنا كلمات عربية متعددة، ابحث بكل واحدة
+                _arabic_words = [w for w in _keyword.split()
+                                 if len(w) > 2 and not _re.match(r'[A-Za-z0-9]', w)]
+                if len(_arabic_words) > 1 and not _num_match:
+                    # OR بين كل الكلمات العربية
+                    _or_conditions = []
+                    for _aw in _arabic_words:
+                        _or_conditions += [('name', 'ilike', _aw), ('partner_id.name', 'ilike', _aw)]
+                    _or_part = ['|'] * (len(_or_conditions) - 1) + _or_conditions
+                    _domain = ['&', ('company_id', '=', env.company.id)] + _or_part
+                else:
+                    _domain = ['&', ('company_id', '=', env.company.id),
+                               '|', ('name', 'ilike', _search_term),
+                                    ('partner_id.name', 'ilike', _search_term)]
 
                 projects = env['project.project'].search_read(
-                    _build_search_domain(words, env.company.id),
+                    _domain,
                     fields=['id', 'name', 'partner_id', 'date_start', 'date'],
-                    limit=15,
+                    limit=10,
                 )
 
                 # ترتيب: الأكثر تطابقاً أولاً
