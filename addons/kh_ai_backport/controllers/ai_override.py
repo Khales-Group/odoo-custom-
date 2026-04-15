@@ -1286,28 +1286,25 @@ class AIControllerOverride(AIController):
                     )
                     return {}
 
-                # البحث الذكي متعدد الكلمات والحقول
+                # البحث الذكي: كلمات متعددة، حقلين، domain صحيح
                 words = [w for w in project_keyword.split() if len(w) > 1]
                 if not words:
                     words = [project_keyword]
 
-                # بناء domain يبحث في اسم المشروع أو اسم العميل بأي كلمة
-                def _build_word_domain(words, company_id):
+                def _build_search_domain(words, company_id):
+                    """Correct Odoo domain: AND(company, OR(all search conditions))"""
                     conditions = []
                     for w in words:
                         conditions.append(('name', 'ilike', w))
                         conditions.append(('partner_id.name', 'ilike', w))
-                    # OR بين كل الشروط
-                    domain = []
-                    for _ in range(len(conditions) - 1):
-                        domain.append('|')
-                    domain += conditions
-                    domain.append(('company_id', '=', company_id))
-                    return domain
+                    if len(conditions) == 1:
+                        or_part = conditions
+                    else:
+                        or_part = ['|'] * (len(conditions) - 1) + conditions
+                    return ['&', ('company_id', '=', company_id)] + or_part
 
-                domain = _build_word_domain(words, env.company.id)
                 projects = env['project.project'].search_read(
-                    domain,
+                    _build_search_domain(words, env.company.id),
                     fields=['id', 'name', 'partner_id', 'date_start', 'date'],
                     limit=15,
                 )
