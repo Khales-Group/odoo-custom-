@@ -1281,10 +1281,10 @@ class AIControllerOverride(AIController):
                     )
                     return {}
 
+                # البحث عن المشروع بالكلمة المفتاحية
                 projects = env['project.project'].search_read(
                     [('name', 'ilike', project_keyword), ('company_id', '=', env.company.id)],
-                    fields=['id', 'name', 'partner_id', 'date_start', 'date',
-                            'allocated_hours', 'total_hours_spent'],
+                    fields=['id', 'name', 'partner_id', 'date_start', 'date'],
                     limit=5,
                 )
                 if not projects:
@@ -1298,33 +1298,75 @@ class AIControllerOverride(AIController):
                 for proj in projects:
                     partner    = proj['partner_id'][1] if proj.get('partner_id') else 'غير محدد'
                     partner_id = proj['partner_id'][0] if proj.get('partner_id') else None
-                    alloc_h    = float(proj.get('allocated_hours') or 0)
-                    spent_h    = float(proj.get('total_hours_spent') or 0)
+
+                    # ── فواتير العميل (out_invoice) ─────────────────────────────
                     total_invoiced = total_paid = total_due = 0.0
+                    inv_count = 0
                     if partner_id:
                         inv = env['account.move'].read_group(
-                            [('move_type', '=', 'out_invoice'), ('state', '=', 'posted'),
-                             ('partner_id', '=', partner_id), ('company_id', '=', env.company.id)],
-                            fields=['amount_total:sum', 'amount_residual:sum'], groupby=[],
+                            [('move_type', '=', 'out_invoice'),
+                             ('state', '=', 'posted'),
+                             ('partner_id', '=', partner_id),
+                             ('company_id', '=', env.company.id)],
+                            fields=['amount_total:sum', 'amount_residual:sum', 'id:count'],
+                            groupby=[],
                         )
                         if inv:
                             total_invoiced = float(inv[0].get('amount_total') or 0)
                             total_due      = float(inv[0].get('amount_residual') or 0)
                             total_paid     = total_invoiced - total_due
+                            inv_count      = int(inv[0].get('id') or 0)
+
+                    # ── مصاريف المشروع (in_invoice + حسابات تحليلية) ──────
+                    total_bills = total_bill_paid = 0.0
+                    bill_count = 0
+                    if partner_id:
+                        bills = env['account.move'].read_group(
+                            [('move_type', '=', 'in_invoice'),
+                             ('state', '=', 'posted'),
+                             ('partner_id', '=', partner_id),
+                             ('company_id', '=', env.company.id)],
+                            fields=['amount_total:sum', 'amount_residual:sum', 'id:count'],
+                            groupby=[],
+                        )
+                        if bills:
+                            total_bills     = float(bills[0].get('amount_total') or 0)
+                            bill_due        = float(bills[0].get('amount_residual') or 0)
+                            total_bill_paid = total_bills - bill_due
+                            bill_count      = int(bills[0].get('id') or 0)
+
+                    # ── الحسابات التحليلية للمشروع ──────────────────────
+                    analytic_cost = 0.0
+                    analytic_lines = env['account.analytic.line'].search_read(
+                        [('project_id', '=', proj['id']), ('amount', '<', 0)],
+                        fields=['amount'],
+                    )
+                    analytic_cost = abs(sum(float(l['amount']) for l in analytic_lines))
+
+                    # ── ملخص ──────────────────────────────────────────
+                    total_cost = total_bills + analytic_cost
+                    profit     = total_invoiced - total_cost
+                    margin_pct = round(profit / total_invoiced * 100, 1) if total_invoiced else 0
+                    margin_icon = '🟢' if margin_pct >= 30 else '🟡' if margin_pct >= 10 else '🔴'
 
                     report_lines += [
                         f"**{proj['name']}**",
                         f"👤 العميل: {partner}",
                         f"📅 الفترة: {proj.get('date_start') or '-'} → {proj.get('date') or '-'}",
                         "",
-                        "**💰 الفواتير:**",
-                        f"• إجمالي الفواتير:  **{total_invoiced:,.0f}**",
-                        f"• المدفوع:         **{total_paid:,.0f}**",
-                        f"• المتبقي (دين): **{total_due:,.0f}**",
+                        f"📤 **فواتير العميل ({inv_count}):**",
+                        f"  • إجمالي:      **{total_invoiced:,.2f}**",
+                        f"  • مدفوع:       **{total_paid:,.2f}**",
+                        f"  • متبقي (دين): **{total_due:,.2f}**",
                         "",
-                        "**⏱️ الساعات:**",
-                        f"• مخصصة: {alloc_h:,.0f} h | منجزة: {spent_h:,.0f} h",
-                        "─" * 40,
+                        f"📥 **مصاريف المشروع ({bill_count} فاتورة مورد):**",
+                        f"  • إجمالي: **{total_bills:,.2f}**",
+                        f"  • مدفوع: **{total_bill_paid:,.2f}**",
+                        f"  • حسابات تحليلية: **{analytic_cost:,.2f}**",
+                        "",
+                        f"**📊 النتيجة:**",
+                        f"  • صافي الربح: **{profit:,.2f}** {margin_icon} ({margin_pct}%)",
+                        "─" * 45,
                     ]
                 self._post_message("\n".join(report_lines), mail_message_id)
 
