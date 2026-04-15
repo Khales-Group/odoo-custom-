@@ -330,8 +330,13 @@ def _build_tools() -> types.Tool:
                 "project_name": types.Schema(
                     type=types.Type.STRING,
                     description=(
-                        "For report_type='project_financial': the project name or keyword to search. "
-                        "Extract from user message. Example: 'الظاهري', 'Ahmad', '00033'"
+                        "For report_type='project_financial': keyword to search project by. "
+                        "CRITICAL: If the user writes an Arabic name, transliterate it to English too. "
+                        "Pass the most distinctive part: family name or project number. "
+                        "Examples: user says 'احمد الظاهري' → pass 'Aldhaheri' or '00033'. "
+                        "User says 'مشروع الظاهري' → pass 'Aldhaheri'. "
+                        "User says 'project 00033' → pass '00033'. "
+                        "Prefer the English surname or project number over Arabic transliteration."
                     )
                 ),
             },
@@ -1281,33 +1286,45 @@ class AIControllerOverride(AIController):
                     )
                     return {}
 
-                # البحث الذكي: كل كلمة على حدا بـ OR
-                words = [w for w in project_keyword.split() if len(w) > 2]
+                # البحث الذكي متعدد الكلمات والحقول
+                words = [w for w in project_keyword.split() if len(w) > 1]
                 if not words:
                     words = [project_keyword]
 
-                # بناء domain: اسم يحتوي على أي كلمة من الكلمات
-                domain = ['|'] * (len(words) - 1) if len(words) > 1 else []
-                for w in words:
-                    domain.append(('name', 'ilike', w))
-                domain.append(('company_id', '=', env.company.id))
+                # بناء domain يبحث في اسم المشروع أو اسم العميل بأي كلمة
+                def _build_word_domain(words, company_id):
+                    conditions = []
+                    for w in words:
+                        conditions.append(('name', 'ilike', w))
+                        conditions.append(('partner_id.name', 'ilike', w))
+                    # OR بين كل الشروط
+                    domain = []
+                    for _ in range(len(conditions) - 1):
+                        domain.append('|')
+                    domain += conditions
+                    domain.append(('company_id', '=', company_id))
+                    return domain
 
+                domain = _build_word_domain(words, env.company.id)
                 projects = env['project.project'].search_read(
                     domain,
                     fields=['id', 'name', 'partner_id', 'date_start', 'date'],
-                    limit=10,
+                    limit=15,
                 )
 
-                # ترتيب النتائج: الأكثر تطابقاً أولاً
+                # ترتيب: الأكثر تطابقاً أولاً
                 def match_score(p):
                     name_lower = str(p['name']).lower()
-                    return sum(1 for w in words if w.lower() in name_lower)
+                    partner_lower = str(p.get('partner_id', ['', ''])[1] if p.get('partner_id') else '').lower()
+                    combined = name_lower + ' ' + partner_lower
+                    return sum(1 for w in words if w.lower() in combined)
 
                 projects = sorted(projects, key=match_score, reverse=True)[:5]
 
                 if not projects:
                     self._post_message(
-                        f"{AGENT_PERSONA}: 🔍 لم أجد مشروعاً يحتوي على أي من الكلمات: {', '.join(words)}",
+                        f"{AGENT_PERSONA}: 🔍 لم أجد مشروعاً يحتوي على: '{project_keyword}'\n"
+                        f"💡 جرب البحث بالرقم مثل '00033' أو بجزء من الاسم الإنجليزي.",
                         mail_message_id
                     )
                     return {}
