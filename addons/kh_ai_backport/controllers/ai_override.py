@@ -1286,48 +1286,45 @@ class AIControllerOverride(AIController):
                     )
                     return {}
 
-                # البحث الذكي: رقم المشروع أولاً، ثم الكلمة المفردة
+                # ── Fuzzy Match: جيب كل المشاريع وطابق بـ Python ──────────
                 import re as _re
-                _keyword = project_keyword.strip()
+                from difflib import SequenceMatcher as _SM
 
-                # 1. إذا في رقم مشروع (5 أرقام) → ابحث بيه مباشرة (الأدق)
-                _num_match = _re.search(r'\b(\d{4,5})\b', _keyword)
-                if _num_match:
-                    _search_term = _num_match.group(1)
-                else:
-                    # 2. خذ أطول كلمة إنجليزية (عادةً اسم العائلة)
-                    _eng_words = [w for w in _keyword.split() if _re.match(r'[A-Za-z]{4,}', w)
-                                  and w.lower() not in ('project', 'matar', 'ahmed', 'ahmad', 'the')]
-                    if _eng_words:
-                        _search_term = max(_eng_words, key=len)
-                    else:
-                        # 3. للعربي: جرب كل الكلمات بـ OR (حد أقصى 3 كلمات)
-                        _all_words = [w for w in _keyword.split() if len(w) > 2][:3]
-                        _search_term = _all_words[-1] if _all_words else _keyword
-                        # آخر كلمة عادةً اسم العائلة (الأهم في البحث)
+                _keyword = project_keyword.strip().lower()
 
-                _logger.info(f"KH_AI project search: keyword='{_keyword}' → term='{_search_term}'")
-
-                # بناء domain — إذا عندنا كلمات عربية متعددة، ابحث بكل واحدة
-                _arabic_words = [w for w in _keyword.split()
-                                 if len(w) > 2 and not _re.match(r'[A-Za-z0-9]', w)]
-                if len(_arabic_words) > 1 and not _num_match:
-                    # OR بين كل الكلمات العربية
-                    _or_conditions = []
-                    for _aw in _arabic_words:
-                        _or_conditions += [('name', 'ilike', _aw), ('partner_id.name', 'ilike', _aw)]
-                    _or_part = ['|'] * (len(_or_conditions) - 1) + _or_conditions
-                    _domain = ['&', ('company_id', '=', env.company.id)] + _or_part
-                else:
-                    _domain = ['&', ('company_id', '=', env.company.id),
-                               '|', ('name', 'ilike', _search_term),
-                                    ('partner_id.name', 'ilike', _search_term)]
-
-                projects = env['project.project'].search_read(
-                    _domain,
+                # جيب كل المشاريع (بدون SQL filter)
+                _all_projects = env['project.project'].search_read(
+                    [('company_id', '=', env.company.id)],
                     fields=['id', 'name', 'partner_id', 'date_start', 'date'],
-                    limit=10,
+                    limit=500,
                 )
+
+                def _score(proj):
+                    """نسبة التطابق بين الـ keyword وأسماء المشروع والعميل"""
+                    proj_name    = str(proj.get('name') or '').lower()
+                    partner_name = str(proj['partner_id'][1] if proj.get('partner_id') else '').lower()
+                    combined     = proj_name + ' ' + partner_name
+
+                    # تطابق مباشر بالكلمات
+                    kw_words = [w for w in _keyword.split() if len(w) > 1]
+                    word_hits = sum(1 for w in kw_words if w in combined)
+
+                    # تطابق رقم المشروع
+                    num_match = _re.search(r'\d{4,5}', _keyword)
+                    num_bonus = 10 if num_match and num_match.group() in proj_name else 0
+
+                    # تطابق fuzzy
+                    fuzzy = _SM(None, _keyword, proj_name).ratio()
+
+                    return word_hits * 3 + num_bonus + fuzzy
+
+                # رتب وخذ الأفضل
+                _scored = sorted(_all_projects, key=_score, reverse=True)
+                _best_score = _score(_scored[0]) if _scored else 0
+
+                _logger.info(f"KH_AI fuzzy search: '{project_keyword}' → best='{_scored[0]['name'] if _scored else None}' score={_best_score:.2f}")
+
+                projects = [p for p in _scored[:5] if _score(p) > 0.3]
 
                 # ترتيب: الأكثر تطابقاً أولاً
                 def match_score(p):
