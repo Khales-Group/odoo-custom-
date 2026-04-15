@@ -1281,15 +1281,33 @@ class AIControllerOverride(AIController):
                     )
                     return {}
 
-                # البحث عن المشروع بالكلمة المفتاحية
+                # البحث الذكي: كل كلمة على حدا بـ OR
+                words = [w for w in project_keyword.split() if len(w) > 2]
+                if not words:
+                    words = [project_keyword]
+
+                # بناء domain: اسم يحتوي على أي كلمة من الكلمات
+                domain = ['|'] * (len(words) - 1) if len(words) > 1 else []
+                for w in words:
+                    domain.append(('name', 'ilike', w))
+                domain.append(('company_id', '=', env.company.id))
+
                 projects = env['project.project'].search_read(
-                    [('name', 'ilike', project_keyword), ('company_id', '=', env.company.id)],
+                    domain,
                     fields=['id', 'name', 'partner_id', 'date_start', 'date'],
-                    limit=5,
+                    limit=10,
                 )
+
+                # ترتيب النتائج: الأكثر تطابقاً أولاً
+                def match_score(p):
+                    name_lower = str(p['name']).lower()
+                    return sum(1 for w in words if w.lower() in name_lower)
+
+                projects = sorted(projects, key=match_score, reverse=True)[:5]
+
                 if not projects:
                     self._post_message(
-                        f"{AGENT_PERSONA}: 🔍 لم أجد مشروعاً يحتوي على '{project_keyword}'.",
+                        f"{AGENT_PERSONA}: 🔍 لم أجد مشروعاً يحتوي على أي من الكلمات: {', '.join(words)}",
                         mail_message_id
                     )
                     return {}
