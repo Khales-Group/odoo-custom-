@@ -1364,12 +1364,22 @@ class AIControllerOverride(AIController):
                         all_partner_ids.append(partner_id)
 
                     if _family_name:
-                        _similar = env['res.partner'].sudo().search_read(
-                            [('name', 'ilike', _family_name)],
-                            fields=['id', 'name'], limit=20
-                        )
-                        all_partner_ids += [p['id'] for p in _similar]
-                        _logger.info(f"KH_AI: family_name='{_family_name}' → {len(_similar)} partners: {[p['name'] for p in _similar]}")
+                        # جرب الاسم كامل + بدون Al prefix (Aldhaheri → Dhaheri)
+                        _search_variants = [_family_name]
+                        if _family_name.lower().startswith('al') and len(_family_name) > 4:
+                            _search_variants.append(_family_name[2:])  # Aldhaheri → dhaheri
+
+                        _seen_ids = set(all_partner_ids)
+                        for _variant in _search_variants:
+                            _similar = env['res.partner'].sudo().search_read(
+                                [('name', 'ilike', _variant)],
+                                fields=['id', 'name'], limit=20
+                            )
+                            for p in _similar:
+                                if p['id'] not in _seen_ids:
+                                    all_partner_ids.append(p['id'])
+                                    _seen_ids.add(p['id'])
+                        _logger.info(f"KH_AI: family='{_family_name}' variants={_search_variants} → {len(all_partner_ids)} partners total")
 
                     all_partner_ids = list(set(all_partner_ids))
 
