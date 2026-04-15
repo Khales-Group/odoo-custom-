@@ -1160,7 +1160,7 @@ class AIControllerOverride(AIController):
                         limit=limit,
                     )
                     # Filter to PROJECT: prefix
-                    projects_orm = [p for p in projects_orm if str(p['name']).startswith('PROJECT:')]
+                    projects_orm = [p for p in projects_orm if str(p['name']).lower().startswith('project:')]
                     rows = [{'project': p['name'], 'total_cost': 0, 'total_hours': p.get('allocated_hours') or 0, 'team_size': 0} for p in projects_orm]
 
                 if not rows:
@@ -1198,12 +1198,12 @@ class AIControllerOverride(AIController):
                                 pass
                         return s
 
-                    # Only show PROJECT: prefixed projects
-                    rows = [r for r in rows if _clean_name(r['project']).startswith('PROJECT:')]
+                    # Only show Project: prefixed projects (case-insensitive)
+                    rows = [r for r in rows if _clean_name(r['project']).lower().startswith('project:')]
 
                     if not rows:
                         self._post_message(
-                            f"{AGENT_PERSONA}: 🔍 لم أجد مشاريع تبدأ بـ 'PROJECT:' أو لا توجد بيانات تحليلية مرتبطة بها.",
+                            f"{AGENT_PERSONA}: 🔍 لم أجد مشاريع تبدأ بـ 'Project:' أو لا توجد بيانات تحليلية مرتبطة بها.",
                             mail_message_id
                         )
                         return {}
