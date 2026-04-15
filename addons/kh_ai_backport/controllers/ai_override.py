@@ -1288,6 +1288,7 @@ class AIControllerOverride(AIController):
             # ── 10. Project Financial Status ─────────────────────────────────
             elif report == 'project_financial':
                 project_keyword = (args.get('project_name') or '').strip()
+
                 if not project_keyword:
                     self._post_message(
                         f"{AGENT_PERSONA}: ⚠️ يرجى تحديد اسم المشروع أو رقمه.",
@@ -1295,77 +1296,55 @@ class AIControllerOverride(AIController):
                     )
                     return {}
 
-                # ── Fuzzy Match: جيب كل المشاريع وطابق بـ Python ──────────
-                import re as _re
-                from difflib import SequenceMatcher as _SM
-
-                _keyword = project_keyword.strip().lower()
-
-                # جيب كل المشاريع (بدون SQL filter)
-                _all_projects = env['project.project'].search_read(
-                    [('company_id', '=', env.company.id)],
-                    fields=['id', 'name', 'partner_id', 'date_start', 'date'],
-                    limit=500,
+                # جيب كل المشاريع بدون أي filter — ثم طابق بـ Python
+                _all = env['project.project'].sudo().search_read(
+                    [], fields=['id', 'name', 'partner_id', 'date_start', 'date'], limit=500
                 )
 
-                def _score(proj):
-                    """نسبة التطابق بين الـ keyword وأسماء المشروع والعميل"""
-                    proj_name    = str(proj.get('name') or '').lower()
-                    partner_name = str(proj['partner_id'][1] if proj.get('partner_id') else '').lower()
-                    combined     = proj_name + ' ' + partner_name
+                from difflib import SequenceMatcher as _SM
+                import re as _re
 
-                    # تطابق مباشر بالكلمات
-                    kw_words = [w for w in _keyword.split() if len(w) > 1]
-                    word_hits = sum(1 for w in kw_words if w in combined)
+                _kw = project_keyword.lower()
 
-                    # تطابق رقم المشروع
-                    num_match = _re.search(r'\d{4,5}', _keyword)
-                    num_bonus = 10 if num_match and num_match.group() in proj_name else 0
+                def _score(p):
+                    _n = str(p.get('name') or '').lower()
+                    _pa = str(p['partner_id'][1] if p.get('partner_id') else '').lower()
+                    _full = _n + ' ' + _pa
+                    # نقاط الكلمات
+                    _hits = sum(1 for w in _kw.split() if len(w) > 1 and w in _full)
+                    # بونس الرقم
+                    _num = _re.search(r'\d{4,5}', _kw)
+                    _nb  = 10 if _num and _num.group() in _n else 0
+                    # fuzzy
+                    _fz  = _SM(None, _kw, _n).ratio()
+                    return _hits * 3 + _nb + _fz
 
-                    # تطابق fuzzy
-                    fuzzy = _SM(None, _keyword, proj_name).ratio()
+                _ranked = sorted(_all, key=_score, reverse=True)
+                _best   = _ranked[0] if _ranked else None
+                _best_score = _score(_best) if _best else 0
 
-                    return word_hits * 3 + num_bonus + fuzzy
+                _logger.info(f"KH_AI project_financial: kw='{project_keyword}' best='{_best['name'] if _best else None}' score={_best_score:.2f}")
 
-                # رتب وخذ الأفضل
-                _scored = sorted(_all_projects, key=_score, reverse=True)
-                _best_score = _score(_scored[0]) if _scored else 0
-
-                _logger.info(f"KH_AI fuzzy search: '{project_keyword}' → best='{_scored[0]['name'] if _scored else None}' score={_best_score:.2f}")
-
-                projects = [p for p in _scored[:5] if _score(p) > 0.3]
-
-                # ترتيب: الأكثر تطابقاً أولاً
-                def match_score(p):
-                    name_lower = str(p['name']).lower()
-                    partner_lower = str(p.get('partner_id', ['', ''])[1] if p.get('partner_id') else '').lower()
-                    combined = name_lower + ' ' + partner_lower
-                    return sum(1 for w in words if w.lower() in combined)
-
-                projects = sorted(projects, key=match_score, reverse=True)[:5]
-
-                if not projects:
+                if not _best or _best_score < 0.5:
                     self._post_message(
-                        f"{AGENT_PERSONA}: 🔍 لم أجد مشروعاً يحتوي على: '{project_keyword}'\n"
-                        f"💡 جرب البحث بالرقم مثل '00033' أو بجزء من الاسم الإنجليزي.",
+                        f"{AGENT_PERSONA}: 🔍 لم أجد مشروعاً يطابق '{project_keyword}'.",
                         mail_message_id
                     )
                     return {}
+
+                projects = [_best]
 
                 report_lines = [f"{AGENT_PERSONA}: 📊 **الوضع المالي للمشروع**\n"]
                 for proj in projects:
                     partner    = proj['partner_id'][1] if proj.get('partner_id') else 'غير محدد'
                     partner_id = proj['partner_id'][0] if proj.get('partner_id') else None
 
-                    # ── فواتير العميل (out_invoice) ─────────────────────────────
                     total_invoiced = total_paid = total_due = 0.0
                     inv_count = 0
                     if partner_id:
                         inv = env['account.move'].read_group(
-                            [('move_type', '=', 'out_invoice'),
-                             ('state', '=', 'posted'),
-                             ('partner_id', '=', partner_id),
-                             ('company_id', '=', env.company.id)],
+                            [('move_type', '=', 'out_invoice'), ('state', '=', 'posted'),
+                             ('partner_id', '=', partner_id), ('company_id', '=', env.company.id)],
                             fields=['amount_total:sum', 'amount_residual:sum', 'id:count'],
                             groupby=[],
                         )
@@ -1375,36 +1354,29 @@ class AIControllerOverride(AIController):
                             total_paid     = total_invoiced - total_due
                             inv_count      = int(inv[0].get('id') or 0)
 
-                    # ── مصاريف المشروع (in_invoice + حسابات تحليلية) ──────
-                    total_bills = total_bill_paid = 0.0
-                    bill_count = 0
+                    total_bills = bill_due = 0.0
+                    bill_count  = 0
                     if partner_id:
                         bills = env['account.move'].read_group(
-                            [('move_type', '=', 'in_invoice'),
-                             ('state', '=', 'posted'),
-                             ('partner_id', '=', partner_id),
-                             ('company_id', '=', env.company.id)],
+                            [('move_type', '=', 'in_invoice'), ('state', '=', 'posted'),
+                             ('partner_id', '=', partner_id), ('company_id', '=', env.company.id)],
                             fields=['amount_total:sum', 'amount_residual:sum', 'id:count'],
                             groupby=[],
                         )
                         if bills:
-                            total_bills     = float(bills[0].get('amount_total') or 0)
-                            bill_due        = float(bills[0].get('amount_residual') or 0)
-                            total_bill_paid = total_bills - bill_due
-                            bill_count      = int(bills[0].get('id') or 0)
+                            total_bills = float(bills[0].get('amount_total') or 0)
+                            bill_due    = float(bills[0].get('amount_residual') or 0)
+                            bill_count  = int(bills[0].get('id') or 0)
 
-                    # ── الحسابات التحليلية للمشروع ──────────────────────
-                    analytic_cost = 0.0
                     analytic_lines = env['account.analytic.line'].search_read(
                         [('project_id', '=', proj['id']), ('amount', '<', 0)],
                         fields=['amount'],
                     )
                     analytic_cost = abs(sum(float(l['amount']) for l in analytic_lines))
 
-                    # ── ملخص ──────────────────────────────────────────
-                    total_cost = total_bills + analytic_cost
-                    profit     = total_invoiced - total_cost
-                    margin_pct = round(profit / total_invoiced * 100, 1) if total_invoiced else 0
+                    total_cost  = total_bills + analytic_cost
+                    profit      = total_invoiced - total_cost
+                    margin_pct  = round(profit / total_invoiced * 100, 1) if total_invoiced else 0
                     margin_icon = '🟢' if margin_pct >= 30 else '🟡' if margin_pct >= 10 else '🔴'
 
                     report_lines += [
@@ -1417,9 +1389,8 @@ class AIControllerOverride(AIController):
                         f"  • مدفوع:       **{total_paid:,.2f}**",
                         f"  • متبقي (دين): **{total_due:,.2f}**",
                         "",
-                        f"📥 **مصاريف المشروع ({bill_count} فاتورة مورد):**",
-                        f"  • إجمالي: **{total_bills:,.2f}**",
-                        f"  • مدفوع: **{total_bill_paid:,.2f}**",
+                        f"📥 **مصاريف ({bill_count} فاتورة مورد + حسابات تحليلية):**",
+                        f"  • فواتير موردين: **{total_bills:,.2f}**",
                         f"  • حسابات تحليلية: **{analytic_cost:,.2f}**",
                         "",
                         f"**📊 النتيجة:**",
@@ -1427,6 +1398,7 @@ class AIControllerOverride(AIController):
                         "─" * 45,
                     ]
                 self._post_message("\n".join(report_lines), mail_message_id)
+
 
             else:
                 available = [
