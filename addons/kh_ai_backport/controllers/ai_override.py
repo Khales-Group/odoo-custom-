@@ -98,7 +98,15 @@ Use when user asks for reports, margins, trends, KPIs, breakdowns, or project st
 - "show financial status of project X"  → report_type='project_financial', project_name='X'
 - "شو وضع مشروع X ماليا"               → report_type='project_financial', project_name='X'
 - "شو مصاريف مشروع X"                  → report_type='project_financial', project_name='X'
+- "شو الوضع المالي تبعو/تبعها/عليه"   → SCAN HISTORY for project name, report_type='project_financial'
 - "كم فلوس صرفنا على مشروع X"          → report_type='project_financial', project_name='X'
+
+CRITICAL CONTEXT RULE: The user often refers to a project mentioned EARLIER in the conversation
+using words like: تبعو, تبعها, عليه, عنه, هذا المشروع, it, this project.
+In this case you MUST scan the conversation history, find the project name or number,
+and pass it as project_name. NEVER return empty project_name.
+Example: User said "Project: 00033 - Ahmed Matar Aldhaheri" then asks "شو الوضع المالي تبعو"
+→ extract "00033" from history and pass project_name='00033'.
 ALWAYS use this tool for ANY financial/project question. NEVER say "I cannot calculate".
 
 ### WRITE Tools (Fixed):
@@ -330,13 +338,13 @@ def _build_tools() -> types.Tool:
                 "project_name": types.Schema(
                     type=types.Type.STRING,
                     description=(
-                        "For report_type='project_financial': keyword to search project by. "
-                        "CRITICAL: If the user writes an Arabic name, transliterate it to English too. "
-                        "Pass the most distinctive part: family name or project number. "
-                        "Examples: user says 'احمد الظاهري' → pass 'Aldhaheri' or '00033'. "
-                        "User says 'مشروع الظاهري' → pass 'Aldhaheri'. "
-                        "User says 'project 00033' → pass '00033'. "
-                        "Prefer the English surname or project number over Arabic transliteration."
+                        "For report_type='project_financial': the FULL project name or any keyword. "
+                        "CRITICAL: Check the entire conversation history for project context. "
+                        "If user said 'شو الوضع المالي تبعو' after mentioning a project, "
+                        "extract the project name/number from previous messages. "
+                        "Pass the COMPLETE project name as mentioned — e.g. "
+                        "'Project: 00033 - Ahmed Matar Aldhaheri | احمد الظاهري' or just '00033'. "
+                        "NEVER pass an empty string. ALWAYS extract from context if not in current message."
                     )
                 ),
             },
@@ -418,16 +426,17 @@ class AIControllerOverride(AIController):
                     break
 
             classifier_prompt = (
-                "Classify this user request into ONE category:\n"
+                "You are classifying a user message in a conversation about an ERP system.\n\n"
+                "Classify into ONE category:\n"
                 "- ODOO_ACTION  -> create/update/delete Odoo records\n"
-                "- ODOO_READ    -> search/find/list/analyze internal Odoo data, "
-                "financial reports, project status, costs, invoices\n"
-                "- WEB_SEARCH   -> external internet info (prices, news, contacts)\n"
-                "- CHAT         -> greetings or completely unrelated questions\n\n"
-                "ODOO_READ examples: 'شو وضع مشروع X ماليا', 'which project costs most', "
-                "'show invoices', 'profit margins', 'top customers', 'كم صرفنا على مشروع'\n\n"
-                f"User message: {last_user_msg}\n\n"
-                "Reply with ONLY the category name, nothing else."
+                "- ODOO_READ    -> any question about data, reports, financial status, projects, invoices\n"
+                "- WEB_SEARCH   -> external internet info only\n"
+                "- CHAT         -> pure greetings with NO business intent\n\n"
+                "IMPORTANT: If the message contains pronouns referring to a previously mentioned "
+                "project/record (تبعو, تبعها, عليه, عنه, it, this, هذا), classify as ODOO_READ.\n\n"
+                f"Conversation context (last few messages):\n{chat_history[-500:]}\n\n"
+                f"Latest user message: {last_user_msg}\n\n"
+                "Reply with ONLY the category name."
             )
 
             classify_resp = client.models.generate_content(
