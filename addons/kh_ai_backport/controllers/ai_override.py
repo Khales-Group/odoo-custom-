@@ -86,15 +86,20 @@ Use when user asks to "find", "search", "show", "list", "ابحث", "دور", "�
 - You can filter by any field
 
 ### ANALYTICS Tool (ai_analytics):
-Use when user asks for reports, margins, trends, KPIs, breakdowns:
-- "profit margins by category" → report_type='profit_by_category'
-- "top selling products"       → report_type='top_products'
-- "revenue by customer"        → report_type='revenue_by_partner'
-- "expense breakdown"          → report_type='expense_breakdown'
-- "invoice summary"            → report_type='invoice_summary'
-- "stock valuation"            → report_type='stock_valuation'
-- "sales pipeline"             → report_type='sales_pipeline'
-ALWAYS use this tool for any financial analysis question instead of saying "I cannot calculate".
+Use when user asks for reports, margins, trends, KPIs, breakdowns, or project status:
+- "profit margins by category"          → report_type='profit_by_category'
+- "top selling products"                → report_type='top_products'
+- "revenue by customer"                 → report_type='revenue_by_partner'
+- "expense breakdown"                   → report_type='expense_breakdown'
+- "invoice summary"                     → report_type='invoice_summary'
+- "stock valuation"                     → report_type='stock_valuation'
+- "sales pipeline"                      → report_type='sales_pipeline'
+- "which project costs most"            → report_type='project_cost'
+- "show financial status of project X"  → report_type='project_financial', project_name='X'
+- "شو وضع مشروع X ماليا"               → report_type='project_financial', project_name='X'
+- "شو مصاريف مشروع X"                  → report_type='project_financial', project_name='X'
+- "كم فلوس صرفنا على مشروع X"          → report_type='project_financial', project_name='X'
+ALWAYS use this tool for ANY financial/project question. NEVER say "I cannot calculate".
 
 ### WRITE Tools (Fixed):
 Only use when user EXPLICITLY commands creation/modification:
@@ -304,7 +309,7 @@ def _build_tools() -> types.Tool:
                     type=types.Type.STRING,
                     description=(
                         "Type of report. One of: "
-                        "'profit_by_category', 'revenue_by_partner', 'project_cost', 'timesheet_hours', "
+                        "'profit_by_category', 'revenue_by_partner', 'project_cost', 'project_financial', 'timesheet_hours', "
                         "'top_products', 'expense_breakdown', "
                         "'invoice_summary', 'stock_valuation', "
                         "'sales_pipeline'"
@@ -321,6 +326,13 @@ def _build_tools() -> types.Tool:
                 "limit": types.Schema(
                     type=types.Type.INTEGER,
                     description="Max rows to return (default 10)"
+                ),
+                "project_name": types.Schema(
+                    type=types.Type.STRING,
+                    description=(
+                        "For report_type='project_financial': the project name or keyword to search. "
+                        "Extract from user message. Example: 'الظاهري', 'Ahmad', '00033'"
+                    )
                 ),
             },
             required=["report_type"]
@@ -403,9 +415,12 @@ class AIControllerOverride(AIController):
             classifier_prompt = (
                 "Classify this user request into ONE category:\n"
                 "- ODOO_ACTION  -> create/update/delete Odoo records\n"
-                "- ODOO_READ    -> search/find/list internal Odoo data\n"
-                "- WEB_SEARCH   -> external info (prices, contacts, news)\n"
-                "- CHAT         -> general question, advice, analysis\n\n"
+                "- ODOO_READ    -> search/find/list/analyze internal Odoo data, "
+                "financial reports, project status, costs, invoices\n"
+                "- WEB_SEARCH   -> external internet info (prices, news, contacts)\n"
+                "- CHAT         -> greetings or completely unrelated questions\n\n"
+                "ODOO_READ examples: 'شو وضع مشروع X ماليا', 'which project costs most', "
+                "'show invoices', 'profit margins', 'top customers', 'كم صرفنا على مشروع'\n\n"
                 f"User message: {last_user_msg}\n\n"
                 "Reply with ONLY the category name, nothing else."
             )
@@ -1255,11 +1270,69 @@ class AIControllerOverride(AIController):
                     )
                 self._post_message("\n".join(lines), mail_message_id)
 
+
+            # ── 10. Project Financial Status ─────────────────────────────────
+            elif report == 'project_financial':
+                project_keyword = (args.get('project_name') or '').strip()
+                if not project_keyword:
+                    self._post_message(
+                        f"{AGENT_PERSONA}: ⚠️ يرجى تحديد اسم المشروع أو رقمه.",
+                        mail_message_id
+                    )
+                    return {}
+
+                projects = env['project.project'].search_read(
+                    [('name', 'ilike', project_keyword), ('company_id', '=', env.company.id)],
+                    fields=['id', 'name', 'partner_id', 'date_start', 'date',
+                            'allocated_hours', 'total_hours_spent'],
+                    limit=5,
+                )
+                if not projects:
+                    self._post_message(
+                        f"{AGENT_PERSONA}: 🔍 لم أجد مشروعاً يحتوي على '{project_keyword}'.",
+                        mail_message_id
+                    )
+                    return {}
+
+                report_lines = [f"{AGENT_PERSONA}: 📊 **الوضع المالي للمشروع**\n"]
+                for proj in projects:
+                    partner    = proj['partner_id'][1] if proj.get('partner_id') else 'غير محدد'
+                    partner_id = proj['partner_id'][0] if proj.get('partner_id') else None
+                    alloc_h    = float(proj.get('allocated_hours') or 0)
+                    spent_h    = float(proj.get('total_hours_spent') or 0)
+                    total_invoiced = total_paid = total_due = 0.0
+                    if partner_id:
+                        inv = env['account.move'].read_group(
+                            [('move_type', '=', 'out_invoice'), ('state', '=', 'posted'),
+                             ('partner_id', '=', partner_id), ('company_id', '=', env.company.id)],
+                            fields=['amount_total:sum', 'amount_residual:sum'], groupby=[],
+                        )
+                        if inv:
+                            total_invoiced = float(inv[0].get('amount_total') or 0)
+                            total_due      = float(inv[0].get('amount_residual') or 0)
+                            total_paid     = total_invoiced - total_due
+
+                    report_lines += [
+                        f"**{proj['name']}**",
+                        f"👤 العميل: {partner}",
+                        f"📅 الفترة: {proj.get('date_start') or '-'} → {proj.get('date') or '-'}",
+                        "",
+                        "**💰 الفواتير:**",
+                        f"• إجمالي الفواتير:  **{total_invoiced:,.0f}**",
+                        f"• المدفوع:         **{total_paid:,.0f}**",
+                        f"• المتبقي (دين): **{total_due:,.0f}**",
+                        "",
+                        "**⏱️ الساعات:**",
+                        f"• مخصصة: {alloc_h:,.0f} h | منجزة: {spent_h:,.0f} h",
+                        "─" * 40,
+                    ]
+                self._post_message("\n".join(report_lines), mail_message_id)
+
             else:
                 available = [
                     'profit_by_category', 'revenue_by_partner', 'top_products',
                     'expense_breakdown', 'invoice_summary', 'stock_valuation',
-                    'sales_pipeline', 'project_cost', 'timesheet_hours'
+                    'sales_pipeline', 'project_cost', 'project_financial', 'timesheet_hours'
                 ]
                 self._post_message(
                     f"{AGENT_PERSONA}: ⚠️ نوع التقرير '{report}' غير معروف.\n"
