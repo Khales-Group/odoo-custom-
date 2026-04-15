@@ -1339,12 +1339,39 @@ class AIControllerOverride(AIController):
                     partner    = proj['partner_id'][1] if proj.get('partner_id') else 'غير محدد'
                     partner_id = proj['partner_id'][0] if proj.get('partner_id') else None
 
+                    # ── جمع كل partners المرتبطة بالمشروع (الزبون + أطراف مشابهة) ──
+                    # ابحث عن كل partners تحت نفس الشركة الأم أو بنفس الاسم
+                    all_partner_ids = []
+                    if partner_id:
+                        all_partner_ids.append(partner_id)
+                        # ابحث عن child partners (جهات اتصال تابعة)
+                        child_partners = env['res.partner'].sudo().search_read(
+                            [('commercial_partner_id', '=', partner_id)],
+                            fields=['id'], limit=20
+                        )
+                        all_partner_ids += [p['id'] for p in child_partners]
+
+                        # ابحث بالاسم المشابه لتغطية "Client : Name" vs "Name"
+                        proj_partner_name = str(proj['partner_id'][1] if proj.get('partner_id') else '')
+                        # خذ الكلمات المميزة من الاسم
+                        _name_words = [w for w in proj_partner_name.split() if len(w) > 3
+                                       and w.lower() not in ('client', 'matar', 'ahmed', 'ahmad')]
+                        if _name_words:
+                            _search_word = max(_name_words, key=len)
+                            similar = env['res.partner'].sudo().search_read(
+                                [('name', 'ilike', _search_word)],
+                                fields=['id'], limit=10
+                            )
+                            all_partner_ids += [p['id'] for p in similar]
+
+                        all_partner_ids = list(set(all_partner_ids))
+
                     total_invoiced = total_paid = total_due = 0.0
                     inv_count = 0
-                    if partner_id:
+                    if all_partner_ids:
                         inv = env['account.move'].read_group(
                             [('move_type', '=', 'out_invoice'), ('state', '=', 'posted'),
-                             ('partner_id', '=', partner_id), ('company_id', '=', env.company.id)],
+                             ('partner_id', 'in', all_partner_ids), ('company_id', '=', env.company.id)],
                             fields=['amount_total:sum', 'amount_residual:sum', 'id:count'],
                             groupby=[],
                         )
@@ -1356,10 +1383,10 @@ class AIControllerOverride(AIController):
 
                     total_bills = bill_due = 0.0
                     bill_count  = 0
-                    if partner_id:
+                    if all_partner_ids:
                         bills = env['account.move'].read_group(
                             [('move_type', '=', 'in_invoice'), ('state', '=', 'posted'),
-                             ('partner_id', '=', partner_id), ('company_id', '=', env.company.id)],
+                             ('partner_id', 'in', all_partner_ids), ('company_id', '=', env.company.id)],
                             fields=['amount_total:sum', 'amount_residual:sum', 'id:count'],
                             groupby=[],
                         )
