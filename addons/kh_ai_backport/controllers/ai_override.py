@@ -116,14 +116,14 @@ Only use when user EXPLICITLY commands creation/modification:
 - ai_create_bank_stmt   → "أنشئ كشف بنكي", "bank statement"
 - ai_create_rfq         → "أنشئ RFQ", "اطلب من مورد"
 
-### SEARCH + CREATE Pattern (RFQ):
-If user asks to create RFQ for a vendor:
-1. ALWAYS first call ai_dynamic_read on res.partner to check if vendor exists AND has email/phone
-2. If vendor exists BUT has no email → classify as WEB_SEARCH to find their contact info first
-3. If vendor has email → call ai_create_rfq directly with vendor_email and vendor_phone filled
-4. NEVER create RFQ with empty email — email is REQUIRED to send the RFQ to the vendor
-
-CRITICAL: An RFQ without vendor email is useless. Always ensure email exists before creating.
+### CREATE RFQ Pattern:
+If user asks to create/send RFQ or طلب تسعير for a vendor:
+→ Call ai_create_rfq DIRECTLY. Do NOT search first.
+→ The tool handles finding/creating the vendor automatically.
+→ Pass vendor_name exactly as mentioned by the user.
+→ If you found vendor contact info from web search earlier in the conversation, pass it too.
+→ NEVER say "vendor not found" — the tool creates new vendors automatically.
+→ The tool will auto-search the internet for email if missing.
 
 ### Google Search (Grounding):
 For external info (market prices, supplier contacts, news) — 
@@ -295,9 +295,11 @@ def _build_tools() -> types.Tool:
     ai_create_rfq = types.FunctionDeclaration(
         name="ai_create_rfq",
         description=(
-            "Create a Request for Quotation (Purchase Order). "
-            "Only when explicitly commanded. "
-            "Check if vendor exists first using ai_dynamic_read."
+            "Create a Request for Quotation (RFQ/Purchase Order). "
+            "Use when user says: إنشاء RFQ, طلب تسعير, send RFQ, اطلب من مورد, خلينا نبعث طلب. "
+            "Do NOT pre-check if vendor exists — this tool handles it automatically. "
+            "Vendor will be created if not found in system. "
+            "Email will be searched online automatically if missing."
         ),
         parameters=types.Schema(
             type=types.Type.OBJECT,
@@ -868,7 +870,11 @@ class AIControllerOverride(AIController):
         notes        = args.get('notes', '')
 
         # إيجاد أو إنشاء المورد
+        # بحث مرن — جزئي أو كامل
         vendor = env['res.partner'].search([('name', '=ilike', vendor_name)], limit=1)
+        if not vendor:
+            # جرب بحث جزئي
+            vendor = env['res.partner'].search([('name', 'ilike', vendor_name)], limit=1)
         if not vendor:
             vendor = env['res.partner'].create({
                 'name':       vendor_name,
