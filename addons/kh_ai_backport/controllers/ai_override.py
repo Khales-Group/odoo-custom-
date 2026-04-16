@@ -946,16 +946,32 @@ class AIControllerOverride(AIController):
                 from google.genai import types as _types
                 _api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
                 _gclient = genai.Client(api_key=_api_key)
+                # محاولة أولى: بحث مباشر بالاسم
                 _search_resp = _gclient.models.generate_content(
                     model="gemini-2.5-flash",
-                    contents=[f"Find the official email address and phone number of the company '{vendor_name}' in UAE/Dubai. Return ONLY in this format: EMAIL: xxx@xxx.com | PHONE: +971xxxxxxx. If not found write: NOT_FOUND"],
+                    contents=[f"Search the web for the official contact email and phone of '{vendor_name}'. Return ONLY: EMAIL: xxx@xxx.com | PHONE: +971xxxxxxx"],
                     config=_types.GenerateContentConfig(
                         tools=[_types.Tool(google_search=_types.GoogleSearch())],
                         temperature=0.0,
                     )
                 )
                 _result = (getattr(_search_resp, 'text', '') or '').strip()
-                _logger.info(f"KH_AI RFQ web search result for '{vendor_name}': {_result}")
+
+                # محاولة ثانية لو NOT_FOUND: بحث بصيغة مختلفة
+                if 'NOT_FOUND' in _result or '@' not in _result:
+                    _search_resp2 = _gclient.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=[f"What is the official website and email of '{vendor_name}' company? Search online and return the email address."],
+                        config=_types.GenerateContentConfig(
+                            tools=[_types.Tool(google_search=_types.GoogleSearch())],
+                            temperature=0.0,
+                        )
+                    )
+                    _result2 = (getattr(_search_resp2, 'text', '') or '').strip()
+                    if '@' in _result2:
+                        _result = _result2
+                    _logger.info(f"KH_AI email retry result: {_result2[:100]}")
+                _logger.info(f"KH_AI RFQ web search result for '{vendor_name}': {_result[:150]}")
 
                 # استخرج الإيميل من النتيجة
                 import re as _re3
@@ -968,17 +984,17 @@ class AIControllerOverride(AIController):
                         final_phone = _phone_match.group().strip()
                     vendor.write({'email': final_email, 'phone': final_phone or vendor.phone})
                     self._post_message(
-                        f"{AGENT_PERSONA}: ✅ وجدت بيانات التواصل:\n"
+                        f"{AGENT_PERSONA}: ✅ وجدت بيانات {vendor_name}:\n"
                         f"• الإيميل: **{final_email}**\n"
                         f"• الهاتف: **{final_phone or 'غير متوفر'}**\n"
-                        f"جاري إنشاء طلب التسعير...",
+                        f"جاري إنشاء الطلب...",
                         mail_message_id
                     )
+                    # ✅ أكمل تلقائياً بدون سؤال
                 else:
                     self._post_message(
-                        f"{AGENT_PERSONA}: ⚠️ لم أتمكن من إيجاد إيميل لـ **{vendor_name}** تلقائياً.\n"
-                        f"نتيجة البحث: {_result[:200]}\n\n"
-                        f"يرجى إدخال الإيميل يدوياً وإعادة الطلب.",
+                        f"{AGENT_PERSONA}: ⚠️ لم أتمكن من إيجاد إيميل لـ **{vendor_name}**.\n"
+                        f"يرجى إرسال الإيميل مباشرة: 'إيميل {vendor_name} هو info@example.com ثم أعد الطلب'",
                         mail_message_id
                     )
                     return {}
