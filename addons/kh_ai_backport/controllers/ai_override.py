@@ -129,10 +129,29 @@ CRITICAL: An RFQ without vendor email is useless. Always ensure email exists bef
 For external info (market prices, supplier contacts, news) — 
 answer directly using your grounding capability, no tool needed.
 
+## EXPERT SYSTEM BEHAVIOR — NEVER SAY "I CANNOT"
+You are an expert ERP consultant. When a request seems outside your tools, NEVER refuse.
+Instead, offer concrete options:
+
+Example 1 — User: "دور على أرخص موردين للألمنيوم في دبي"
+WRONG: "لا أستطيع البحث عن الأسعار الخارجية"
+RIGHT: "🤖 [Khales AI]: يمكنني مساعدتك بطريقتين:
+  1️⃣ **البحث في النظام** — أعرض لك الموردين الحاليين في Odoo وأسعارهم السابقة
+  2️⃣ **البحث في الإنترنت** — أبحث عن أفضل موردي الألمنيوم في دبي الآن
+  أيهما تفضل؟ أو الاثنين معاً؟"
+
+Example 2 — User asks something unclear:
+Don't say "I need more info". Say "هل تقصد X أم Y؟ أم تريد Z؟"
+
+Example 3 — User: "جهزلي تقرير المبيعات"
+Don't ask which report. Just run invoice_summary and say "هذا ملخص المبيعات، تريد تفاصيل أكثر؟"
+
+RULE: Always move the conversation FORWARD. Give value first, ask questions second.
+
 ## SAFETY
-- Never invent data
-- Never guess at financial amounts
-- Ask for clarification if the command is ambiguous
+- Never invent financial data
+- Never guess at financial amounts  
+- Ask for clarification ONLY when genuinely ambiguous — offer options, not dead ends
 """
 
 
@@ -356,6 +375,35 @@ def _build_tools() -> types.Tool:
         )
     )
 
+    # ── ASK USER (Clarification with options) ────────────────────
+    ai_ask_user = types.FunctionDeclaration(
+        name="ai_ask_user",
+        description=(
+            "Use when you need to clarify HOW to help — present options to the user. "
+            "NEVER use this to refuse. Use it to offer 2-3 concrete paths forward. "
+            "Example: user asks for supplier search → offer: internal Odoo search OR internet search."
+        ),
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "question": types.Schema(
+                    type=types.Type.STRING,
+                    description="The clarifying question to ask"
+                ),
+                "options": types.Schema(
+                    type=types.Type.ARRAY,
+                    items=types.Schema(type=types.Type.STRING),
+                    description="2-4 concrete options the user can choose from"
+                ),
+                "context": types.Schema(
+                    type=types.Type.STRING,
+                    description="Brief explanation of what you understood from the request"
+                ),
+            },
+            required=["question", "options"]
+        )
+    )
+
     return types.Tool(function_declarations=[
         ai_dynamic_read,
         ai_create_lead,
@@ -363,6 +411,7 @@ def _build_tools() -> types.Tool:
         ai_create_bank_stmt,
         ai_create_rfq,
         ai_analytics,
+        ai_ask_user,
     ])
 
 
@@ -595,6 +644,8 @@ class AIControllerOverride(AIController):
                 return self._tool_create_rfq(args, mail_message_id)
             elif name == "ai_analytics":
                 return self._tool_analytics(args, mail_message_id)
+            elif name == "ai_ask_user":
+                return self._tool_ask_user(args, mail_message_id)
             else:
                 self._post_message(f"⛔ أداة غير معروفة: {name}", mail_message_id)
                 return {}
@@ -1538,4 +1589,21 @@ class AIControllerOverride(AIController):
                 mail_message_id
             )
 
+        return {}
+
+    # ── ASK USER ─────────────────────────────────────────────────
+    def _tool_ask_user(self, args, mail_message_id):
+        """عرض خيارات للمستخدم بدل رفض الطلب"""
+        question = args.get('question', '')
+        options  = args.get('options', [])
+        context  = args.get('context', '')
+
+        lines = [f"{AGENT_PERSONA}: 🤔"]
+        if context:
+            lines.append(f"_{context}_\n")
+        lines.append(f"**{question}**\n")
+        for i, opt in enumerate(options, 1):
+            lines.append(f"{i}️⃣ {opt}")
+
+        self._post_message("\n".join(lines), mail_message_id)
         return {}
