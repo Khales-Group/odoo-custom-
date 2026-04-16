@@ -116,10 +116,14 @@ Only use when user EXPLICITLY commands creation/modification:
 - ai_create_bank_stmt   → "أنشئ كشف بنكي", "bank statement"
 - ai_create_rfq         → "أنشئ RFQ", "اطلب من مورد"
 
-### SEARCH + CREATE Pattern:
-If user asks to create RFQ for a NEW vendor:
-1. First call ai_dynamic_read on res.partner to check if vendor exists
-2. Then call ai_create_rfq with the result
+### SEARCH + CREATE Pattern (RFQ):
+If user asks to create RFQ for a vendor:
+1. ALWAYS first call ai_dynamic_read on res.partner to check if vendor exists AND has email/phone
+2. If vendor exists BUT has no email → classify as WEB_SEARCH to find their contact info first
+3. If vendor has email → call ai_create_rfq directly with vendor_email and vendor_phone filled
+4. NEVER create RFQ with empty email — email is REQUIRED to send the RFQ to the vendor
+
+CRITICAL: An RFQ without vendor email is useless. Always ensure email exists before creating.
 
 ### Google Search (Grounding):
 For external info (market prices, supplier contacts, news) — 
@@ -827,6 +831,68 @@ class AIControllerOverride(AIController):
             if vendor_phone and not vendor.phone: updates['phone'] = vendor_phone
             if updates:
                 vendor.write(updates)
+
+        # ── تحقق من الإيميل — إلزامي لإرسال الـ RFQ ──────────────
+        final_email = vendor_email or vendor.email
+        final_phone = vendor_phone or vendor.phone
+
+        if not final_email:
+            # ابحث في الإنترنت عن بيانات التواصل
+            self._post_message(
+                f"{AGENT_PERSONA}: 🔍 المورد **{vendor_name}** ليس لديه إيميل في النظام.\n"
+                f"جاري البحث في الإنترنت عن بيانات التواصل...",
+                mail_message_id
+            )
+            # محاولة الحصول على الإيميل عبر Gemini web search
+            try:
+                import google.generativeai as _genai_search
+                from google.genai import types as _types
+                _api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
+                _client  = __import__('google.genai', fromlist=['Client']).Client(api_key=_api_key)
+                _search_resp = _client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=[f"Find the official email address and phone number of '{vendor_name}' company in UAE. Return ONLY: EMAIL: xxx@xxx.com | PHONE: +971xxxxxxx"],
+                    config=_types.GenerateContentConfig(
+                        tools=[_types.Tool(google_search=_types.GoogleSearch())],
+                        temperature=0.1,
+                    )
+                )
+                _result = (getattr(_search_resp, 'text', '') or '').strip()
+                _logger.info(f"KH_AI RFQ web search result: {_result}")
+
+                # استخرج الإيميل من النتيجة
+                import re as _re3
+                _email_match = _re3.search(r'[\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,}', _result)
+                _phone_match = _re3.search(r'[+\d][\d\s\-]{8,}', _result)
+
+                if _email_match:
+                    final_email = _email_match.group()
+                    if _phone_match and not final_phone:
+                        final_phone = _phone_match.group().strip()
+                    vendor.write({'email': final_email, 'phone': final_phone or vendor.phone})
+                    self._post_message(
+                        f"{AGENT_PERSONA}: ✅ وجدت بيانات التواصل:\n"
+                        f"• الإيميل: **{final_email}**\n"
+                        f"• الهاتف: **{final_phone or 'غير متوفر'}**\n"
+                        f"جاري إنشاء طلب التسعير...",
+                        mail_message_id
+                    )
+                else:
+                    self._post_message(
+                        f"{AGENT_PERSONA}: ⚠️ لم أتمكن من إيجاد إيميل لـ **{vendor_name}** تلقائياً.\n"
+                        f"نتيجة البحث: {_result[:200]}\n\n"
+                        f"يرجى إدخال الإيميل يدوياً وإعادة الطلب.",
+                        mail_message_id
+                    )
+                    return {}
+            except Exception as _e:
+                _logger.exception("KH_AI: web search for vendor email failed")
+                self._post_message(
+                    f"{AGENT_PERSONA}: ⚠️ المورد **{vendor_name}** ليس لديه إيميل.\n"
+                    f"يرجى إضافة الإيميل للمورد في النظام أولاً.",
+                    mail_message_id
+                )
+                return {}
 
         # بناء سطور الطلب
         order_lines = []
