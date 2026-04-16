@@ -138,18 +138,20 @@ Instead, offer concrete options:
 
 Example 1 — User: "دور على أرخص موردين للألمنيوم في دبي"
 WRONG: "لا أستطيع البحث عن الأسعار الخارجية"
-RIGHT: "🤖 [Khales AI]: يمكنني مساعدتك بطريقتين:
-  1️⃣ **البحث في النظام** — أعرض لك الموردين الحاليين في Odoo وأسعارهم السابقة
-  2️⃣ **البحث في الإنترنت** — أبحث عن أفضل موردي الألمنيوم في دبي الآن
-  أيهما تفضل؟ أو الاثنين معاً؟"
+RIGHT: Use ai_ask_user to offer: 1) بحث داخل النظام  2) بحث على الإنترنت  3) الاثنين
 
-Example 2 — User asks something unclear:
-Don't say "I need more info". Say "هل تقصد X أم Y؟ أم تريد Z؟"
+Example 2 — User picks a NUMBER like "2" after you showed options:
+CRITICAL: The number is a CHOICE, not data. Look at the previous options you offered.
+If option 2 was "إنشاء طلب تسعير" → use ai_ask_user to ask: "ما اسم المورد الذي تريد إرسال الطلب إليه؟"
+NEVER interpret a number as a vendor name or product name.
 
 Example 3 — User: "جهزلي تقرير المبيعات"
 Don't ask which report. Just run invoice_summary and say "هذا ملخص المبيعات، تريد تفاصيل أكثر؟"
 
-RULE: Always move the conversation FORWARD. Give value first, ask questions second.
+Example 4 — User picks option for RFQ but no vendor name mentioned:
+→ use ai_ask_user: "ما اسم المورد؟" before calling ai_create_rfq
+
+RULE: Always move the conversation FORWARD. Numbers are choices, not values.
 
 ## SAFETY
 - Never invent financial data
@@ -385,9 +387,12 @@ def _build_tools() -> types.Tool:
     ai_ask_user = types.FunctionDeclaration(
         name="ai_ask_user",
         description=(
-            "Use when you need to clarify HOW to help — present options to the user. "
-            "NEVER use this to refuse. Use it to offer 2-3 concrete paths forward. "
-            "Example: user asks for supplier search → offer: internal Odoo search OR internet search."
+            "Use when you need to clarify HOW to help — present options, or ask for missing info. "
+            "Use cases: "
+            "1) User needs to choose between paths (internal vs internet search) "
+            "2) User picked a numbered option but you need more info (e.g. vendor name for RFQ) "
+            "3) Ambiguous request needing clarification "
+            "NEVER use to refuse. Always move forward."
         ),
         parameters=types.Schema(
             type=types.Type.OBJECT,
@@ -399,7 +404,7 @@ def _build_tools() -> types.Tool:
                 "options": types.Schema(
                     type=types.Type.ARRAY,
                     items=types.Schema(type=types.Type.STRING),
-                    description="2-4 concrete options the user can choose from"
+                    description="2-4 concrete options OR leave empty if asking for free-text input like vendor name"
                 ),
                 "context": types.Schema(
                     type=types.Type.STRING,
@@ -909,20 +914,19 @@ class AIControllerOverride(AIController):
             )
             # محاولة الحصول على الإيميل عبر Gemini web search
             try:
-                import google.generativeai as _genai_search
                 from google.genai import types as _types
                 _api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
-                _client  = __import__('google.genai', fromlist=['Client']).Client(api_key=_api_key)
-                _search_resp = _client.models.generate_content(
+                _gclient = genai.Client(api_key=_api_key)
+                _search_resp = _gclient.models.generate_content(
                     model="gemini-2.5-flash",
-                    contents=[f"Find the official email address and phone number of '{vendor_name}' company in UAE. Return ONLY: EMAIL: xxx@xxx.com | PHONE: +971xxxxxxx"],
+                    contents=[f"Find the official email address and phone number of the company '{vendor_name}' in UAE/Dubai. Return ONLY in this format: EMAIL: xxx@xxx.com | PHONE: +971xxxxxxx. If not found write: NOT_FOUND"],
                     config=_types.GenerateContentConfig(
                         tools=[_types.Tool(google_search=_types.GoogleSearch())],
-                        temperature=0.1,
+                        temperature=0.0,
                     )
                 )
                 _result = (getattr(_search_resp, 'text', '') or '').strip()
-                _logger.info(f"KH_AI RFQ web search result: {_result}")
+                _logger.info(f"KH_AI RFQ web search result for '{vendor_name}': {_result}")
 
                 # استخرج الإيميل من النتيجة
                 import re as _re3
