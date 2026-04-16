@@ -96,6 +96,9 @@ Use when user asks for reports, margins, trends, KPIs, breakdowns, or project st
 - "sales pipeline"                      → report_type='sales_pipeline'
 - "which project costs most"            → report_type='project_cost'
 - "show financial status of project X"  → report_type='project_financial', project_name='X'
+
+IMPORTANT: "خلينا نجهز عرض طلب/RFQ لـ X" → ai_create_rfq with vendor_name='X' IMMEDIATELY
+Do NOT use ai_dynamic_read before creating RFQ. The tool handles vendor lookup automatically.
 - "شو وضع مشروع X ماليا"               → report_type='project_financial', project_name='X'
 - "شو مصاريف مشروع X"                  → report_type='project_financial', project_name='X'
 - "شو الوضع المالي تبعو/تبعها/عليه"   → SCAN HISTORY for project name, report_type='project_financial'
@@ -296,10 +299,11 @@ def _build_tools() -> types.Tool:
         name="ai_create_rfq",
         description=(
             "Create a Request for Quotation (RFQ/Purchase Order). "
-            "Use when user says: إنشاء RFQ, طلب تسعير, send RFQ, اطلب من مورد, خلينا نبعث طلب. "
-            "Do NOT pre-check if vendor exists — this tool handles it automatically. "
-            "Vendor will be created if not found in system. "
-            "Email will be searched online automatically if missing."
+            "Trigger phrases: خلينا نجهز عرض طلب, خلينا نبعث طلب, طلب تسعير, RFQ, "
+            "ابعث طلب لـ, جهز طلب, اطلب من مورد, send RFQ, create PO. "
+            "ALWAYS use this when user wants to request a quote from ANY vendor. "
+            "Do NOT pre-check if vendor exists — this tool creates vendors automatically. "
+            "Email will be auto-searched online if missing from system."
         ),
         parameters=types.Schema(
             type=types.Type.OBJECT,
@@ -483,15 +487,18 @@ class AIControllerOverride(AIController):
             classifier_prompt = (
                 "You are classifying a user message in a conversation about an ERP system.\n\n"
                 "Classify into ONE category:\n"
-                "- ODOO_ACTION  -> create/update/delete Odoo records\n"
-                "- ODOO_READ    -> any question about data, reports, financial status, projects, invoices\n"
+                "- ODOO_ACTION  -> create/update/delete/send records in Odoo\n"
+                "- ODOO_READ    -> search/find/list/analyze data, reports, financial status\n"
                 "- WEB_SEARCH   -> external internet info only\n"
                 "- CHAT         -> pure greetings with NO business intent\n\n"
-                "IMPORTANT: If the message contains pronouns referring to a previously mentioned "
-                "project/record (تبعو, تبعها, عليه, عنه, it, this, هذا), classify as ODOO_READ.\n\n"
-                f"Conversation context (last few messages):\n{chat_history[-500:]}\n\n"
+                "ODOO_ACTION keywords: انشئ, اعمل, جهز, ابعث, ارسل, سجل, أضف, خلينا نجهز, "
+                "خلينا نبعث, طلب تسعير, RFQ, عرض طلب, فاتورة, lead, create, send, make\n\n"
+                "ODOO_READ keywords: دور, ابحث, اعرض, كم, شو وضع, تقرير, فواتير, موردين, عملاء\n\n"
+                "IMPORTANT: If user says 'خلينا نجهز/نبعث/نعمل X' → ODOO_ACTION\n"
+                "IMPORTANT: pronouns (تبعو, تبعها, عليه, هذا) referring to earlier record → ODOO_READ\n\n"
+                f"Conversation context:\n{chat_history[-600:]}\n\n"
                 f"Latest user message: {last_user_msg}\n\n"
-                "Reply with ONLY the category name."
+                "Reply with ONLY one word: ODOO_ACTION or ODOO_READ or WEB_SEARCH or CHAT"
             )
 
             classify_resp = client.models.generate_content(
