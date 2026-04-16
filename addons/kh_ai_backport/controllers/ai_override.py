@@ -57,15 +57,16 @@ class AiAgentSource(models.Model):
 
 # الموديلات المسموح للـ AI يقرأ منها ديناميكياً
 READABLE_MODELS = {
-    'res.partner':       ['name', 'email', 'phone', 'vat', 'is_company', 'street', 'city'],
-    'crm.lead':          ['name', 'partner_name', 'email_from', 'phone', 'stage_id', 'description'],
-    'account.move':      ['name', 'partner_id', 'amount_total', 'state', 'move_type', 'invoice_date'],
-    'purchase.order':    ['name', 'partner_id', 'amount_total', 'state', 'date_order'],
-    'sale.order':        ['name', 'partner_id', 'amount_total', 'state', 'date_order'],
-    'project.task':      ['name', 'project_id', 'user_ids', 'stage_id', 'date_deadline'],
-    'hr.employee':       ['name', 'job_title', 'department_id', 'work_email'],
-    'product.product':   ['name', 'list_price', 'qty_available', 'categ_id'],
-    'stock.picking':     ['name', 'partner_id', 'state', 'scheduled_date', 'picking_type_id'],
+    'res.partner':            ['name', 'email', 'phone', 'vat', 'is_company', 'street', 'city'],
+    'crm.lead':               ['name', 'partner_name', 'email_from', 'phone', 'stage_id', 'description'],
+    'account.move':           ['name', 'partner_id', 'amount_total', 'state', 'move_type', 'invoice_date'],
+    'purchase.order':         ['name', 'partner_id', 'amount_total', 'state', 'date_order'],
+    'purchase.order.line':    ['name', 'order_id', 'partner_id', 'product_id', 'price_unit', 'product_qty', 'date_approve'],
+    'sale.order':             ['name', 'partner_id', 'amount_total', 'state', 'date_order'],
+    'project.task':           ['name', 'project_id', 'user_ids', 'stage_id', 'date_deadline'],
+    'hr.employee':            ['name', 'job_title', 'department_id', 'work_email'],
+    'product.product':        ['name', 'list_price', 'qty_available', 'categ_id'],
+    'stock.picking':          ['name', 'partner_id', 'state', 'scheduled_date', 'picking_type_id'],
     'account.bank.statement': ['name', 'date', 'balance_start', 'balance_end_real', 'journal_id'],
 }
 
@@ -84,6 +85,15 @@ SYSTEM_INSTRUCTION = f"""You are '{AGENT_PERSONA}', an elite ERP assistant and b
 Use when user asks to "find", "search", "show", "list", "ابحث", "دور", "اعرض", "كم عدد"
 - You choose the model_name from your knowledge of Odoo models
 - You can filter by any field
+
+VENDOR SEARCH RULES:
+- User asks "موردين الألمنيوم" or "suppliers of aluminum":
+  → Search BOTH Arabic and English: call ai_dynamic_read TWICE:
+    1. model='purchase.order.line', keyword='aluminum' (English product name)
+    2. model='purchase.order.line', keyword='ألمنيوم' (Arabic product name)
+  → This finds vendors who have supplied this product before, regardless of their company name
+- User asks "موردين" by company name → model='res.partner', keyword='...'
+- NEVER search only in Arabic OR only in English — always try both
 
 ### ANALYTICS Tool (ai_analytics):
 Use when user asks for reports, margins, trends, KPIs, breakdowns, or project status:
@@ -721,27 +731,46 @@ class AIControllerOverride(AIController):
                 mail_message_id
             )
             return {}
-
         # بناء الرد
-        lines = [f"{AGENT_PERSONA}: 🔍 وجدت **{len(records)}** سجل في {model_name}:\n"]
-        for r in records:
-            # عرض أهم حقل (name أو display_name)
-            title = r.get('name') or r.get('display_name') or str(r.get('id'))
-            # عرض باقي الحقول
-            details = []
-            for f in allowed_fields:
-                if f == 'name':
-                    continue
-                val = r.get(f)
-                if val:
-                    # معالجة Many2one (tuple)
-                    if isinstance(val, (list, tuple)) and len(val) == 2:
-                        val = val[1]
-                    details.append(f"{f}: {val}")
-            detail_str = " | ".join(details[:4]) if details else ""
-            lines.append(f"- **{title}**" + (f" — {detail_str}" if detail_str else ""))
-
-        self._post_message("\n".join(lines), mail_message_id)
+        if records:
+            # عرض خاص لبنود طلبات الشراء
+            if model_name == 'purchase.order.line':
+                reply_lines = [f"{AGENT_PERSONA}: 🔍 وجدت **{len(records)}** بند شراء يحتوي على '{keyword}':\n"]
+                seen_vendors = {}
+                for r in records:
+                    ptnr = r.get('partner_id')
+                    pname = ptnr[1] if isinstance(ptnr,(list,tuple)) and len(ptnr)==2 else str(ptnr or '-')
+                    prod = r.get('product_id')
+                    prodname = prod[1] if isinstance(prod,(list,tuple)) and len(prod)==2 else str(prod or '-')
+                    qty = r.get('product_qty', 0)
+                    price = float(r.get('price_unit') or 0)
+                    seen_vendors.setdefault(pname, []).append(f"{prodname} × {qty} @ {price:,.2f}")
+                for vendor, items in seen_vendors.items():
+                    reply_lines.append(f"🏢 **{vendor}**")
+                    for item in items:
+                        reply_lines.append(f"   • {item}")
+                    reply_lines.append("")
+                self._post_message("\n".join(reply_lines), mail_message_id)
+            else:
+                reply_lines = [f"{AGENT_PERSONA}: 🔍 وجدت **{len(records)}** سجل في {model_name}:"]
+                for r in records:
+                    title = r.get('name') or r.get('display_name') or str(r.get('id'))
+                    details = []
+                    for fld in allowed_fields:
+                        if fld == 'name': continue
+                        val = r.get(fld)
+                        if val:
+                            if isinstance(val, (list, tuple)) and len(val) == 2:
+                                val = val[1]
+                            details.append(f"{fld}: {val}")
+                    detail_str = " | ".join(details[:4]) if details else ""
+                    reply_lines.append(f"- **{title}**" + (f" — {detail_str}" if detail_str else ""))
+                self._post_message("\n".join(reply_lines), mail_message_id)
+        else:
+            no_result = f"{AGENT_PERSONA}: 🔍 لم أجد في النظام ما يطابق '{keyword}'."
+            if model_name == 'res.partner' and keyword:
+                no_result += (f"\n💡 جرب البحث في طلبات الشراء القديمة عن المنتج '{keyword}'")
+            self._post_message(no_result, mail_message_id)
         return {}
 
     # ── CREATE LEAD ───────────────────────────────────────────────
