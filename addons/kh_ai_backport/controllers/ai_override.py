@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║           KHALES AI - HYBRID AGENT ENGINE v3.0                  ║
-║           Odoo 19 | Gemini 2.5 Flash | Clean i18n Architecture   ║
+║           KHALES AI - HYBRID AGENT ENGINE v2.0                  ║
+║           Odoo 19 | Gemini 2.5 Flash | Clean Architecture        ║
 ╚══════════════════════════════════════════════════════════════════╝
 
 المقاربة: Hybrid
   - القراءة  → Dynamic ORM  (AI يختار الموديل بحرية)
   - الكتابة  → Fixed Tools  (أدوات محددة وآمنة)
   - الأمان   → صلاحيات المستخدم الحقيقي (بدون sudo للكتابة)
-  - اللغة    → Single Source of Truth (utils/lang.py + translations/*.po)
+  - البحث    → Gemini Grounding (مدمج، بدون API خارجي)
 """
 
 import base64
 import json
 import logging
 import re
-from dataclasses import dataclass
 
 from markupsafe import Markup
 
@@ -25,18 +24,12 @@ from odoo.exceptions import AccessError, UserError
 from odoo.http import request
 from odoo.tools import html2plaintext
 
-# ── Odoo AI base ────────────────────────────────────────────────
+# ── Odoo AI base ──────────────────────────────────────────────────
 from odoo.addons.ai.controllers.main import AIController
-
-# ── Our clean i18n utilities ────────────────────────────────────
-from ..utils.lang import detect_from_history, Lang
-from ..utils.i18n import translator, Translator
-from ..utils.prompt import build_system_instruction, AGENT_PERSONA
-from ..utils.renderer import render_table, margin_icon
 
 _logger = logging.getLogger(__name__)
 
-# ── Google GenAI ────────────────────────────────────────────────
+# ── Google GenAI ──────────────────────────────────────────────────
 try:
     from google import genai
     from google.genai import types
@@ -47,7 +40,7 @@ except ImportError:
 
 
 # ══════════════════════════════════════════════════════════════════
-#  MODEL EXTENSION
+#  MODEL EXTENSION (unchanged from original)
 # ══════════════════════════════════════════════════════════════════
 class AiAgentSource(models.Model):
     _inherit = 'ai.agent.source'
@@ -59,8 +52,10 @@ class AiAgentSource(models.Model):
 
 
 # ══════════════════════════════════════════════════════════════════
-#  READABLE MODELS WHITELIST
+#  CONSTANTS
 # ══════════════════════════════════════════════════════════════════
+
+# الموديلات المسموح للـ AI يقرأ منها ديناميكياً
 READABLE_MODELS = {
     'res.partner':            ['name', 'email', 'phone', 'vat', 'is_company', 'street', 'city'],
     'crm.lead':               ['name', 'partner_name', 'email_from', 'phone', 'stage_id', 'description'],
@@ -75,37 +70,183 @@ READABLE_MODELS = {
     'account.bank.statement': ['name', 'date', 'balance_start', 'balance_end_real', 'journal_id'],
 }
 
+AGENT_PERSONA = "🤖 [Khales AI]"
 
-# ══════════════════════════════════════════════════════════════════
-#  REQUEST CONTEXT — carries lang + translator through the call stack
-# ══════════════════════════════════════════════════════════════════
-@dataclass
-class RequestCtx:
-    """
-    Per-request context. Built once in _parse_input, passed to every tool.
-    Replaces the scattered `lang=...` parameters from v2.0.
-    """
-    lang: Lang
-    t: Translator
-    mail_message_id: int
-    chat_history: str
-    attachments: object  # ir.attachment recordset
+# ── Language Detection & Translation ─────────────────────────────
+def _detect_lang(text: str) -> str:
+    """Detect language — prioritize the LAST user message"""
+    lines = text.splitlines()
+    user_lines = [l[5:].strip() for l in lines if l.startswith('User:')]
 
-    @classmethod
-    def build(cls, lang, mail_message_id, chat_history, attachments):
-        return cls(
-            lang=lang,
-            t=translator(lang),
-            mail_message_id=mail_message_id,
-            chat_history=chat_history,
-            attachments=attachments,
-        )
+    # Use last user message as primary signal
+    last_msg = user_lines[-1] if user_lines else text
+
+    arabic_chars = sum(1 for c in last_msg if '؀' <= c <= 'ۿ')
+    total = max(len(last_msg.strip()), 1)
+    if total > 3:  # Only if message has meaningful content
+        return 'ar' if arabic_chars > total * 0.15 else 'en'
+
+    # Fallback: majority of all user messages
+    all_user = ' '.join(user_lines)
+    arabic_chars = sum(1 for c in all_user if '؀' <= c <= 'ۿ')
+    total = max(len(all_user.strip()), 1)
+    return 'ar' if arabic_chars > total * 0.15 else 'en'
+
+def _t(key: str, lang: str) -> str:
+    """Simple translation helper"""
+    translations = {
+        'client':          {'ar': '👤 العميل',           'en': '👤 Client'},
+        'period':          {'ar': '📅 الفترة',            'en': '📅 Period'},
+        'invoices':        {'ar': '📤 **فواتير العميل',   'en': '📤 **Customer Invoices'},
+        'total':           {'ar': 'إجمالي',               'en': 'Total'},
+        'paid':            {'ar': 'مدفوع',                'en': 'Paid'},
+        'due':             {'ar': 'متبقي (دين)',           'en': 'Outstanding (Due)'},
+        'expenses':        {'ar': '📥 **المصاريف',        'en': '📥 **Expenses'},
+        'vendor_bills':    {'ar': 'فواتير موردين',         'en': 'Vendor Bills'},
+        'analytic':        {'ar': 'حسابات تحليلية',       'en': 'Analytic Costs'},
+        'result':          {'ar': '**📊 النتيجة:**',      'en': '**📊 Result:**'},
+        'net_profit':      {'ar': 'صافي الربح',           'en': 'Net Profit'},
+        'vendor_bill':     {'ar': 'فاتورة مورد',          'en': 'vendor bill'},
+        'found':           {'ar': 'وجدت',                 'en': 'Found'},
+        'not_found':       {'ar': 'لم أجد',               'en': 'No records found'},
+        'financial_status':{'ar': 'الوضع المالي للمشروع', 'en': 'Project Financial Status'},
+        'searching':       {'ar': 'جاري البحث',           'en': 'Searching'},
+        'updated':         {'ar': 'تم التحديث',           'en': 'Updated'},
+        'error':           {'ar': 'خطأ',                  'en': 'Error'},
+        'no_permission':   {'ar': 'ليس لديك صلاحية',      'en': 'Permission denied'},
+        'records':         {'ar': 'سجل',                  'en': 'record(s)'},
+        'project_cost':    {'ar': 'تكاليف المشاريع',      'en': 'Project Costs'},
+        'top_products':    {'ar': 'أفضل المنتجات مبيعاً', 'en': 'Top Products'},
+        'revenue':         {'ar': 'الإيراد',              'en': 'Revenue'},
+        'cost':            {'ar': 'التكلفة',              'en': 'Cost'},
+        'profit_margins':  {'ar': 'هوامش الربح',          'en': 'Profit Margins'},
+        'category':        {'ar': 'الفئة',                'en': 'Category'},
+        'margin':          {'ar': 'هامش %',               'en': 'Margin %'},
+        'hours':           {'ar': 'الساعات',              'en': 'Hours'},
+        'team_size':       {'ar': 'حجم الفريق',           'en': 'Team Size'},
+        'period_label':    {'ar': 'الفترة',               'en': 'Period'},
+        'invoice_vendor':  {'ar': 'فاتورة مورد',          'en': 'vendor bill'},
+        'partner':         {'ar': 'الشريك',               'en': 'Partner'},
+        'account':         {'ar': 'الحساب',               'en': 'Account'},
+        'lines_updated':   {'ar': 'البنود المحدّثة',      'en': 'Lines Updated'},
+    }
+    t = translations.get(key, {})
+    return t.get(lang, t.get('en', key))
+
+SYSTEM_INSTRUCTION = f"""You are '{AGENT_PERSONA}', an elite ERP assistant and business consultant built into Odoo 19.
+
+## IDENTITY RULES
+- Start EVERY reply with "{AGENT_PERSONA}: "
+- Be concise, professional, and helpful
+- LANGUAGE RULE: Always reply in the SAME language the user used.
+  If user writes in English → reply in English.
+  If user writes in Arabic → reply in Arabic.
+  If user mixes both → use the dominant language.
+  Never switch languages unless the user does.
+
+## TOOL SELECTION RULES
+
+### READ Tool (ai_dynamic_read):
+Use when user asks to "find", "search", "show", "list", "ابحث", "دور", "اعرض", "كم عدد"
+- You choose the model_name from your knowledge of Odoo models
+- You can filter by any field
+
+VENDOR SEARCH RULES:
+- User asks "موردين الألمنيوم" or "suppliers of aluminum":
+  → Search BOTH Arabic and English: call ai_dynamic_read TWICE:
+    1. model='purchase.order.line', keyword='aluminum' (English product name)
+    2. model='purchase.order.line', keyword='ألمنيوم' (Arabic product name)
+  → This finds vendors who have supplied this product before, regardless of their company name
+- User asks "موردين" by company name → model='res.partner', keyword='...'
+- NEVER search only in Arabic OR only in English — always try both
+
+### ANALYTICS Tool (ai_analytics):
+Use when user asks for reports, margins, trends, KPIs, breakdowns, or project status:
+- "profit margins by category"          → report_type='profit_by_category'
+- "top selling products"                → report_type='top_products'
+- "revenue by customer"                 → report_type='revenue_by_partner'
+- "expense breakdown"                   → report_type='expense_breakdown'
+- "invoice summary"                     → report_type='invoice_summary'
+- "stock valuation"                     → report_type='stock_valuation'
+- "sales pipeline"                      → report_type='sales_pipeline'
+- "which project costs most"            → report_type='project_cost'
+- "show financial status of project X"  → report_type='project_financial', project_name='X'
+
+IMPORTANT: "خلينا نجهز عرض طلب/RFQ لـ X" → ai_create_rfq with vendor_name='X' IMMEDIATELY
+Do NOT use ai_dynamic_read before creating RFQ. The tool handles vendor lookup automatically.
+- "شو وضع مشروع X ماليا"               → report_type='project_financial', project_name='X'
+- "شو مصاريف مشروع X"                  → report_type='project_financial', project_name='X'
+- "شو الوضع المالي تبعو/تبعها/عليه"   → SCAN HISTORY for name, report_type='project_financial'
+- "financial report" / "finical report" → if name mentioned in history: report_type='project_financial'
+- "finical report for Ali Falamarzi"    → report_type='project_financial', project_name='Ali Falamarzi'
+- "كم فلوس صرفنا على مشروع X"          → report_type='project_financial', project_name='X'
+
+CRITICAL CONTEXT RULE: The user often refers to a person/project mentioned EARLIER in the conversation.
+Trigger words: تبعو, تبعها, عليه, عنه, هذا المشروع, it, this project, this one, yes this is it.
+Also trigger when user says just "financial report" / "finical report" / "تقرير مالي" after mentioning a name.
+You MUST scan conversation history, find the most recently mentioned person/project name,
+and pass it as project_name. NEVER return empty project_name.
+Example 1: User said "Ali Falamarzi" then says "financial report"
+→ project_name='Ali Falamarzi', report_type='project_financial'
+Example 2: User said "Project: 00033 - Ahmed..." then asks "شو الوضع المالي تبعو"
+→ extract "00033" from history, project_name='00033'
+ALWAYS use this tool for ANY financial/project question. NEVER say "I cannot calculate".
+
+### WRITE Tools (Fixed):
+Only use when user EXPLICITLY commands creation/modification:
+- ai_create_lead        → "أنشئ lead", "create lead"
+- ai_create_invoice     → "أنشئ فاتورة", "create invoice/bill"
+- ai_create_bank_stmt   → "أنشئ كشف بنكي", "bank statement"
+- ai_create_rfq         → "أنشئ RFQ", "اطلب من مورد"
+- ai_update_records     → "set account for X", "حدّث الحساب", "set the account as Y for partner Z"
+                          Use operation='set_bank_statement_account' for bank statement lines
+
+### CREATE RFQ Pattern:
+If user asks to create/send RFQ or طلب تسعير for a vendor:
+→ Call ai_create_rfq DIRECTLY. Do NOT search first.
+→ The tool handles finding/creating the vendor automatically.
+→ Pass vendor_name exactly as mentioned by the user.
+→ If you found vendor contact info from web search earlier in the conversation, pass it too.
+→ NEVER say "vendor not found" — the tool creates new vendors automatically.
+→ The tool will auto-search the internet for email if missing.
+
+### Google Search (Grounding):
+For external info (market prices, supplier contacts, news) — 
+answer directly using your grounding capability, no tool needed.
+
+## EXPERT SYSTEM BEHAVIOR — NEVER SAY "I CANNOT"
+You are an expert ERP consultant. When a request seems outside your tools, NEVER refuse.
+Instead, offer concrete options:
+
+Example 1 — User: "دور على أرخص موردين للألمنيوم في دبي"
+WRONG: "لا أستطيع البحث عن الأسعار الخارجية"
+RIGHT: Use ai_ask_user to offer: 1) بحث داخل النظام  2) بحث على الإنترنت  3) الاثنين
+
+Example 2 — User picks a NUMBER like "2" after you showed options:
+CRITICAL: The number is a CHOICE, not data. Look at the previous options you offered.
+If option 2 was "إنشاء طلب تسعير" → use ai_ask_user to ask: "ما اسم المورد الذي تريد إرسال الطلب إليه؟"
+NEVER interpret a number as a vendor name or product name.
+
+Example 3 — User: "جهزلي تقرير المبيعات"
+Don't ask which report. Just run invoice_summary and say "هذا ملخص المبيعات، تريد تفاصيل أكثر؟"
+
+Example 4 — User picks option for RFQ but no vendor name mentioned:
+→ use ai_ask_user: "ما اسم المورد؟" before calling ai_create_rfq
+
+RULE: Always move the conversation FORWARD. Numbers are choices, not values.
+
+## SAFETY
+- Never invent financial data
+- Never guess at financial amounts  
+- Ask for clarification ONLY when genuinely ambiguous — offer options, not dead ends
+"""
 
 
 # ══════════════════════════════════════════════════════════════════
 #  TOOL DEFINITIONS
 # ══════════════════════════════════════════════════════════════════
-def _build_tools():
+
+def _build_tools() -> types.Tool:
     """بناء كل أدوات الـ AI في مكان واحد"""
 
     # ── READ (Dynamic) ────────────────────────────────────────────
@@ -136,7 +277,8 @@ def _build_tools():
                     type=types.Type.STRING,
                     description=(
                         "Additional Odoo domain as JSON string. "
-                        "Example: '[[\"state\", \"=\", \"draft\"]]'"
+                        "Example: '[[\"state\", \"=\", \"draft\"]]' "
+                        "Leave empty if no extra filter needed."
                     )
                 ),
                 "limit": types.Schema(
@@ -155,13 +297,13 @@ def _build_tools():
         parameters=types.Schema(
             type=types.Type.OBJECT,
             properties={
-                "name":             types.Schema(type=types.Type.STRING),
-                "partner_name":     types.Schema(type=types.Type.STRING),
-                "email_from":       types.Schema(type=types.Type.STRING),
-                "phone":            types.Schema(type=types.Type.STRING),
-                "description":      types.Schema(type=types.Type.STRING),
-                "expected_revenue": types.Schema(type=types.Type.NUMBER),
-                "message_to_user":  types.Schema(type=types.Type.STRING),
+                "name":            types.Schema(type=types.Type.STRING, description="Lead title/subject"),
+                "partner_name":    types.Schema(type=types.Type.STRING, description="Customer name"),
+                "email_from":      types.Schema(type=types.Type.STRING),
+                "phone":           types.Schema(type=types.Type.STRING),
+                "description":     types.Schema(type=types.Type.STRING),
+                "expected_revenue":types.Schema(type=types.Type.NUMBER),
+                "message_to_user": types.Schema(type=types.Type.STRING),
             },
             required=["name", "message_to_user"]
         )
@@ -170,14 +312,20 @@ def _build_tools():
     # ── CREATE INVOICE ────────────────────────────────────────────
     ai_create_invoice = types.FunctionDeclaration(
         name="ai_create_invoice",
-        description="Create a customer invoice (out_invoice) or vendor bill (in_invoice).",
+        description=(
+            "Create a customer invoice (out_invoice) or vendor bill (in_invoice). "
+            "Only when explicitly commanded."
+        ),
         parameters=types.Schema(
             type=types.Type.OBJECT,
             properties={
-                "move_type":    types.Schema(type=types.Type.STRING),
-                "partner_name": types.Schema(type=types.Type.STRING),
-                "partner_vat":  types.Schema(type=types.Type.STRING),
-                "invoice_date": types.Schema(type=types.Type.STRING),
+                "move_type": types.Schema(
+                    type=types.Type.STRING,
+                    description="'out_invoice' for customer invoice, 'in_invoice' for vendor bill"
+                ),
+                "partner_name":    types.Schema(type=types.Type.STRING),
+                "partner_vat":     types.Schema(type=types.Type.STRING, description="Tax Registration Number (TRN)"),
+                "invoice_date":    types.Schema(type=types.Type.STRING, description="Date YYYY-MM-DD"),
                 "lines": types.Schema(
                     type=types.Type.ARRAY,
                     items=types.Schema(
@@ -198,12 +346,16 @@ def _build_tools():
     # ── CREATE BANK STATEMENT ─────────────────────────────────────
     ai_create_bank_stmt = types.FunctionDeclaration(
         name="ai_create_bank_stmt",
-        description="Create an accounting bank statement.",
+        description=(
+            "Create an accounting bank statement. "
+            "Odoo 17+ uses account.bank.statement with line_ids. "
+            "Only when explicitly commanded."
+        ),
         parameters=types.Schema(
             type=types.Type.OBJECT,
             properties={
                 "reference":        types.Schema(type=types.Type.STRING),
-                "date":             types.Schema(type=types.Type.STRING),
+                "date":             types.Schema(type=types.Type.STRING, description="YYYY-MM-DD"),
                 "starting_balance": types.Schema(type=types.Type.NUMBER),
                 "ending_balance":   types.Schema(type=types.Type.NUMBER),
                 "lines": types.Schema(
@@ -213,7 +365,10 @@ def _build_tools():
                         properties={
                             "date":   types.Schema(type=types.Type.STRING),
                             "label":  types.Schema(type=types.Type.STRING),
-                            "amount": types.Schema(type=types.Type.NUMBER),
+                            "amount": types.Schema(
+                                type=types.Type.NUMBER,
+                                description="POSITIVE for credit/deposit, NEGATIVE for debit/withdrawal"
+                            ),
                         }
                     )
                 ),
@@ -228,8 +383,11 @@ def _build_tools():
         name="ai_create_rfq",
         description=(
             "Create a Request for Quotation (RFQ/Purchase Order). "
-            "Trigger on: طلب تسعير, RFQ, عرض طلب, خلينا نجهز/نبعث, send RFQ, create PO. "
-            "Do NOT pre-check if vendor exists — this tool creates vendors automatically."
+            "Trigger phrases: خلينا نجهز عرض طلب, خلينا نبعث طلب, طلب تسعير, RFQ, "
+            "ابعث طلب لـ, جهز طلب, اطلب من مورد, send RFQ, create PO. "
+            "ALWAYS use this when user wants to request a quote from ANY vendor. "
+            "Do NOT pre-check if vendor exists — this tool creates vendors automatically. "
+            "Email will be auto-searched online if missing from system."
         ),
         parameters=types.Schema(
             type=types.Type.OBJECT,
@@ -237,7 +395,7 @@ def _build_tools():
                 "vendor_name":  types.Schema(type=types.Type.STRING),
                 "vendor_email": types.Schema(type=types.Type.STRING),
                 "vendor_phone": types.Schema(type=types.Type.STRING),
-                "notes":        types.Schema(type=types.Type.STRING),
+                "notes":        types.Schema(type=types.Type.STRING, description="Internal notes/BOQ description"),
                 "products": types.Schema(
                     type=types.Type.ARRAY,
                     items=types.Schema(
@@ -245,7 +403,7 @@ def _build_tools():
                         properties={
                             "name":     types.Schema(type=types.Type.STRING),
                             "quantity": types.Schema(type=types.Type.NUMBER),
-                            "price":    types.Schema(type=types.Type.NUMBER),
+                            "price":    types.Schema(type=types.Type.NUMBER, description="Unit price (0 if unknown)"),
                         }
                     )
                 ),
@@ -255,66 +413,122 @@ def _build_tools():
         )
     )
 
+
     # ── ANALYTICS ────────────────────────────────────────────────
     ai_analytics = types.FunctionDeclaration(
         name="ai_analytics",
-        description="Run financial/business analytics on Odoo data.",
+        description=(
+            "Run financial/business analytics on Odoo data. "
+            "Use for: profit margins, revenue by category, sales trends, "
+            "top customers, stock valuation, expense breakdown, KPIs. "
+            "This tool does the heavy SQL-level grouping and calculation."
+        ),
         parameters=types.Schema(
             type=types.Type.OBJECT,
             properties={
                 "report_type": types.Schema(
                     type=types.Type.STRING,
                     description=(
-                        "One of: 'profit_by_category', 'revenue_by_partner', "
-                        "'project_cost', 'project_financial', 'timesheet_hours', "
-                        "'top_products', 'expense_breakdown', 'invoice_summary', "
-                        "'stock_valuation', 'sales_pipeline'"
+                        "Type of report. One of: "
+                        "'profit_by_category', 'revenue_by_partner', 'project_cost', 'project_financial', 'timesheet_hours', "
+                        "'top_products', 'expense_breakdown', "
+                        "'invoice_summary', 'stock_valuation', "
+                        "'sales_pipeline'"
                     )
                 ),
-                "date_from":    types.Schema(type=types.Type.STRING),
-                "date_to":      types.Schema(type=types.Type.STRING),
-                "limit":        types.Schema(type=types.Type.INTEGER),
+                "date_from": types.Schema(
+                    type=types.Type.STRING,
+                    description="Start date YYYY-MM-DD (optional, defaults to start of current year)"
+                ),
+                "date_to": types.Schema(
+                    type=types.Type.STRING,
+                    description="End date YYYY-MM-DD (optional, defaults to today)"
+                ),
+                "limit": types.Schema(
+                    type=types.Type.INTEGER,
+                    description="Max rows to return (default 10)"
+                ),
                 "project_name": types.Schema(
                     type=types.Type.STRING,
-                    description="For project_financial: full name or keyword from history"
+                    description=(
+                        "For report_type='project_financial': the FULL project name or any keyword. "
+                        "CRITICAL: Check the entire conversation history for project context. "
+                        "If user said 'شو الوضع المالي تبعو' after mentioning a project, "
+                        "extract the project name/number from previous messages. "
+                        "Pass the COMPLETE project name as mentioned — e.g. "
+                        "'Project: 00033 - Ahmed Matar Aldhaheri | احمد الظاهري' or just '00033'. "
+                        "NEVER pass an empty string. ALWAYS extract from context if not in current message."
+                    )
                 ),
             },
             required=["report_type"]
         )
     )
 
-    # ── ASK USER ─────────────────────────────────────────────────
+    # ── ASK USER (Clarification with options) ────────────────────
     ai_ask_user = types.FunctionDeclaration(
         name="ai_ask_user",
-        description="Ask user for clarification — present options, never refuse.",
+        description=(
+            "Use when you need to clarify HOW to help — present options, or ask for missing info. "
+            "Use cases: "
+            "1) User needs to choose between paths (internal vs internet search) "
+            "2) User picked a numbered option but you need more info (e.g. vendor name for RFQ) "
+            "3) Ambiguous request needing clarification "
+            "NEVER use to refuse. Always move forward."
+        ),
         parameters=types.Schema(
             type=types.Type.OBJECT,
             properties={
-                "question": types.Schema(type=types.Type.STRING),
+                "question": types.Schema(
+                    type=types.Type.STRING,
+                    description="The clarifying question to ask"
+                ),
                 "options": types.Schema(
                     type=types.Type.ARRAY,
                     items=types.Schema(type=types.Type.STRING),
+                    description="2-4 concrete options OR leave empty if asking for free-text input like vendor name"
                 ),
-                "context": types.Schema(type=types.Type.STRING),
+                "context": types.Schema(
+                    type=types.Type.STRING,
+                    description="Brief explanation of what you understood from the request"
+                ),
             },
             required=["question", "options"]
         )
     )
 
-    # ── BULK UPDATE ──────────────────────────────────────────────
+    # ── BULK UPDATE RECORDS ──────────────────────────────────────
     ai_update_records = types.FunctionDeclaration(
         name="ai_update_records",
-        description="Bulk update existing Odoo records (set account on bank statements, etc.)",
+        description=(
+            "Bulk update existing Odoo records. Use when user says: "
+            "'set account for X', 'update all Y to Z', 'change account on transactions', "
+            "'set the account as Government Fees for Fujairah Municipality'. "
+            "Can update: bank statement lines account, partner on invoices, etc."
+        ),
         parameters=types.Schema(
             type=types.Type.OBJECT,
             properties={
                 "operation": types.Schema(
                     type=types.Type.STRING,
-                    description="'set_bank_statement_account' | 'set_invoice_account'"
+                    description=(
+                        "What to update. One of: "
+                        "'set_bank_statement_account' → set account_id on bank statement lines by partner, "
+                        "'set_invoice_account' → set account on invoice lines"
+                    )
                 ),
-                "partner_name":    types.Schema(type=types.Type.STRING),
-                "account_code":    types.Schema(type=types.Type.STRING),
-                "account_name":    types.Schema(type=types.Type.STRING),
+                "partner_name": types.Schema(
+                    type=types.Type.STRING,
+                    description="Filter by partner name (e.g. 'Fujairah Municipality')"
+                ),
+                "account_code": types.Schema(
+                    type=types.Type.STRING,
+                    description="Account code to set (e.g. '11112')"
+                ),
+                "account_name": types.Schema(
+                    type=types.Type.STRING,
+                    description="Account name keyword to search (e.g. 'Government Fees')"
+                ),
                 "message_to_user": types.Schema(type=types.Type.STRING),
             },
             required=["operation", "message_to_user"]
@@ -334,15 +548,20 @@ def _build_tools():
 
 
 # ══════════════════════════════════════════════════════════════════
-#  HTML FORMATTER
+#  HELPER: HTML Formatter
 # ══════════════════════════════════════════════════════════════════
-def _to_html(text):
+
+def _to_html(text: str) -> Markup:
     """تحويل نص عادي (مع markdown بسيط) إلى HTML آمن"""
+    # Bold **text**
     text = re.sub(r'\*\*(.*?)\*\*', r'<b style="color:#017E84">\1</b>', text)
+    # Headers ### text
     text = re.sub(r'^### (.+)$', r'<h4 style="margin:8px 0">\1</h4>', text, flags=re.MULTILINE)
     text = re.sub(r'^## (.+)$',  r'<h3 style="margin:8px 0">\1</h3>', text, flags=re.MULTILINE)
+    # Bullet lists
     text = re.sub(r'^\* (.+)$', r'<li>\1</li>', text, flags=re.MULTILINE)
     text = re.sub(r'^- (.+)$',  r'<li>\1</li>', text, flags=re.MULTILINE)
+    # Newlines
     text = text.replace('\n', '<br/>')
     return Markup(f"<div style='line-height:1.8;font-size:14px;direction:auto'>{text}</div>")
 
@@ -350,6 +569,7 @@ def _to_html(text):
 # ══════════════════════════════════════════════════════════════════
 #  MAIN CONTROLLER
 # ══════════════════════════════════════════════════════════════════
+
 class AIControllerOverride(AIController):
 
     # ─────────────────────────────────────────────────────────────
@@ -357,30 +577,35 @@ class AIControllerOverride(AIController):
     # ─────────────────────────────────────────────────────────────
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('KH_AI v3.0 → request received')
+        _logger.info('KH_AI v2.0 → request received')
 
         if not HAS_GENAI:
             return {'error': 'google-genai not installed on server'}
 
-        # ── 1. Parse input + build context (lang detected ONCE here) ─
-        ctx = self._parse_input(kwargs)
+        # ── 1. Parse Input ────────────────────────────────────────
+        prompt, mail_message_id, chat_history, attachments, lang = self._parse_input(kwargs)
 
-        # ── 2. Check API key ─────────────────────────────────────
+        # ── 2. Build Gemini contents ──────────────────────────────
+        gemini_contents = self._build_contents(chat_history, attachments)
+
+        # ── 3. Call Gemini ────────────────────────────────────────
         api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
         if not api_key:
-            self._post(ctx, ctx.t("Gemini API key not configured"), level='error')
+            self._post_message("⛔ لم يتم تكوين مفتاح Gemini API في إعدادات النظام.", mail_message_id)
             return {}
 
-        # ── 3. Build Gemini contents ─────────────────────────────
-        gemini_contents = self._build_contents(ctx)
-
-        # ── 4. Two-pass router ───────────────────────────────────
         try:
             client = genai.Client(api_key=api_key)
 
-            # Pass 1: Classify intent
+            # ══════════════════════════════════════════════════════
+            # TWO-PASS ROUTER
+            # Gemini لا يسمح بدمج google_search مع function_declarations
+            # في نفس الطلب. الحل: Pass 1 يصنّف النية، Pass 2 ينفّذ.
+            # ══════════════════════════════════════════════════════
+
+            # ── Pass 1: Classify intent (بدون أدوات) ─────────────
             last_user_msg = ""
-            for line in reversed(ctx.chat_history.splitlines()):
+            for line in reversed(chat_history.splitlines()):
                 if line.startswith("User:"):
                     last_user_msg = line[5:].strip()
                     break
@@ -395,8 +620,9 @@ class AIControllerOverride(AIController):
                 "ODOO_ACTION keywords: انشئ, اعمل, جهز, ابعث, ارسل, سجل, أضف, خلينا نجهز, "
                 "خلينا نبعث, طلب تسعير, RFQ, عرض طلب, فاتورة, lead, create, send, make\n\n"
                 "ODOO_READ keywords: دور, ابحث, اعرض, كم, شو وضع, تقرير, فواتير, موردين, عملاء\n\n"
+                "IMPORTANT: If user says 'خلينا نجهز/نبعث/نعمل X' → ODOO_ACTION\n"
                 "IMPORTANT: pronouns (تبعو, تبعها, عليه, هذا) referring to earlier record → ODOO_READ\n\n"
-                f"Conversation context:\n{ctx.chat_history[-600:]}\n\n"
+                f"Conversation context:\n{chat_history[-600:]}\n\n"
                 f"Latest user message: {last_user_msg}\n\n"
                 "Reply with ONLY one word: ODOO_ACTION or ODOO_READ or WEB_SEARCH or CHAT"
             )
@@ -409,16 +635,18 @@ class AIControllerOverride(AIController):
             intent = (getattr(classify_resp, 'text', '') or '').strip().upper()
             _logger.info(f"KH_AI: intent -> {intent}")
 
-            # Pass 2: Execute with correct tool set
+            # ── Pass 2: Execute with correct tool set ─────────────
             if intent in ('ODOO_ACTION', 'ODOO_READ'):
+                # Function Calling — بدون google_search
                 config = types.GenerateContentConfig(
-                    system_instruction=build_system_instruction(ctx.lang),
+                    system_instruction=SYSTEM_INSTRUCTION,
                     temperature=0.3,
                     tools=[_build_tools()],
                 )
             else:
+                # Google Search Grounding — بدون function_declarations
                 config = types.GenerateContentConfig(
-                    system_instruction=build_system_instruction(ctx.lang),
+                    system_instruction=SYSTEM_INSTRUCTION,
                     temperature=0.4,
                     tools=[types.Tool(google_search=types.GoogleSearch())],
                 )
@@ -431,23 +659,25 @@ class AIControllerOverride(AIController):
 
         except Exception as e:
             _logger.exception("KH_AI: Gemini API error")
-            self._post(ctx, f"{ctx.t('Gemini connection error')}:\n{e}", level='error')
+            self._post_message(f"⛔ خطأ في الاتصال بـ Gemini:\n{e}", mail_message_id)
             return {}
 
-        # ── 5. Route response ────────────────────────────────────
+        # ── 4. Route response ─────────────────────────────────────
         if response.function_calls:
-            return self._handle_tool_call(response.function_calls[0], ctx)
-
-        text = getattr(response, 'text', '') or ''
-        if not text.startswith(AGENT_PERSONA):
-            text = f"{AGENT_PERSONA}: {text}"
-        self._post_raw(ctx, text)
-        return {}
+            return self._handle_tool_call(response.function_calls[0], mail_message_id, lang)
+        else:
+            text = getattr(response, 'text', '') or ''
+            if not text.startswith(AGENT_PERSONA):
+                text = f"{AGENT_PERSONA}: {text}"
+            self._post_message(text, mail_message_id)
+            return {}
 
     # ─────────────────────────────────────────────────────────────
-    # INPUT PARSER — the ONLY place language is detected
+    # INPUT PARSER
     # ─────────────────────────────────────────────────────────────
     def _parse_input(self, kwargs):
+        """استخراج الـ prompt والتاريخ والمرفقات من الطلب"""
+        prompt = ""
         mail_message_id = kwargs.get('mail_message_id')
         chat_history = ""
         attachments = request.env['ir.attachment'].sudo()
@@ -455,8 +685,10 @@ class AIControllerOverride(AIController):
         if mail_message_id:
             msg = request.env['mail.message'].sudo().browse(int(mail_message_id))
             if msg.exists():
+                prompt = html2plaintext(msg.body) if msg.body else ""
                 attachments = msg.attachment_ids
 
+                # بناء تاريخ المحادثة (آخر 8 رسائل)
                 if msg.model == 'discuss.channel':
                     history_msgs = request.env['mail.message'].sudo().search(
                         [('model', '=', 'discuss.channel'), ('res_id', '=', msg.res_id)],
@@ -481,19 +713,16 @@ class AIControllerOverride(AIController):
                 )
             chat_history = f"User: {prompt}"
 
-        # 🎯 LANGUAGE DETECTION — exactly once, from last user message
-        lang = detect_from_history(chat_history)
-        _logger.info("KH_AI: detected lang=%s", lang)
-
-        return RequestCtx.build(lang, mail_message_id, chat_history, attachments)
+        lang = _detect_lang(chat_history)
+        return prompt, mail_message_id, chat_history, attachments, lang
 
     # ─────────────────────────────────────────────────────────────
     # CONTENT BUILDER
     # ─────────────────────────────────────────────────────────────
-    def _build_contents(self, ctx):
+    def _build_contents(self, chat_history: str, attachments) -> list:
         """بناء محتوى الطلب لـ Gemini (نص + ملفات)"""
-        contents = [f"--- CONVERSATION ---\n{ctx.chat_history}\n--- END ---"]
-        for att in ctx.attachments:
+        contents = [f"--- CONVERSATION ---\n{chat_history}\n--- END ---"]
+        for att in attachments:
             try:
                 raw = att.raw or (base64.b64decode(att.datas) if att.datas else b'')
                 if raw:
@@ -505,27 +734,14 @@ class AIControllerOverride(AIController):
         return contents
 
     # ─────────────────────────────────────────────────────────────
-    # MESSAGE POSTERS
+    # MESSAGE POSTER
     # ─────────────────────────────────────────────────────────────
-    def _post(self, ctx, text, level='info'):
-        """
-        Post a translated message to chat with auto persona + icon.
-
-        Args:
-            ctx: RequestCtx
-            text: Body text (already translated via ctx.t)
-            level: 'info' | 'error' | 'warning' | 'success'
-        """
-        icons = {'info': '', 'error': '⛔ ', 'warning': '⚠️ ', 'success': '✅ '}
-        body = f"{AGENT_PERSONA}: {icons.get(level, '')}{text}"
-        self._post_raw(ctx, body)
-
-    def _post_raw(self, ctx, text):
-        """Post exactly what's given (no icon/persona prefix added)."""
-        if not ctx.mail_message_id:
+    def _post_message(self, text: str, mail_message_id):
+        """نشر رسالة في قناة المحادثة"""
+        if not mail_message_id:
             return
         try:
-            msg_record = request.env['mail.message'].sudo().browse(int(ctx.mail_message_id))
+            msg_record = request.env['mail.message'].sudo().browse(int(mail_message_id))
             if not msg_record.exists() or msg_record.model != 'discuss.channel':
                 return
 
@@ -544,7 +760,8 @@ class AIControllerOverride(AIController):
     # ─────────────────────────────────────────────────────────────
     # TOOL DISPATCHER
     # ─────────────────────────────────────────────────────────────
-    def _handle_tool_call(self, func, ctx):
+    def _handle_tool_call(self, func, mail_message_id, lang='ar'):
+        """تنفيذ الأداة المناسبة وإرجاع النتيجة"""
         name = func.name
         args = func.args
 
@@ -552,34 +769,37 @@ class AIControllerOverride(AIController):
 
         try:
             if name == "ai_dynamic_read":
-                return self._tool_dynamic_read(args, ctx)
+                return self._tool_dynamic_read(args, mail_message_id, lang)
             elif name == "ai_create_lead":
-                return self._tool_create_lead(args, ctx)
+                return self._tool_create_lead(args, mail_message_id, lang)
             elif name == "ai_create_invoice":
-                return self._tool_create_invoice(args, ctx)
+                return self._tool_create_invoice(args, mail_message_id, lang)
             elif name == "ai_create_bank_stmt":
-                return self._tool_create_bank_stmt(args, ctx)
+                return self._tool_create_bank_stmt(args, mail_message_id, lang)
             elif name == "ai_create_rfq":
-                return self._tool_create_rfq(args, ctx)
+                return self._tool_create_rfq(args, mail_message_id, lang)
             elif name == "ai_analytics":
-                return self._tool_analytics(args, ctx)
+                return self._tool_analytics(args, mail_message_id, lang)
             elif name == "ai_ask_user":
-                return self._tool_ask_user(args, ctx)
+                return self._tool_ask_user(args, mail_message_id, lang)
             elif name == "ai_update_records":
-                return self._tool_update_records(args, ctx)
+                return self._tool_update_records(args, mail_message_id, lang)
             else:
-                self._post(ctx, ctx.t("Unknown tool: %(name)s", name=name), level='error')
+                self._post_message(f"⛔ أداة غير معروفة: {name}", mail_message_id)
                 return {}
 
         except AccessError:
-            self._post(ctx, ctx.t("Permission denied"), level='error')
+            self._post_message(
+                f"{AGENT_PERSONA}: ⛔ ليس لديك صلاحية لتنفيذ هذه العملية.",
+                mail_message_id
+            )
             return {}
         except UserError as e:
-            self._post(ctx, str(e), level='warning')
+            self._post_message(f"{AGENT_PERSONA}: ⚠️ {e}", mail_message_id)
             return {}
         except Exception as e:
             _logger.exception(f"KH_AI: tool {name} failed")
-            self._post(ctx, f"{ctx.t('Error')}:\n{e}", level='error')
+            self._post_message(f"{AGENT_PERSONA}: ⛔ خطأ في تنفيذ الأداة:\n{e}", mail_message_id)
             return {}
 
     # ══════════════════════════════════════════════════════════════
@@ -587,76 +807,89 @@ class AIControllerOverride(AIController):
     # ══════════════════════════════════════════════════════════════
 
     # ── READ (Dynamic) ────────────────────────────────────────────
-    def _tool_dynamic_read(self, args, ctx):
+    def _tool_dynamic_read(self, args, mail_message_id, lang='ar'):
         model_name = args.get('model_name', '').strip()
         keyword    = args.get('keyword', '').strip()
         filters    = args.get('filters', '').strip()
         limit      = min(int(args.get('limit', 10)), 50)
-        t = ctx.t
 
+        # أمان: التحقق من أن الموديل في قائمة المسموح
         if model_name not in READABLE_MODELS:
-            self._post(ctx, t("Search in '%(model)s' is not allowed", model=model_name), level='error')
+            self._post_message(
+                f"{AGENT_PERSONA}: ⛔ البحث في '{model_name}' غير مسموح به.",
+                mail_message_id
+            )
             return {}
 
         allowed_fields = READABLE_MODELS[model_name]
 
+        # بناء الـ domain
         domain = []
         if keyword:
             domain.append(('name', 'ilike', keyword))
         if filters:
             try:
-                domain.extend(json.loads(filters))
+                extra = json.loads(filters)
+                domain.extend(extra)
             except json.JSONDecodeError:
-                pass
+                pass  # نتجاهل الـ filter الغلط
 
-        records = request.env[model_name].search_read(domain, fields=allowed_fields, limit=limit)
+        # القراءة بصلاحيات المستخدم الحقيقي (بدون sudo)
+        env = request.env
+        records = env[model_name].search_read(domain, fields=allowed_fields, limit=limit)
 
         if not records:
-            self._post(ctx, t("No records found matching '%(keyword)s'", keyword=keyword or model_name))
+            self._post_message(
+                f"{AGENT_PERSONA}: 🔍 لم أجد أي سجلات مطابقة في '{model_name}'"
+                + (f" للكلمة '{keyword}'" if keyword else "") + ".",
+                mail_message_id
+            )
             return {}
-
-        # عرض خاص لبنود طلبات الشراء
-        if model_name == 'purchase.order.line':
-            lines = [f"🔍 {t('Found %(count)s record(s) in %(model)s', count=len(records), model=model_name)}\n"]
-            seen_vendors = {}
-            for r in records:
-                ptnr = r.get('partner_id')
-                pname = ptnr[1] if isinstance(ptnr, (list, tuple)) and len(ptnr) == 2 else str(ptnr or '-')
-                prod = r.get('product_id')
-                prodname = prod[1] if isinstance(prod, (list, tuple)) and len(prod) == 2 else str(prod or '-')
-                qty = r.get('product_qty', 0)
-                price = float(r.get('price_unit') or 0)
-                seen_vendors.setdefault(pname, []).append(f"{prodname} × {qty} @ {price:,.2f}")
-            for vendor, items in seen_vendors.items():
-                lines.append(f"🏢 **{vendor}**")
-                for item in items:
-                    lines.append(f"   • {item}")
-                lines.append("")
-            self._post(ctx, "\n".join(lines))
-            return {}
-
-        # العرض الافتراضي
-        lines = [f"🔍 {t('Found %(count)s record(s) in %(model)s', count=len(records), model=model_name)}\n"]
-        for r in records:
-            title = r.get('name') or r.get('display_name') or str(r.get('id'))
-            details = []
-            for fld in allowed_fields:
-                if fld == 'name':
-                    continue
-                val = r.get(fld)
-                if val:
-                    if isinstance(val, (list, tuple)) and len(val) == 2:
-                        val = val[1]
-                    details.append(f"{fld}: {val}")
-            detail_str = " | ".join(details[:4]) if details else ""
-            lines.append(f"- **{title}**" + (f" — {detail_str}" if detail_str else ""))
-
-        self._post(ctx, "\n".join(lines))
+        # بناء الرد
+        if records:
+            # عرض خاص لبنود طلبات الشراء
+            if model_name == 'purchase.order.line':
+                reply_lines = [f"{AGENT_PERSONA}: 🔍 وجدت **{len(records)}** بند شراء يحتوي على '{keyword}':\n"]
+                seen_vendors = {}
+                for r in records:
+                    ptnr = r.get('partner_id')
+                    pname = ptnr[1] if isinstance(ptnr,(list,tuple)) and len(ptnr)==2 else str(ptnr or '-')
+                    prod = r.get('product_id')
+                    prodname = prod[1] if isinstance(prod,(list,tuple)) and len(prod)==2 else str(prod or '-')
+                    qty = r.get('product_qty', 0)
+                    price = float(r.get('price_unit') or 0)
+                    seen_vendors.setdefault(pname, []).append(f"{prodname} × {qty} @ {price:,.2f}")
+                for vendor, items in seen_vendors.items():
+                    reply_lines.append(f"🏢 **{vendor}**")
+                    for item in items:
+                        reply_lines.append(f"   • {item}")
+                    reply_lines.append("")
+                self._post_message("\n".join(reply_lines), mail_message_id)
+            else:
+                reply_lines = [f"{AGENT_PERSONA}: 🔍 {_t('found', lang)} **{len(records)}** {_t('records', lang)} in {model_name}:"]
+                for r in records:
+                    title = r.get('name') or r.get('display_name') or str(r.get('id'))
+                    details = []
+                    for fld in allowed_fields:
+                        if fld == 'name': continue
+                        val = r.get(fld)
+                        if val:
+                            if isinstance(val, (list, tuple)) and len(val) == 2:
+                                val = val[1]
+                            details.append(f"{fld}: {val}")
+                    detail_str = " | ".join(details[:4]) if details else ""
+                    reply_lines.append(f"- **{title}**" + (f" — {detail_str}" if detail_str else ""))
+                self._post_message("\n".join(reply_lines), mail_message_id)
+        else:
+            no_result = f"{AGENT_PERSONA}: 🔍 {_t('not_found', lang)}: '{keyword}'."
+            if model_name == 'res.partner' and keyword:
+                no_result += (f"\n💡 جرب البحث في طلبات الشراء القديمة عن المنتج '{keyword}'")
+            self._post_message(no_result, mail_message_id)
         return {}
 
     # ── CREATE LEAD ───────────────────────────────────────────────
-    def _tool_create_lead(self, args, ctx):
-        env = request.env
+    def _tool_create_lead(self, args, mail_message_id, lang='ar'):
+        env = request.env  # صلاحيات المستخدم الحقيقي
 
         new_lead = env['crm.lead'].create({
             'name':             args.get('name', 'AI Lead'),
@@ -667,7 +900,8 @@ class AIControllerOverride(AIController):
             'expected_revenue': float(args.get('expected_revenue', 0.0)),
         })
 
-        self._post(ctx, ctx.t("Lead created: %(name)s", name=new_lead.name), level='success')
+        msg = args.get('message_to_user', f"تم إنشاء Lead: {new_lead.name}")
+        self._post_message(f"{AGENT_PERSONA}: ✅ {msg}", mail_message_id)
 
         return {
             'type': 'ir.actions.act_window',
@@ -678,8 +912,8 @@ class AIControllerOverride(AIController):
         }
 
     # ── CREATE INVOICE ────────────────────────────────────────────
-    def _tool_create_invoice(self, args, ctx):
-        env = request.env
+    def _tool_create_invoice(self, args, mail_message_id, lang='ar'):
+        env = request.env  # صلاحيات المستخدم الحقيقي
 
         move_type    = args.get('move_type', 'out_invoice')
         partner_name = args.get('partner_name', 'Unknown')
@@ -687,18 +921,21 @@ class AIControllerOverride(AIController):
         invoice_date = args.get('invoice_date') or fields.Date.today()
         lines_data   = args.get('lines', [])
 
+        # إيجاد أو إنشاء الشريك
         partner = env['res.partner'].search([('name', '=ilike', partner_name)], limit=1)
         if not partner:
             partner = env['res.partner'].create({'name': partner_name, 'vat': partner_vat})
         elif partner_vat and not partner.vat:
             partner.write({'vat': partner_vat})
 
+        # الحساب المناسب
         acc_type = 'expense' if move_type == 'in_invoice' else 'income'
         account = env['account.account'].search(
             [('account_type', '=', acc_type), ('company_ids', 'in', env.company.id)],
             limit=1
         )
 
+        # بناء سطور الفاتورة
         invoice_lines = []
         for ln in lines_data:
             invoice_lines.append((0, 0, {
@@ -721,7 +958,8 @@ class AIControllerOverride(AIController):
             'invoice_line_ids': invoice_lines,
         })
 
-        self._post(ctx, ctx.t("Invoice created: %(name)s", name=new_move.name), level='success')
+        msg = args.get('message_to_user', f"تم إنشاء {new_move.name}")
+        self._post_message(f"{AGENT_PERSONA}: ✅ {msg}", mail_message_id)
 
         return {
             'type': 'ir.actions.act_window',
@@ -732,15 +970,18 @@ class AIControllerOverride(AIController):
         }
 
     # ── CREATE BANK STATEMENT ─────────────────────────────────────
-    def _tool_create_bank_stmt(self, args, ctx):
-        env = request.env
+    def _tool_create_bank_stmt(self, args, mail_message_id, lang='ar'):
+        env = request.env  # صلاحيات المستخدم الحقيقي
 
         journal = env['account.journal'].search(
             [('type', '=', 'bank'), ('company_id', '=', env.company.id)],
             limit=1
         )
         if not journal:
-            self._post(ctx, ctx.t("Error") + ": No bank journal found", level='error')
+            self._post_message(
+                f"{AGENT_PERSONA}: ⛔ لم أجد دفتر يومية بنكي (Bank Journal) في النظام.",
+                mail_message_id
+            )
             return {}
 
         stmt_date  = args.get('date') or str(fields.Date.today())
@@ -752,6 +993,7 @@ class AIControllerOverride(AIController):
             'amount':      float(ln.get('amount', 0.0)),
         }) for ln in lines_data]
 
+        # Odoo 17+ API للـ bank statement
         new_stmt = env['account.bank.statement'].create({
             'name':             args.get('reference', 'AI Bank Statement'),
             'date':             stmt_date,
@@ -761,7 +1003,8 @@ class AIControllerOverride(AIController):
             'line_ids':         stmt_lines,
         })
 
-        self._post(ctx, ctx.t("Bank statement created: %(name)s", name=new_stmt.name), level='success')
+        msg = args.get('message_to_user', f"تم إنشاء كشف بنكي: {new_stmt.name}")
+        self._post_message(f"{AGENT_PERSONA}: ✅ {msg}", mail_message_id)
 
         return {
             'type': 'ir.actions.act_window',
@@ -772,9 +1015,8 @@ class AIControllerOverride(AIController):
         }
 
     # ── CREATE RFQ ────────────────────────────────────────────────
-    def _tool_create_rfq(self, args, ctx):
-        env = request.env
-        t = ctx.t
+    def _tool_create_rfq(self, args, mail_message_id, lang='ar'):
+        env = request.env  # صلاحيات المستخدم الحقيقي
 
         vendor_name  = args.get('vendor_name', '')
         vendor_email = args.get('vendor_email', '')
@@ -783,8 +1025,10 @@ class AIControllerOverride(AIController):
         notes        = args.get('notes', '')
 
         # إيجاد أو إنشاء المورد
+        # بحث مرن — جزئي أو كامل
         vendor = env['res.partner'].search([('name', '=ilike', vendor_name)], limit=1)
         if not vendor:
+            # جرب بحث جزئي
             vendor = env['res.partner'].search([('name', 'ilike', vendor_name)], limit=1)
         if not vendor:
             vendor = env['res.partner'].create({
@@ -795,58 +1039,86 @@ class AIControllerOverride(AIController):
             })
         else:
             updates = {}
-            if vendor_email and not vendor.email:
-                updates['email'] = vendor_email
-            if vendor_phone and not vendor.phone:
-                updates['phone'] = vendor_phone
+            if vendor_email and not vendor.email: updates['email'] = vendor_email
+            if vendor_phone and not vendor.phone: updates['phone'] = vendor_phone
             if updates:
                 vendor.write(updates)
 
-        # التحقق من الإيميل
+        # ── تحقق من الإيميل — إلزامي لإرسال الـ RFQ ──────────────
         final_email = vendor_email or vendor.email
         final_phone = vendor_phone or vendor.phone
 
         if not final_email:
-            self._post(ctx,
-                t("Vendor '%(name)s' has no email on file", name=vendor_name) + "\n" +
-                t("Searching the web for contact info...")
+            # ابحث في الإنترنت عن بيانات التواصل
+            self._post_message(
+                f"{AGENT_PERSONA}: 🔍 المورد **{vendor_name}** ليس لديه إيميل في النظام.\n"
+                f"جاري البحث في الإنترنت عن بيانات التواصل...",
+                mail_message_id
             )
-            # بحث تلقائي على الإيميل
+            # محاولة الحصول على الإيميل عبر Gemini web search
             try:
-                api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
-                gclient = genai.Client(api_key=api_key)
-                search_resp = gclient.models.generate_content(
+                from google.genai import types as _types
+                _api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
+                _gclient = genai.Client(api_key=_api_key)
+                # محاولة أولى: بحث مباشر بالاسم
+                _search_resp = _gclient.models.generate_content(
                     model="gemini-2.5-flash",
                     contents=[f"Search the web for the official contact email and phone of '{vendor_name}'. Return ONLY: EMAIL: xxx@xxx.com | PHONE: +971xxxxxxx"],
-                    config=types.GenerateContentConfig(
-                        tools=[types.Tool(google_search=types.GoogleSearch())],
+                    config=_types.GenerateContentConfig(
+                        tools=[_types.Tool(google_search=_types.GoogleSearch())],
                         temperature=0.0,
                     )
                 )
-                result = (getattr(search_resp, 'text', '') or '').strip()
+                _result = (getattr(_search_resp, 'text', '') or '').strip()
 
-                email_match = re.search(r'[\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,}', result)
-                phone_match = re.search(r'[+\d][\d\s\-]{8,}', result)
-
-                if email_match:
-                    final_email = email_match.group()
-                    if phone_match and not final_phone:
-                        final_phone = phone_match.group().strip()
-                    vendor.write({'email': final_email, 'phone': final_phone or vendor.phone})
-
-                    self._post(ctx,
-                        t("Found contact info for %(name)s", name=vendor_name) + "\n" +
-                        f"• {t('Email')}: **{final_email}**\n" +
-                        f"• {t('Phone')}: **{final_phone or t('Not available')}**\n" +
-                        t("Creating the order..."),
-                        level='success'
+                # محاولة ثانية لو NOT_FOUND: بحث بصيغة مختلفة
+                if 'NOT_FOUND' in _result or '@' not in _result:
+                    _search_resp2 = _gclient.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=[f"What is the official website and email of '{vendor_name}' company? Search online and return the email address."],
+                        config=_types.GenerateContentConfig(
+                            tools=[_types.Tool(google_search=_types.GoogleSearch())],
+                            temperature=0.0,
+                        )
                     )
+                    _result2 = (getattr(_search_resp2, 'text', '') or '').strip()
+                    if '@' in _result2:
+                        _result = _result2
+                    _logger.info(f"KH_AI email retry result: {_result2[:100]}")
+                _logger.info(f"KH_AI RFQ web search result for '{vendor_name}': {_result[:150]}")
+
+                # استخرج الإيميل من النتيجة
+                import re as _re3
+                _email_match = _re3.search(r'[\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,}', _result)
+                _phone_match = _re3.search(r'[+\d][\d\s\-]{8,}', _result)
+
+                if _email_match:
+                    final_email = _email_match.group()
+                    if _phone_match and not final_phone:
+                        final_phone = _phone_match.group().strip()
+                    vendor.write({'email': final_email, 'phone': final_phone or vendor.phone})
+                    self._post_message(
+                        f"{AGENT_PERSONA}: ✅ وجدت بيانات {vendor_name}:\n"
+                        f"• الإيميل: **{final_email}**\n"
+                        f"• الهاتف: **{final_phone or 'غير متوفر'}**\n"
+                        f"جاري إنشاء الطلب...",
+                        mail_message_id
+                    )
+                    # ✅ أكمل تلقائياً بدون سؤال
                 else:
-                    self._post(ctx, t("Could not find email for %(name)s", name=vendor_name), level='warning')
+                    self._post_message(
+                        f"{AGENT_PERSONA}: ⚠️ لم أتمكن من إيجاد إيميل لـ **{vendor_name}**.\n"
+                        f"يرجى إرسال الإيميل مباشرة: 'إيميل {vendor_name} هو info@example.com ثم أعد الطلب'",
+                        mail_message_id
+                    )
                     return {}
-            except Exception:
+            except Exception as _e:
                 _logger.exception("KH_AI: web search for vendor email failed")
-                self._post(ctx, t("Vendor '%(name)s' has no email on file", name=vendor_name), level='warning')
+                self._post_message(
+                    f"{AGENT_PERSONA}: ⚠️ المورد **{vendor_name}** ليس لديه إيميل.\n"
+                    f"يرجى إضافة الإيميل للمورد في النظام أولاً.",
+                    mail_message_id
+                )
                 return {}
 
         # بناء سطور الطلب
@@ -877,7 +1149,8 @@ class AIControllerOverride(AIController):
 
         new_rfq = env['purchase.order'].create(rfq_vals)
 
-        self._post(ctx, t("RFQ created: %(name)s", name=new_rfq.name), level='success')
+        msg = args.get('message_to_user', f"تم إنشاء RFQ: {new_rfq.name}")
+        self._post_message(f"{AGENT_PERSONA}: ✅ {msg}", mail_message_id)
 
         return {
             'type': 'ir.actions.act_window',
@@ -887,64 +1160,713 @@ class AIControllerOverride(AIController):
             'target': 'current',
         }
 
+    # ── ANALYTICS ────────────────────────────────────────────────
+    def _tool_analytics(self, args, mail_message_id, lang='ar'):
+        """تحليلات مالية وتجارية مباشرة من Odoo ORM"""
+        env       = request.env
+        report    = args.get('report_type', '')
+        date_from = args.get('date_from') or fields.Date.today().replace(month=1, day=1).strftime('%Y-%m-%d')
+        date_to   = args.get('date_to')   or str(fields.Date.today())
+        limit     = min(int(args.get('limit', 10)), 50)
+
+        try:
+            rows  = []
+            title = report.replace('_', ' ').title()
+
+            # ── 1. Profit Margin by Product Category ─────────────
+            if report == 'profit_by_category':
+                title = "هوامش الربح حسب فئة المنتج"
+                # نجمع من سطور الفواتير المؤكدة
+                env.cr.execute("""
+                    SELECT
+                        pc.complete_name                        AS category,
+                        SUM(aml.quantity * aml.price_unit)      AS revenue,
+                        SUM(aml.quantity * pp.standard_price)   AS cost,
+                        SUM(aml.quantity * aml.price_unit)
+                          - SUM(aml.quantity * pp.standard_price) AS profit
+                    FROM account_move_line aml
+                    JOIN account_move am      ON am.id  = aml.move_id
+                    JOIN product_product pp   ON pp.id  = aml.product_id
+                    JOIN product_template pt  ON pt.id  = pp.product_tmpl_id
+                    JOIN product_category pc  ON pc.id  = pt.categ_id
+                    WHERE am.move_type = 'out_invoice'
+                      AND am.state     = 'posted'
+                      AND am.invoice_date BETWEEN %s AND %s
+                      AND aml.product_id IS NOT NULL
+                      AND am.company_id = %s
+                    GROUP BY pc.complete_name
+                    ORDER BY profit DESC
+                    LIMIT %s
+                """, (date_from, date_to, env.company.id, limit))
+                rows = env.cr.dictfetchall()
+
+                if not rows:
+                    self._post_message(
+                        f"{AGENT_PERSONA}: 📊 لا توجد بيانات فواتير مؤكدة في الفترة {date_from} → {date_to}",
+                        mail_message_id
+                    )
+                    return {}
+
+                lines = [
+                    f"{AGENT_PERSONA}: 📊 **{title}**",
+                    f"الفترة: {date_from} → {date_to}\n",
+                    "| الفئة | الإيراد | التكلفة | الربح | هامش % |",
+                    "|-------|---------|---------|-------|--------|",
+                ]
+                for r in rows:
+                    rev    = float(r['revenue'] or 0)
+                    cost   = float(r['cost']    or 0)
+                    profit = float(r['profit']  or 0)
+                    margin = round((profit / rev * 100), 1) if rev else 0
+                    margin_icon = "🟢" if margin >= 20 else "🟡" if margin >= 10 else "🔴"
+                    lines.append(
+                        f"| {r['category']} | {rev:,.0f} | {cost:,.0f} | {profit:,.0f} | {margin_icon} {margin}% |"
+                    )
+                self._post_message("\n".join(lines), mail_message_id)
+
+            # ── 2. Revenue by Partner (Top Customers) ─────────────
+            elif report == 'revenue_by_partner':
+                title = "الإيراد حسب العميل"
+                env.cr.execute("""
+                    SELECT
+                        rp.name                                 AS partner,
+                        COUNT(am.id)                            AS invoice_count,
+                        SUM(am.amount_untaxed)                  AS revenue,
+                        SUM(am.amount_tax)                      AS tax
+                    FROM account_move am
+                    JOIN res_partner rp ON rp.id = am.partner_id
+                    WHERE am.move_type = 'out_invoice'
+                      AND am.state     = 'posted'
+                      AND am.invoice_date BETWEEN %s AND %s
+                      AND am.company_id = %s
+                    GROUP BY rp.name
+                    ORDER BY revenue DESC
+                    LIMIT %s
+                """, (date_from, date_to, env.company.id, limit))
+                rows = env.cr.dictfetchall()
+
+                lines = [
+                    f"{AGENT_PERSONA}: 📊 **{title}**",
+                    f"الفترة: {date_from} → {date_to}\n",
+                    "| العميل | عدد الفواتير | الإيراد (بدون ضريبة) | الضريبة |",
+                    "|--------|-------------|----------------------|---------|",
+                ]
+                for r in rows:
+                    lines.append(
+                        f"| {r['partner']} | {r['invoice_count']} | {float(r['revenue'] or 0):,.0f} | {float(r['tax'] or 0):,.0f} |"
+                    )
+                self._post_message("\n".join(lines), mail_message_id)
+
+            # ── 3. Top Products by Revenue ─────────────────────────
+            elif report == 'top_products':
+                title = "أفضل المنتجات مبيعاً"
+                env.cr.execute("""
+                    SELECT
+                        COALESCE(pt.name->>'en_US', pt.name->>'ar_001', pt.name::text) AS product,
+                        SUM(aml.quantity)                       AS qty_sold,
+                        SUM(aml.quantity * aml.price_unit)      AS revenue
+                    FROM account_move_line aml
+                    JOIN account_move am      ON am.id  = aml.move_id
+                    JOIN product_product pp   ON pp.id  = aml.product_id
+                    JOIN product_template pt  ON pt.id  = pp.product_tmpl_id
+                    WHERE am.move_type = 'out_invoice'
+                      AND am.state     = 'posted'
+                      AND am.invoice_date BETWEEN %s AND %s
+                      AND aml.product_id IS NOT NULL
+                      AND am.company_id = %s
+                    GROUP BY pt.name->>'en_US'
+                    ORDER BY revenue DESC
+                    LIMIT %s
+                """, (date_from, date_to, env.company.id, limit))
+                rows = env.cr.dictfetchall()
+
+                lines = [
+                    f"{AGENT_PERSONA}: 📊 **{title}**",
+                    f"الفترة: {date_from} → {date_to}\n",
+                    "| # | المنتج | الكمية | الإيراد |",
+                    "|---|--------|--------|---------|",
+                ]
+                for i, r in enumerate(rows, 1):
+                    lines.append(
+                        f"| {i} | {r['product']} | {float(r['qty_sold'] or 0):,.1f} | {float(r['revenue'] or 0):,.0f} |"
+                    )
+                self._post_message("\n".join(lines), mail_message_id)
+
+            # ── 4. Expense Breakdown ───────────────────────────────
+            elif report == 'expense_breakdown':
+                title = "تحليل المصروفات"
+                env.cr.execute("""
+                    SELECT
+                        COALESCE(aa.name->>'en_US', aa.name->>'ar_001', aa.name::text) AS account,
+                        SUM(aml.debit - aml.credit)             AS amount
+                    FROM account_move_line aml
+                    JOIN account_account aa ON aa.id = aml.account_id
+                    JOIN account_move am     ON am.id = aml.move_id
+                    WHERE aa.account_type IN ('expense', 'expense_depreciation', 'expense_direct_cost')
+                      AND am.state = 'posted'
+                      AND am.date BETWEEN %s AND %s
+                      AND am.company_id = %s
+                    GROUP BY aa.name->>'en_US'
+                    ORDER BY amount DESC
+                    LIMIT %s
+                """, (date_from, date_to, env.company.id, limit))
+                rows = env.cr.dictfetchall()
+
+                total = sum(float(r['amount'] or 0) for r in rows)
+                lines = [
+                    f"{AGENT_PERSONA}: 📊 **{title}**",
+                    f"الفترة: {date_from} → {date_to}\n",
+                    "| الحساب | المبلغ | النسبة % |",
+                    "|--------|--------|----------|",
+                ]
+                for r in rows:
+                    amt  = float(r['amount'] or 0)
+                    pct  = round(amt / total * 100, 1) if total else 0
+                    lines.append(f"| {r['account']} | {amt:,.0f} | {pct}% |")
+                lines.append(f"| **الإجمالي** | **{total:,.0f}** | **100%** |")
+                self._post_message("\n".join(lines), mail_message_id)
+
+            # ── 5. Invoice Summary ─────────────────────────────────
+            elif report == 'invoice_summary':
+                title = "ملخص الفواتير"
+                env.cr.execute("""
+                    SELECT
+                        move_type,
+                        state,
+                        COUNT(*)            AS count,
+                        SUM(amount_total)   AS total
+                    FROM account_move
+                    WHERE move_type IN ('out_invoice', 'in_invoice', 'out_refund', 'in_refund')
+                      AND invoice_date BETWEEN %s AND %s
+                      AND company_id = %s
+                    GROUP BY move_type, state
+                    ORDER BY move_type, state
+                """, (date_from, date_to, env.company.id))
+                rows = env.cr.dictfetchall()
+
+                type_labels = {
+                    'out_invoice': 'فاتورة عميل', 'in_invoice': 'فاتورة مورد',
+                    'out_refund': 'إشعار دائن', 'in_refund': 'إشعار مدين',
+                }
+                state_labels = {'draft': 'مسودة', 'posted': 'مؤكدة', 'cancel': 'ملغاة'}
+                lines = [
+                    f"{AGENT_PERSONA}: 📊 **{title}**",
+                    f"الفترة: {date_from} → {date_to}\n",
+                    "| النوع | الحالة | العدد | الإجمالي |",
+                    "|------|--------|-------|---------|",
+                ]
+                for r in rows:
+                    lines.append(
+                        f"| {type_labels.get(r['move_type'], r['move_type'])} "
+                        f"| {state_labels.get(r['state'], r['state'])} "
+                        f"| {r['count']} | {float(r['total'] or 0):,.0f} |"
+                    )
+                self._post_message("\n".join(lines), mail_message_id)
+
+            # ── 6. Stock Valuation ─────────────────────────────────
+            elif report == 'stock_valuation':
+                title = "تقييم المخزون"
+                products = env['product.product'].search_read(
+                    [('type', 'in', ['product', 'consu']), ('qty_available', '>', 0)],
+                    fields=['name', 'qty_available', 'standard_price', 'categ_id'],
+                    limit=limit,
+                    order='qty_available desc',
+                )
+                lines = [
+                    f"{AGENT_PERSONA}: 📊 **{title}**\n",
+                    "| المنتج | الكمية | سعر التكلفة | القيمة الإجمالية |",
+                    "|--------|--------|-------------|-----------------|",
+                ]
+                total_val = 0
+                for p in products:
+                    qty  = float(p['qty_available'])
+                    cost = float(p['standard_price'])
+                    val  = qty * cost
+                    total_val += val
+                    cat  = p['categ_id'][1] if p.get('categ_id') else '-'
+                    lines.append(f"| {p['name']} ({cat}) | {qty:,.1f} | {cost:,.2f} | {val:,.0f} |")
+                lines.append(f"| **إجمالي المخزون** | — | — | **{total_val:,.0f}** |")
+                self._post_message("\n".join(lines), mail_message_id)
+
+            # ── 7. Sales Pipeline ──────────────────────────────────
+            elif report == 'sales_pipeline':
+                title = "خط أنابيب المبيعات (CRM)"
+                env.cr.execute("""
+                    SELECT
+                        cs.name                                 AS stage,
+                        COUNT(cl.id)                            AS count,
+                        SUM(cl.expected_revenue)                AS expected,
+                        AVG(cl.probability)                     AS avg_prob
+                    FROM crm_lead cl
+                    JOIN crm_stage cs ON cs.id = cl.stage_id
+                    WHERE cl.type = 'opportunity'
+                      AND cl.active = true
+                      AND cl.company_id = %s
+                    GROUP BY cs.name, cs.sequence
+                    ORDER BY cs.sequence
+                """, (env.company.id,))
+                rows = env.cr.dictfetchall()
+
+                lines = [
+                    f"{AGENT_PERSONA}: 📊 **{title}**\n",
+                    "| المرحلة | العدد | الإيراد المتوقع | احتمالية الإغلاق |",
+                    "|---------|-------|----------------|-----------------|",
+                ]
+                for r in rows:
+                    prob = round(float(r['avg_prob'] or 0), 0)
+                    prob_icon = "🟢" if prob >= 70 else "🟡" if prob >= 40 else "🔴"
+                    lines.append(
+                        f"| {r['stage']} | {r['count']} "
+                        f"| {float(r['expected'] or 0):,.0f} "
+                        f"| {prob_icon} {prob}% |"
+                    )
+                self._post_message("\n".join(lines), mail_message_id)
+
+
+            # ── 8. Project Cost Analysis ──────────────────────────
+            elif report == 'project_cost':
+                title = "تكاليف المشاريع"
+                # Detect analytic link: try task-based first (Odoo 17+), then analytic account
+                # Odoo 17+: project names stored as JSONB translated fields
+                # Filter only projects starting with 'PROJECT:' per business convention
+                env.cr.execute("""
+                    SELECT
+                        COALESCE(
+                            pp.name->>'en_US',
+                            pp.name->>'ar_001',
+                            pp.name::text
+                        )                                           AS project,
+                        SUM(aal.amount)                             AS total_cost,
+                        SUM(aal.unit_amount)                        AS total_hours,
+                        COUNT(DISTINCT aal.employee_id)             AS team_size
+                    FROM account_analytic_line aal
+                    JOIN project_task pt2   ON pt2.id  = aal.task_id
+                    JOIN project_project pp ON pp.id   = pt2.project_id
+                    WHERE aal.date BETWEEN %s AND %s
+                      AND pp.company_id = %s
+                      AND aal.task_id IS NOT NULL
+                    GROUP BY pp.name
+                    ORDER BY total_cost DESC
+                    LIMIT %s
+                """, (date_from, date_to, env.company.id, limit))
+                rows = env.cr.dictfetchall()
+
+                # Fallback: direct project_id on analytic line
+                if not rows:
+                    env.cr.execute("""
+                        SELECT
+                            COALESCE(
+                                pp.name->>'en_US',
+                                pp.name->>'ar_001',
+                                pp.name::text
+                            )                                       AS project,
+                            SUM(aal.amount)                         AS total_cost,
+                            SUM(aal.unit_amount)                    AS total_hours,
+                            COUNT(DISTINCT aal.employee_id)         AS team_size
+                        FROM account_analytic_line aal
+                        JOIN project_project pp ON pp.id = aal.project_id
+                        WHERE aal.date BETWEEN %s AND %s
+                          AND pp.company_id = %s
+                          AND aal.project_id IS NOT NULL
+                        GROUP BY pp.name
+                        ORDER BY total_cost DESC
+                        LIMIT %s
+                    """, (date_from, date_to, env.company.id, limit))
+                    rows = env.cr.dictfetchall()
+
+                # Fallback 2: no analytic data — read projects directly filtered by name prefix
+                if not rows:
+                    projects_orm = env['project.project'].search_read(
+                        [('company_id', '=', env.company.id)],
+                        fields=['name', 'allocated_hours'],
+                        limit=limit,
+                    )
+                    # Filter to PROJECT: prefix
+                    projects_orm = [p for p in projects_orm if str(p['name']).lower().startswith('project:')]
+                    rows = [{'project': p['name'], 'total_cost': 0, 'total_hours': p.get('allocated_hours') or 0, 'team_size': 0} for p in projects_orm]
+
+                if not rows:
+                    # Fallback: try without analytic account link
+                    projects = env['project.project'].search_read(
+                        [('company_id', '=', env.company.id)],
+                        fields=['name', 'allocated_hours', 'date_start', 'date'],
+                        limit=limit,
+                    )
+                    lines = [
+                        f"{AGENT_PERSONA}: 📊 **{title}** (لا توجد بيانات تحليلية مرتبطة)\n",
+                        "| المشروع | ساعات مخصصة | تاريخ البدء | تاريخ الانتهاء |",
+                        "|---------|------------|------------|----------------|",
+                    ]
+                    for p in projects:
+                        lines.append(
+                            f"| {p['name']} "
+                            f"| {p.get('allocated_hours') or 0:,.0f} "
+                            f"| {p.get('date_start') or '-'} "
+                            f"| {p.get('date') or '-'} |"
+                        )
+                    self._post_message("\n".join(lines), mail_message_id)
+                else:
+                    def _clean_name(val):
+                        """Clean JSONB name artifacts like {'en_US': 'X'}"""
+                        import json as _json
+                        if isinstance(val, dict):
+                            return val.get('en_US') or val.get('ar_001') or next(iter(val.values()), str(val))
+                        s = str(val)
+                        if s.startswith('{') and ':' in s:
+                            try:
+                                d = _json.loads(s.replace("'", '"'))
+                                return d.get('en_US') or next(iter(d.values()), s)
+                            except Exception:
+                                pass
+                        return s
+
+                    # Only show Project: prefixed projects (case-insensitive)
+                    rows = [r for r in rows if _clean_name(r['project']).lower().startswith('project:')]
+
+                    if not rows:
+                        self._post_message(
+                            f"{AGENT_PERSONA}: 🔍 لم أجد مشاريع تبدأ بـ 'Project:' أو لا توجد بيانات تحليلية مرتبطة بها.",
+                            mail_message_id
+                        )
+                        return {}
+
+                    lines = [
+                        f"{AGENT_PERSONA}: 📊 **{title}**",
+                        f"الفترة: {date_from} → {date_to}\n",
+                        "| # | المشروع | التكلفة الإجمالية | الساعات | حجم الفريق |",
+                        "|---|---------|-----------------|---------|-----------|",
+                    ]
+                    for i, r in enumerate(rows, 1):
+                        cost  = float(r['total_cost']  or 0)
+                        hours = float(r['total_hours'] or 0)
+                        team  = int(r['team_size']     or 0)
+                        name  = _clean_name(r['project'])
+                        lines.append(f"| {i} | {name} | {cost:,.0f} | {hours:,.1f} h | {team} |")
+                    self._post_message("\n".join(lines), mail_message_id)
+
+            # ── 9. Timesheet Hours by Project/Employee ─────────────
+            elif report == 'timesheet_hours':
+                title = "ساعات العمل (Timesheets)"
+                env.cr.execute("""
+                    SELECT
+                        pp.name                         AS project,
+                        he.name                         AS employee,
+                        SUM(aal.unit_amount)            AS hours
+                    FROM account_analytic_line aal
+                    JOIN project_task pt2  ON pt2.id  = aal.task_id
+                    JOIN project_project pp ON pp.id  = pt2.project_id
+                    LEFT JOIN hr_employee he ON he.id = aal.employee_id
+                    WHERE aal.date BETWEEN %s AND %s
+                      AND pp.company_id = %s
+                      AND aal.task_id IS NOT NULL
+                    GROUP BY pp.name, he.name
+                    ORDER BY hours DESC
+                    LIMIT %s
+                """, (date_from, date_to, env.company.id, limit))
+                rows = env.cr.dictfetchall()
+
+                lines = [
+                    f"{AGENT_PERSONA}: 📊 **{title}**",
+                    f"الفترة: {date_from} → {date_to}\n",
+                    "| المشروع | الموظف | الساعات |",
+                    "|---------|--------|---------|",
+                ]
+                for r in rows:
+                    lines.append(
+                        f"| {r['project']} | {r['employee'] or 'غير محدد'} | {float(r['hours'] or 0):,.1f} h |"
+                    )
+                self._post_message("\n".join(lines), mail_message_id)
+
+
+            # ── 10. Project Financial Status ─────────────────────────────────
+            elif report == 'project_financial':
+                project_keyword = (args.get('project_name') or '').strip()
+
+                if not project_keyword:
+                    self._post_message(
+                        f"{AGENT_PERSONA}: ⚠️ يرجى تحديد اسم المشروع أو رقمه.",
+                        mail_message_id
+                    )
+                    return {}
+
+                # جيب كل المشاريع بدون أي filter — ثم طابق بـ Python
+                _all = env['project.project'].sudo().search_read(
+                    [], fields=['id', 'name', 'partner_id', 'date_start', 'date'], limit=500
+                )
+
+                from difflib import SequenceMatcher as _SM
+                import re as _re
+
+                _kw = project_keyword.lower()
+
+                _skip_words = {'project', 'client', 'matar', 'ahmed', 'ahmad', 'saeed',
+                               'salem', 'ali', 'omar', 'rashed', 'abdulla', 'khaled',
+                               'mohamed', 'mohammed', 'opportunity', 'and', 'the'}
+
+                def _word_sim(a, b):
+                    return _SM(None, a.lower(), b.lower()).ratio()
+
+                def _score(p):
+                    _n  = str(p.get('name') or '').lower()
+                    _pa = str(p['partner_id'][1] if p.get('partner_id') else '').lower()
+                    _full = _n + ' ' + _pa
+
+                    # كلمات الـ query بعد إزالة الشائعة
+                    _kw_words = [w for w in _kw.split() if len(w) > 2 and w not in _skip_words]
+                    if not _kw_words:
+                        _kw_words = [w for w in _kw.split() if len(w) > 2]
+
+                    # كلمات اسم المشروع
+                    _pn_words = [w for w in _re.split(r'[\s\-|:]+', _full) if len(w) > 2]
+
+                    # مطابقة fuzzy على مستوى الكلمة
+                    _total = 0.0
+                    for _kw_word in _kw_words:
+                        _best = max((_word_sim(_kw_word, pw) for pw in _pn_words), default=0)
+                        if _best > 0.75:
+                            _total += 4 * _best
+                        elif _best > 0.6:
+                            _total += 2 * _best
+
+                    # بونس رقم المشروع
+                    _num = _re.search(r'\d{4,5}', _kw)
+                    if _num and _num.group() in _n:
+                        _total += 10
+
+                    return _total
+
+                _ranked = sorted(_all, key=_score, reverse=True)
+                _best   = _ranked[0] if _ranked else None
+                _best_score = _score(_best) if _best else 0
+
+                _logger.info(f"KH_AI project_financial: kw='{project_keyword}' best='{_best['name'] if _best else None}' score={_best_score:.2f}")
+
+                if not _best or _best_score < 0.5:
+                    self._post_message(
+                        f"{AGENT_PERSONA}: 🔍 لم أجد مشروعاً يطابق '{project_keyword}'.",
+                        mail_message_id
+                    )
+                    return {}
+
+                projects = [_best]
+
+                report_lines = [f"{AGENT_PERSONA}: 📊 **{_t('financial_status', lang)}**\n"]
+                for proj in projects:
+                    partner    = proj['partner_id'][1] if proj.get('partner_id') else 'غير محدد'
+                    partner_id = proj['partner_id'][0] if proj.get('partner_id') else None
+
+                    # ── البحث عن كل partners المطابقة باسم العميل ──────────────
+                    # المشكلة: المشروع partner_id = "Ahmad Matar AlDhaheri"
+                    # بس الفواتير باسم = "Client : Ahmed Matar Ahmed Al Dhaheri"
+                    # الحل: نبحث بأطول كلمة مميزة من الاسم في كل الـ partners
+
+                    import re as _re2
+
+                    # استخرج اسم العائلة (أطول كلمة إنجليزية > 5 أحرف)
+                    _proj_name_full = str(proj.get('name') or '')
+                    _partner_name   = str(proj['partner_id'][1] if proj.get('partner_id') else '')
+                    _combined_name  = _proj_name_full + ' ' + _partner_name
+
+                    _skip = {'project', 'client', 'matar', 'ahmed', 'ahmad', 'saeed',
+                             'salem', 'ali', 'omar', 'rashed', 'abdulla', 'khaled',
+                             'mohamed', 'mohammed', 'opportunity'}
+                    _eng_words = [w for w in _re2.findall(r'[A-Za-z]{5,}', _combined_name)
+                                  if w.lower() not in _skip]
+                    _family_name = max(_eng_words, key=len) if _eng_words else ''
+
+                    # جيب كل partners تحتوي على اسم العائلة
+                    all_partner_ids = []
+                    if partner_id:
+                        all_partner_ids.append(partner_id)
+
+                    if _family_name:
+                        # جرب الاسم كامل + بدون Al prefix (Aldhaheri → Dhaheri)
+                        _search_variants = [_family_name]
+                        if _family_name.lower().startswith('al') and len(_family_name) > 4:
+                            _search_variants.append(_family_name[2:])  # Aldhaheri → dhaheri
+
+                        _seen_ids = set(all_partner_ids)
+                        for _variant in _search_variants:
+                            _similar = env['res.partner'].sudo().search_read(
+                                [('name', 'ilike', _variant)],
+                                fields=['id', 'name'], limit=20
+                            )
+                            for p in _similar:
+                                if p['id'] not in _seen_ids:
+                                    all_partner_ids.append(p['id'])
+                                    _seen_ids.add(p['id'])
+                        _logger.info(f"KH_AI: family='{_family_name}' variants={_search_variants} → {len(all_partner_ids)} partners total")
+
+                    all_partner_ids = list(set(all_partner_ids))
+
+                    # ── فواتير العملاء ──────────────────────────────────────────
+                    total_invoiced = total_paid = total_due = 0.0
+                    inv_count = 0
+                    if all_partner_ids:
+                        inv = env['account.move'].read_group(
+                            [('move_type', '=', 'out_invoice'), ('state', '=', 'posted'),
+                             ('partner_id', 'in', all_partner_ids),
+                             ('company_id', '=', env.company.id)],
+                            fields=['amount_total:sum', 'amount_residual:sum', 'id:count'],
+                            groupby=[],
+                        )
+                        if inv:
+                            total_invoiced = float(inv[0].get('amount_total') or 0)
+                            total_due      = float(inv[0].get('amount_residual') or 0)
+                            total_paid     = total_invoiced - total_due
+                            inv_count      = int(inv[0].get('id') or 0)
+
+                    # ── فواتير الموردين ─────────────────────────────────────────
+                    total_bills = bill_due = 0.0
+                    bill_count  = 0
+                    if all_partner_ids:
+                        bills = env['account.move'].read_group(
+                            [('move_type', '=', 'in_invoice'), ('state', '=', 'posted'),
+                             ('partner_id', 'in', all_partner_ids),
+                             ('company_id', '=', env.company.id)],
+                            fields=['amount_total:sum', 'amount_residual:sum', 'id:count'],
+                            groupby=[],
+                        )
+                        if bills:
+                            total_bills = float(bills[0].get('amount_total') or 0)
+                            bill_due    = float(bills[0].get('amount_residual') or 0)
+                            bill_count  = int(bills[0].get('id') or 0)
+
+                    # ── حسابات تحليلية ─────────────────────────────────────────
+                    analytic_lines = env['account.analytic.line'].search_read(
+                        [('project_id', '=', proj['id']), ('amount', '<', 0)],
+                        fields=['amount'],
+                    )
+                    analytic_cost = abs(sum(float(l['amount']) for l in analytic_lines))
+
+                    total_cost  = total_bills + analytic_cost
+                    profit      = total_invoiced - total_cost
+                    margin_pct  = round(profit / total_invoiced * 100, 1) if total_invoiced else 0
+                    margin_icon = '🟢' if margin_pct >= 30 else '🟡' if margin_pct >= 10 else '🔴'
+
+                    report_lines += [
+                        f"**{proj['name']}**",
+                        f"{_t('client', lang)}: {partner}",
+                        f"{_t('period', lang)}: {proj.get('date_start') or '-'} → {proj.get('date') or '-'}",
+                        "",
+                        f"{_t('invoices', lang)} ({inv_count}):**",
+                        f"  • {_t('total', lang)}: **{total_invoiced:,.2f}**",
+                        f"  • {_t('paid', lang)}: **{total_paid:,.2f}**",
+                        f"  • {_t('due', lang)}: **{total_due:,.2f}**",
+                        "",
+                        f"{_t('expenses', lang)} ({bill_count} {_t('invoice_vendor', lang)} + {_t('analytic', lang)}):**",
+                        f"  • {_t('vendor_bills', lang)}: **{total_bills:,.2f}**",
+                        f"  • {_t('analytic', lang)}: **{analytic_cost:,.2f}**",
+                        "",
+                        f"{_t('result', lang)}",
+                        f"  • {_t('net_profit', lang)}: **{profit:,.2f}** {margin_icon} ({margin_pct}%)",
+                        "─" * 45,
+                    ]
+                self._post_message("\n".join(report_lines), mail_message_id)
+
+
+            else:
+                available = [
+                    'profit_by_category', 'revenue_by_partner', 'top_products',
+                    'expense_breakdown', 'invoice_summary', 'stock_valuation',
+                    'sales_pipeline', 'project_cost', 'project_financial', 'timesheet_hours'
+                ]
+                self._post_message(
+                    f"{AGENT_PERSONA}: ⚠️ نوع التقرير '{report}' غير معروف.\n"
+                    f"الأنواع المتاحة: {', '.join(available)}",
+                    mail_message_id
+                )
+
+        except Exception as e:
+            _logger.exception("KH_AI: analytics error")
+            try:
+                env.cr.rollback()  # CRITICAL: reset aborted transaction
+            except Exception:
+                pass
+            self._post_message(
+                f"{AGENT_PERSONA}: ⛔ خطأ في التحليل:\n{e}",
+                mail_message_id
+            )
+
+        return {}
+
     # ── ASK USER ─────────────────────────────────────────────────
-    def _tool_ask_user(self, args, ctx):
+    def _tool_ask_user(self, args, mail_message_id, lang='ar'):
+        """عرض خيارات للمستخدم بدل رفض الطلب"""
         question = args.get('question', '')
         options  = args.get('options', [])
         context  = args.get('context', '')
 
-        lines = ["🤔"]
+        lines = [f"{AGENT_PERSONA}: 🤔"]
         if context:
             lines.append(f"_{context}_\n")
         lines.append(f"**{question}**\n")
         for i, opt in enumerate(options, 1):
             lines.append(f"{i}️⃣ {opt}")
 
-        self._post(ctx, "\n".join(lines))
+        self._post_message("\n".join(lines), mail_message_id)
         return {}
 
-    # ── BULK UPDATE ───────────────────────────────────────────────
-    def _tool_update_records(self, args, ctx):
-        env = request.env
-        t = ctx.t
-
+    # ── BULK UPDATE RECORDS ───────────────────────────────────────
+    def _tool_update_records(self, args, mail_message_id, lang='ar'):
+        env      = request.env
         operation    = args.get('operation', '')
         partner_name = args.get('partner_name', '')
         account_code = args.get('account_code', '')
         account_name = args.get('account_name', '')
+        msg          = args.get('message_to_user', '')
 
         if operation == 'set_bank_statement_account':
-            # إيجاد الحساب
+
+            # 1. إيجاد الحساب
             account = None
             if account_code:
-                account = env['account.account'].search([('code', '=', account_code)], limit=1)
+                account = env['account.account'].search(
+                    [('code', '=', account_code)], limit=1
+                )
             if not account and account_name:
-                account = env['account.account'].search([('name', 'ilike', account_name)], limit=1)
+                account = env['account.account'].search(
+                    [('name', 'ilike', account_name)], limit=1
+                )
             if not account:
-                self._post(ctx, f"{t('Error')}: account '{account_code or account_name}' not found", level='error')
+                self._post_message(
+                    f"{AGENT_PERSONA}: ⛔ لم أجد حساباً بالكود '{account_code}' أو الاسم '{account_name}'.",
+                    mail_message_id
+                )
                 return {}
 
-            # إيجاد الـ partner
+            # 2. إيجاد الـ partner
             partner = None
             if partner_name:
-                partner = env['res.partner'].search([('name', 'ilike', partner_name)], limit=1)
+                partner = env['res.partner'].search(
+                    [('name', 'ilike', partner_name)], limit=1
+                )
 
+            # 3. إيجاد بنود الـ bank statement
             domain = [('statement_id', '!=', False)]
             if partner:
                 domain.append(('partner_id', '=', partner.id))
             elif partner_name:
+                # لو ما لاقى partner ابحث بالاسم في الـ label
                 domain.append(('payment_ref', 'ilike', partner_name))
 
             stmt_lines = env['account.bank.statement.line'].sudo().search(domain, limit=200)
 
             if not stmt_lines:
-                self._post(ctx, t("No records found matching '%(keyword)s'", keyword=partner_name))
+                self._post_message(
+                    f"{AGENT_PERSONA}: 🔍 لم أجد بنود bank statement"
+                    + (f" للشريك '{partner_name}'" if partner_name else "") + ".",
+                    mail_message_id
+                )
                 return {}
 
+            # 4. تحديث الحساب على كل البنود
             updated = 0
-            errors = 0
+            errors  = 0
             for line in stmt_lines:
                 try:
+                    # في Odoo 17+ الـ account يُعيَّن على journal item المرتبط
+                    # نبحث عن الـ move line المرتبطة
                     move_lines = env['account.move.line'].sudo().search([
                         ('statement_line_id', '=', line.id),
                         ('account_id.account_type', 'not in', ['asset_cash', 'liability_current']),
@@ -954,435 +1876,29 @@ class AIControllerOverride(AIController):
                         move_lines.sudo().write({'account_id': account.id})
                         updated += 1
                     else:
+                        # fallback: set directly on statement line if field exists
                         if hasattr(line, 'account_id'):
                             line.sudo().write({'account_id': account.id})
                             updated += 1
                         else:
                             errors += 1
-                except Exception:
+                except Exception as _e:
+                    _logger.warning(f"KH_AI update line {line.id}: {_e}")
                     errors += 1
 
-            body = (
-                f"**{t('Updated')}**\n"
-                f"• {t('Account')}: **{account.code} - {account.name}**\n"
-                f"• {t('Partner')}: **{partner.name if partner else partner_name}**\n"
-                f"• {t('Lines Updated')}: **{updated}**"
+            self._post_message(
+                f"{AGENT_PERSONA}: ✅ **{_t('updated', lang)}**\n"
+                f"• {_t('account', lang)}: **{account.code} - {account.name}**\n"
+                f"• {_t('partner', lang)}: **{partner.name if partner else partner_name}**\n"
+                f"• {_t('lines_updated', lang)}: **{updated}**\n"
+                + (f"• فشل التحديث: {errors}\n" if errors else ""),
+                mail_message_id
             )
-            if errors:
-                body += f"\n• Errors: {errors}"
-
-            self._post(ctx, body, level='success')
             return {}
 
-        self._post(ctx, f"Operation '{operation}' not supported", level='warning')
-        return {}
-
-    # ══════════════════════════════════════════════════════════════
-    #  ANALYTICS — with clean i18n pattern
-    # ══════════════════════════════════════════════════════════════
-    def _tool_analytics(self, args, ctx):
-        env = request.env
-        t = ctx.t
-
-        report    = args.get('report_type', '')
-        date_from = args.get('date_from') or fields.Date.today().replace(month=1, day=1).strftime('%Y-%m-%d')
-        date_to   = args.get('date_to')   or str(fields.Date.today())
-        limit     = min(int(args.get('limit', 10)), 50)
-
-        try:
-            # ── 1. Profit by Category ────────────────────────────
-            if report == 'profit_by_category':
-                env.cr.execute("""
-                    SELECT pc.complete_name AS category,
-                           SUM(aml.quantity * aml.price_unit)    AS revenue,
-                           SUM(aml.quantity * pp.standard_price) AS cost
-                    FROM account_move_line aml
-                    JOIN account_move am      ON am.id = aml.move_id
-                    JOIN product_product pp   ON pp.id = aml.product_id
-                    JOIN product_template pt  ON pt.id = pp.product_tmpl_id
-                    JOIN product_category pc  ON pc.id = pt.categ_id
-                    WHERE am.move_type = 'out_invoice' AND am.state = 'posted'
-                      AND am.invoice_date BETWEEN %s AND %s
-                      AND aml.product_id IS NOT NULL AND am.company_id = %s
-                    GROUP BY pc.complete_name
-                    ORDER BY (SUM(aml.quantity * aml.price_unit)
-                              - SUM(aml.quantity * pp.standard_price)) DESC
-                    LIMIT %s
-                """, (date_from, date_to, env.company.id, limit))
-                raw_rows = env.cr.dictfetchall()
-
-                if not raw_rows:
-                    self._post(ctx, t("No records found matching '%(keyword)s'",
-                                      keyword=f"{date_from} → {date_to}"))
-                    return {}
-
-                rows = []
-                for r in raw_rows:
-                    revenue = float(r['revenue'] or 0)
-                    cost    = float(r['cost']    or 0)
-                    profit  = revenue - cost
-                    margin_pct = round(profit / revenue * 100, 1) if revenue else 0
-                    rows.append({
-                        'Category': r['category'],
-                        'Revenue':  revenue,
-                        'Cost':     cost,
-                        'Profit':   profit,
-                        'Margin %': f"{margin_icon(margin_pct)} {margin_pct}%",
-                    })
-
-                table = render_table(t, rows, columns=['Category', 'Revenue', 'Cost', 'Profit', 'Margin %'])
-                self._post(ctx,
-                    f"📊 **{t('Profit Margins')}**\n"
-                    f"{t('Period')}: {date_from} → {date_to}\n\n{table}"
-                )
-
-            # ── 2. Revenue by Partner ────────────────────────────
-            elif report == 'revenue_by_partner':
-                env.cr.execute("""
-                    SELECT rp.name                AS partner,
-                           COUNT(am.id)           AS count,
-                           SUM(am.amount_untaxed) AS revenue
-                    FROM account_move am
-                    JOIN res_partner rp ON rp.id = am.partner_id
-                    WHERE am.move_type = 'out_invoice' AND am.state = 'posted'
-                      AND am.invoice_date BETWEEN %s AND %s AND am.company_id = %s
-                    GROUP BY rp.name ORDER BY revenue DESC LIMIT %s
-                """, (date_from, date_to, env.company.id, limit))
-                raw_rows = env.cr.dictfetchall()
-
-                rows = [{'Partner': r['partner'], 'Count': r['count'],
-                         'Revenue': float(r['revenue'] or 0)} for r in raw_rows]
-
-                table = render_table(t, rows, columns=['Partner', 'Count', 'Revenue'])
-                self._post(ctx,
-                    f"📊 **{t('Revenue')} — {t('Partner')}**\n"
-                    f"{t('Period')}: {date_from} → {date_to}\n\n{table}"
-                )
-
-            # ── 3. Top Products ──────────────────────────────────
-            elif report == 'top_products':
-                env.cr.execute("""
-                    SELECT COALESCE(pt.name->>'en_US', pt.name->>'ar_001', pt.name::text) AS product,
-                           SUM(aml.quantity)                    AS qty,
-                           SUM(aml.quantity * aml.price_unit)   AS revenue
-                    FROM account_move_line aml
-                    JOIN account_move am      ON am.id = aml.move_id
-                    JOIN product_product pp   ON pp.id = aml.product_id
-                    JOIN product_template pt  ON pt.id = pp.product_tmpl_id
-                    WHERE am.move_type = 'out_invoice' AND am.state = 'posted'
-                      AND am.invoice_date BETWEEN %s AND %s
-                      AND aml.product_id IS NOT NULL AND am.company_id = %s
-                    GROUP BY pt.name->>'en_US' ORDER BY revenue DESC LIMIT %s
-                """, (date_from, date_to, env.company.id, limit))
-                raw_rows = env.cr.dictfetchall()
-
-                rows = [{'Project': r['product'], 'Quantity': float(r['qty'] or 0),
-                         'Revenue': float(r['revenue'] or 0)} for r in raw_rows]
-
-                table = render_table(t, rows, columns=['Project', 'Quantity', 'Revenue'])
-                self._post(ctx,
-                    f"📊 **{t('Top Products')}**\n"
-                    f"{t('Period')}: {date_from} → {date_to}\n\n{table}"
-                )
-
-            # ── 4. Expense Breakdown ─────────────────────────────
-            elif report == 'expense_breakdown':
-                env.cr.execute("""
-                    SELECT COALESCE(aa.name->>'en_US', aa.name->>'ar_001', aa.name::text) AS account,
-                           SUM(aml.debit - aml.credit) AS amount
-                    FROM account_move_line aml
-                    JOIN account_account aa ON aa.id = aml.account_id
-                    JOIN account_move am     ON am.id = aml.move_id
-                    WHERE aa.account_type IN ('expense', 'expense_depreciation', 'expense_direct_cost')
-                      AND am.state = 'posted' AND am.date BETWEEN %s AND %s AND am.company_id = %s
-                    GROUP BY aa.name->>'en_US' ORDER BY amount DESC LIMIT %s
-                """, (date_from, date_to, env.company.id, limit))
-                raw_rows = env.cr.dictfetchall()
-
-                rows = [{'Account': r['account'], 'Total': float(r['amount'] or 0)} for r in raw_rows]
-                table = render_table(t, rows, columns=['Account', 'Total'])
-                self._post(ctx,
-                    f"📊 **{t('Expenses')}**\n"
-                    f"{t('Period')}: {date_from} → {date_to}\n\n{table}"
-                )
-
-            # ── 5. Invoice Summary ───────────────────────────────
-            elif report == 'invoice_summary':
-                env.cr.execute("""
-                    SELECT move_type, state, COUNT(*) AS count, SUM(amount_total) AS total
-                    FROM account_move
-                    WHERE move_type IN ('out_invoice', 'in_invoice', 'out_refund', 'in_refund')
-                      AND invoice_date BETWEEN %s AND %s AND company_id = %s
-                    GROUP BY move_type, state ORDER BY move_type, state
-                """, (date_from, date_to, env.company.id))
-                raw_rows = env.cr.dictfetchall()
-
-                rows = [{'Stage': f"{r['move_type']} / {r['state']}",
-                         'Count': r['count'],
-                         'Total': float(r['total'] or 0)} for r in raw_rows]
-
-                table = render_table(t, rows, columns=['Stage', 'Count', 'Total'])
-                self._post(ctx,
-                    f"📊 **{t('Customer Invoices')} / {t('Vendor Bills')}**\n"
-                    f"{t('Period')}: {date_from} → {date_to}\n\n{table}"
-                )
-
-            # ── 6. Stock Valuation ───────────────────────────────
-            elif report == 'stock_valuation':
-                products = env['product.product'].search_read(
-                    [('type', 'in', ['product', 'consu']), ('qty_available', '>', 0)],
-                    fields=['name', 'qty_available', 'standard_price'],
-                    limit=limit, order='qty_available desc',
-                )
-                rows = []
-                total_val = 0
-                for p in products:
-                    qty  = float(p['qty_available'])
-                    cost = float(p['standard_price'])
-                    val  = qty * cost
-                    total_val += val
-                    rows.append({
-                        'Project':     p['name'],
-                        'Quantity':    qty,
-                        'Unit Cost':   cost,
-                        'Total Value': val,
-                    })
-
-                table = render_table(t, rows, columns=['Project', 'Quantity', 'Unit Cost', 'Total Value'])
-                self._post(ctx,
-                    f"📊 **{t('Total Stock')}**\n\n{table}\n\n"
-                    f"**{t('Total Stock')}: {total_val:,.0f}**"
-                )
-
-            # ── 7. Sales Pipeline ────────────────────────────────
-            elif report == 'sales_pipeline':
-                env.cr.execute("""
-                    SELECT cs.name AS stage, COUNT(cl.id) AS count,
-                           SUM(cl.expected_revenue) AS expected,
-                           AVG(cl.probability) AS prob
-                    FROM crm_lead cl
-                    JOIN crm_stage cs ON cs.id = cl.stage_id
-                    WHERE cl.type = 'opportunity' AND cl.active = true AND cl.company_id = %s
-                    GROUP BY cs.name, cs.sequence ORDER BY cs.sequence
-                """, (env.company.id,))
-                raw_rows = env.cr.dictfetchall()
-
-                rows = []
-                for r in raw_rows:
-                    prob = round(float(r['prob'] or 0), 0)
-                    icon = "🟢" if prob >= 70 else "🟡" if prob >= 40 else "🔴"
-                    rows.append({
-                        'Stage':            r['stage'],
-                        'Count':            r['count'],
-                        'Expected Revenue': float(r['expected'] or 0),
-                        'Probability':      f"{icon} {prob}%",
-                    })
-
-                table = render_table(t, rows, columns=['Stage', 'Count', 'Expected Revenue', 'Probability'])
-                self._post(ctx, f"📊 **Sales Pipeline**\n\n{table}")
-
-            # ── 8. Project Cost ──────────────────────────────────
-            elif report == 'project_cost':
-                env.cr.execute("""
-                    SELECT COALESCE(pp.name->>'en_US', pp.name->>'ar_001', pp.name::text) AS project,
-                           SUM(aal.amount) AS cost,
-                           SUM(aal.unit_amount) AS hours,
-                           COUNT(DISTINCT aal.employee_id) AS team
-                    FROM account_analytic_line aal
-                    JOIN project_task pt2   ON pt2.id = aal.task_id
-                    JOIN project_project pp ON pp.id = pt2.project_id
-                    WHERE aal.date BETWEEN %s AND %s AND pp.company_id = %s
-                    GROUP BY pp.name ORDER BY cost DESC LIMIT %s
-                """, (date_from, date_to, env.company.id, limit))
-                raw_rows = env.cr.dictfetchall()
-
-                rows = [{'Project': r['project'], 'Cost': float(r['cost'] or 0),
-                         'Hours': float(r['hours'] or 0),
-                         'Team Size': int(r['team'] or 0)} for r in raw_rows]
-
-                table = render_table(t, rows, columns=['Project', 'Cost', 'Hours', 'Team Size'])
-                self._post(ctx,
-                    f"📊 **{t('Project Costs')}**\n"
-                    f"{t('Period')}: {date_from} → {date_to}\n\n{table}"
-                )
-
-            # ── 9. Timesheet Hours ───────────────────────────────
-            elif report == 'timesheet_hours':
-                env.cr.execute("""
-                    SELECT pp.name AS project, he.name AS employee,
-                           SUM(aal.unit_amount) AS hours
-                    FROM account_analytic_line aal
-                    JOIN project_task pt2   ON pt2.id = aal.task_id
-                    JOIN project_project pp ON pp.id = pt2.project_id
-                    LEFT JOIN hr_employee he ON he.id = aal.employee_id
-                    WHERE aal.date BETWEEN %s AND %s AND pp.company_id = %s
-                    GROUP BY pp.name, he.name ORDER BY hours DESC LIMIT %s
-                """, (date_from, date_to, env.company.id, limit))
-                raw_rows = env.cr.dictfetchall()
-
-                rows = [{'Project': r['project'],
-                         'Employee': r['employee'] or t('Not available'),
-                         'Hours': float(r['hours'] or 0)} for r in raw_rows]
-
-                table = render_table(t, rows, columns=['Project', 'Employee', 'Hours'])
-                self._post(ctx,
-                    f"📊 **{t('Hours')}**\n"
-                    f"{t('Period')}: {date_from} → {date_to}\n\n{table}"
-                )
-
-            # ── 10. Project Financial Status ─────────────────────
-            elif report == 'project_financial':
-                self._report_project_financial(args, ctx)
-
-            else:
-                available = ['profit_by_category', 'revenue_by_partner', 'top_products',
-                             'expense_breakdown', 'invoice_summary', 'stock_valuation',
-                             'sales_pipeline', 'project_cost', 'project_financial',
-                             'timesheet_hours']
-                self._post(ctx,
-                    t("Report type '%(type)s' is unknown", type=report) + "\n" +
-                    t("Available types: %(types)s", types=', '.join(available)),
-                    level='warning'
-                )
-
-        except Exception as e:
-            _logger.exception("KH_AI: analytics error")
-            try:
-                env.cr.rollback()
-            except Exception:
-                pass
-            self._post(ctx, f"{t('Error')}:\n{e}", level='error')
-
-        return {}
-
-    # ── Project Financial helper ─────────────────────────────────
-    def _report_project_financial(self, args, ctx):
-        """Dedicated method for the complex project_financial report."""
-        from difflib import SequenceMatcher
-        env = request.env
-        t = ctx.t
-        project_keyword = (args.get('project_name') or '').strip()
-
-        if not project_keyword:
-            self._post(ctx, t("Please specify the project name or number"), level='warning')
-            return {}
-
-        all_projects = env['project.project'].sudo().search_read(
-            [], fields=['id', 'name', 'partner_id', 'date_start', 'date'], limit=500
-        )
-
-        kw = project_keyword.lower()
-        skip_words = {'project', 'client', 'matar', 'ahmed', 'ahmad', 'saeed', 'salem',
-                      'ali', 'omar', 'rashed', 'abdulla', 'khaled', 'mohamed', 'mohammed',
-                      'opportunity', 'and', 'the'}
-
-        def word_sim(a, b):
-            return SequenceMatcher(None, a.lower(), b.lower()).ratio()
-
-        def score(p):
-            n  = str(p.get('name') or '').lower()
-            pa = str(p['partner_id'][1] if p.get('partner_id') else '').lower()
-            full = n + ' ' + pa
-            kw_words = [w for w in kw.split() if len(w) > 2 and w not in skip_words]
-            if not kw_words:
-                kw_words = [w for w in kw.split() if len(w) > 2]
-            pn_words = [w for w in re.split(r'[\s\-|:]+', full) if len(w) > 2]
-            total = 0.0
-            for kw_word in kw_words:
-                best = max((word_sim(kw_word, pw) for pw in pn_words), default=0)
-                if best > 0.75:
-                    total += 4 * best
-                elif best > 0.6:
-                    total += 2 * best
-            num = re.search(r'\d{4,5}', kw)
-            if num and num.group() in n:
-                total += 10
-            return total
-
-        ranked = sorted(all_projects, key=score, reverse=True)
-        best = ranked[0] if ranked else None
-        best_score = score(best) if best else 0
-
-        if not best or best_score < 0.5:
-            self._post(ctx, t("No project matching '%(keyword)s'", keyword=project_keyword), level='warning')
-            return {}
-
-        proj = best
-        partner    = proj['partner_id'][1] if proj.get('partner_id') else '-'
-        partner_id = proj['partner_id'][0] if proj.get('partner_id') else None
-
-        # Find similar partners by family name
-        combined = str(proj.get('name') or '') + ' ' + str(proj['partner_id'][1] if proj.get('partner_id') else '')
-        eng_words = [w for w in re.findall(r'[A-Za-z]{5,}', combined) if w.lower() not in skip_words]
-        family_name = max(eng_words, key=len) if eng_words else ''
-
-        all_partner_ids = [partner_id] if partner_id else []
-        if family_name:
-            variants = [family_name]
-            if family_name.lower().startswith('al') and len(family_name) > 4:
-                variants.append(family_name[2:])
-            seen_ids = set(all_partner_ids)
-            for v in variants:
-                similar = env['res.partner'].sudo().search_read(
-                    [('name', 'ilike', v)], fields=['id'], limit=20
-                )
-                for p in similar:
-                    if p['id'] not in seen_ids:
-                        all_partner_ids.append(p['id'])
-                        seen_ids.add(p['id'])
-        all_partner_ids = list(set(all_partner_ids))
-
-        # Customer invoices
-        total_invoiced = total_paid = total_due = 0.0
-        inv_count = 0
-        if all_partner_ids:
-            inv = env['account.move'].read_group(
-                [('move_type', '=', 'out_invoice'), ('state', '=', 'posted'),
-                 ('partner_id', 'in', all_partner_ids), ('company_id', '=', env.company.id)],
-                fields=['amount_total:sum', 'amount_residual:sum', 'id:count'], groupby=[],
+        else:
+            self._post_message(
+                f"{AGENT_PERSONA}: ⚠️ العملية '{operation}' غير مدعومة حالياً.",
+                mail_message_id
             )
-            if inv:
-                total_invoiced = float(inv[0].get('amount_total') or 0)
-                total_due      = float(inv[0].get('amount_residual') or 0)
-                total_paid     = total_invoiced - total_due
-                inv_count      = int(inv[0].get('id') or 0)
-
-        # Vendor bills
-        total_bills = 0.0
-        bill_count = 0
-        if all_partner_ids:
-            bills = env['account.move'].read_group(
-                [('move_type', '=', 'in_invoice'), ('state', '=', 'posted'),
-                 ('partner_id', 'in', all_partner_ids), ('company_id', '=', env.company.id)],
-                fields=['amount_total:sum', 'id:count'], groupby=[],
-            )
-            if bills:
-                total_bills = float(bills[0].get('amount_total') or 0)
-                bill_count  = int(bills[0].get('id') or 0)
-
-        # Analytic lines
-        analytic_lines = env['account.analytic.line'].search_read(
-            [('project_id', '=', proj['id']), ('amount', '<', 0)], fields=['amount'],
-        )
-        analytic_cost = abs(sum(float(l['amount']) for l in analytic_lines))
-
-        total_cost = total_bills + analytic_cost
-        profit     = total_invoiced - total_cost
-        margin_pct = round(profit / total_invoiced * 100, 1) if total_invoiced else 0
-
-        body = (
-            f"📊 **{t('Project Financial Status')}**\n\n"
-            f"**{proj['name']}**\n"
-            f"{t('Client')}: {partner}\n"
-            f"{t('Period')}: {proj.get('date_start') or '-'} → {proj.get('date') or '-'}\n\n"
-            f"**{t('Customer Invoices')}** ({inv_count}):\n"
-            f"  • {t('Total')}: **{total_invoiced:,.2f}**\n"
-            f"  • {t('Paid')}: **{total_paid:,.2f}**\n"
-            f"  • {t('Outstanding')}: **{total_due:,.2f}**\n\n"
-            f"**{t('Expenses')}** ({bill_count} {t('Vendor Bills')} + {t('Analytic Costs')}):\n"
-            f"  • {t('Vendor Bills')}: **{total_bills:,.2f}**\n"
-            f"  • {t('Analytic Costs')}: **{analytic_cost:,.2f}**\n\n"
-            f"**{t('Net Profit')}: {profit:,.2f} {margin_icon(margin_pct)} ({margin_pct}%)**"
-        )
-        self._post(ctx, body)
-        return {}
+            return {}
