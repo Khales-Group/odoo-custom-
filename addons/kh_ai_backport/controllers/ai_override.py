@@ -128,6 +128,8 @@ Only use when user EXPLICITLY commands creation/modification:
 - ai_create_invoice     → "أنشئ فاتورة", "create invoice/bill"
 - ai_create_bank_stmt   → "أنشئ كشف بنكي", "bank statement"
 - ai_create_rfq         → "أنشئ RFQ", "اطلب من مورد"
+- ai_update_records     → "set account for X", "حدّث الحساب", "set the account as Y for partner Z"
+                          Use operation='set_bank_statement_account' for bank statement lines
 
 ### CREATE RFQ Pattern:
 If user asks to create/send RFQ or طلب تسعير for a vendor:
@@ -425,6 +427,44 @@ def _build_tools() -> types.Tool:
         )
     )
 
+    # ── BULK UPDATE RECORDS ──────────────────────────────────────
+    ai_update_records = types.FunctionDeclaration(
+        name="ai_update_records",
+        description=(
+            "Bulk update existing Odoo records. Use when user says: "
+            "'set account for X', 'update all Y to Z', 'change account on transactions', "
+            "'set the account as Government Fees for Fujairah Municipality'. "
+            "Can update: bank statement lines account, partner on invoices, etc."
+        ),
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "operation": types.Schema(
+                    type=types.Type.STRING,
+                    description=(
+                        "What to update. One of: "
+                        "'set_bank_statement_account' → set account_id on bank statement lines by partner, "
+                        "'set_invoice_account' → set account on invoice lines"
+                    )
+                ),
+                "partner_name": types.Schema(
+                    type=types.Type.STRING,
+                    description="Filter by partner name (e.g. 'Fujairah Municipality')"
+                ),
+                "account_code": types.Schema(
+                    type=types.Type.STRING,
+                    description="Account code to set (e.g. '11112')"
+                ),
+                "account_name": types.Schema(
+                    type=types.Type.STRING,
+                    description="Account name keyword to search (e.g. 'Government Fees')"
+                ),
+                "message_to_user": types.Schema(type=types.Type.STRING),
+            },
+            required=["operation", "message_to_user"]
+        )
+    )
+
     return types.Tool(function_declarations=[
         ai_dynamic_read,
         ai_create_lead,
@@ -433,6 +473,7 @@ def _build_tools() -> types.Tool:
         ai_create_rfq,
         ai_analytics,
         ai_ask_user,
+        ai_update_records,
     ])
 
 
@@ -670,6 +711,8 @@ class AIControllerOverride(AIController):
                 return self._tool_analytics(args, mail_message_id)
             elif name == "ai_ask_user":
                 return self._tool_ask_user(args, mail_message_id)
+            elif name == "ai_update_records":
+                return self._tool_update_records(args, mail_message_id)
             else:
                 self._post_message(f"⛔ أداة غير معروفة: {name}", mail_message_id)
                 return {}
@@ -1669,3 +1712,99 @@ class AIControllerOverride(AIController):
 
         self._post_message("\n".join(lines), mail_message_id)
         return {}
+
+    # ── BULK UPDATE RECORDS ───────────────────────────────────────
+    def _tool_update_records(self, args, mail_message_id):
+        env      = request.env
+        operation    = args.get('operation', '')
+        partner_name = args.get('partner_name', '')
+        account_code = args.get('account_code', '')
+        account_name = args.get('account_name', '')
+        msg          = args.get('message_to_user', '')
+
+        if operation == 'set_bank_statement_account':
+
+            # 1. إيجاد الحساب
+            account = None
+            if account_code:
+                account = env['account.account'].search(
+                    [('code', '=', account_code)], limit=1
+                )
+            if not account and account_name:
+                account = env['account.account'].search(
+                    [('name', 'ilike', account_name)], limit=1
+                )
+            if not account:
+                self._post_message(
+                    f"{AGENT_PERSONA}: ⛔ لم أجد حساباً بالكود '{account_code}' أو الاسم '{account_name}'.",
+                    mail_message_id
+                )
+                return {}
+
+            # 2. إيجاد الـ partner
+            partner = None
+            if partner_name:
+                partner = env['res.partner'].search(
+                    [('name', 'ilike', partner_name)], limit=1
+                )
+
+            # 3. إيجاد بنود الـ bank statement
+            domain = [('statement_id', '!=', False)]
+            if partner:
+                domain.append(('partner_id', '=', partner.id))
+            elif partner_name:
+                # لو ما لاقى partner ابحث بالاسم في الـ label
+                domain.append(('payment_ref', 'ilike', partner_name))
+
+            stmt_lines = env['account.bank.statement.line'].sudo().search(domain, limit=200)
+
+            if not stmt_lines:
+                self._post_message(
+                    f"{AGENT_PERSONA}: 🔍 لم أجد بنود bank statement"
+                    + (f" للشريك '{partner_name}'" if partner_name else "") + ".",
+                    mail_message_id
+                )
+                return {}
+
+            # 4. تحديث الحساب على كل البنود
+            updated = 0
+            errors  = 0
+            for line in stmt_lines:
+                try:
+                    # في Odoo 17+ الـ account يُعيَّن على journal item المرتبط
+                    # نبحث عن الـ move line المرتبطة
+                    move_lines = env['account.move.line'].sudo().search([
+                        ('statement_line_id', '=', line.id),
+                        ('account_id.account_type', 'not in', ['asset_cash', 'liability_current']),
+                    ], limit=1)
+
+                    if move_lines:
+                        move_lines.sudo().write({'account_id': account.id})
+                        updated += 1
+                    else:
+                        # fallback: set directly on statement line if field exists
+                        if hasattr(line, 'account_id'):
+                            line.sudo().write({'account_id': account.id})
+                            updated += 1
+                        else:
+                            errors += 1
+                except Exception as _e:
+                    _logger.warning(f"KH_AI update line {line.id}: {_e}")
+                    errors += 1
+
+            self._post_message(
+                f"{AGENT_PERSONA}: ✅ **تم تحديث الحساب**\n"
+                f"• الحساب: **{account.code} - {account.name}**\n"
+                f"• الشريك: **{partner.name if partner else partner_name}**\n"
+                f"• البنود المحدّثة: **{updated}**\n"
+                + (f"• فشل التحديث: {errors}\n" if errors else ""),
+                mail_message_id
+            )
+            return {}
+
+        else:
+            self._post_message(
+                f"{AGENT_PERSONA}: ⚠️ العملية '{operation}' غير مدعومة حالياً.",
+                mail_message_id
+            )
+            return {}
