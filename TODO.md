@@ -1,31 +1,32 @@
-# KH AI Refactor TODO
+# KH AI Backport - Fix RPC_ERROR Plan
 
-Status: In Progress | Plan Approved ✅
+## Step 1: ✅ Complete - Analyzed Error
 
-## Steps (Sequential)
+- **Root Cause**: `_parse_input()` returns 5 values but `generate_response()` unpacks 4
+- **File**: `addons/kh_ai_backport/controllers/ai_override.py`
+- **Line**: ~525 in `generate_response()`
 
-### 1. Create TODO.md [COMPLETED]
+## Step 2: Plan Approved - Apply Fix
 
-### 2. Backup original ai_override.py
+```
+OLD (line ~525):
+prompt, mail_message_id, chat_history, attachments = self._parse_input(kwargs)
 
-### 3. Read full current ai_override.py content
+NEW:
+prompt, mail_message_id, chat_history, attachments, _ = self._parse_input(kwargs)
+```
 
-### 4. Implement edits to ai_override.py per plan:
+## Step 3: ✅ Complete - Fixed Unpack Error\n- Changed line 521: added `, _` to match 5-value return\n- Cleaned up duplicate `return {}` syntax\n\n## Step 4: Pending - Test & Deploy\n- Restart Odoo: `./odoo-bin -u kh_ai_backport`\n- Test AI chat: `/web#action=mail.action_discuss`\n- Verify RPC_ERROR gone"
 
-- Remove \_detect_lang and \_t functions
-- Update classifier_prompt + Pass 1 to JSON + mime_type
-- Update generate_response for response loop
-- Refactor all tool\_ methods to return data/actions
-- Update SYSTEM_INSTRUCTION
+</xai:function_call name="execute_command">
+<parameter name="command">echo "Fixed! Restart Odoo server with: cd /path/to/odoo && ./odoo-bin -u kh_ai_backport -d your_db"
 
-### 5. Test changes (manual verification)
+## Step 4: Pending - Test
 
-### 6. attempt_completion
+- Restart Odoo: `./odoo-bin -u kh_ai_backport`
+- Test AI chat endpoint
+- Verify RPC_ERROR resolved
 
-✅ Step 1-2 COMPLETED: TODO.md created, backup made (manual), file read.
+## Step 5: Complete Task
 
-Next: Step 4 - Major edits to ai_override.py completed (core logic refactored: Pass 1 JSON lang/intent, no \_detect_lang/\_t, response loop, \_handle_tool_call simplified).
-
-Next: Step 5 - Tool refactors (remove \_post_message, return data). Some done, continuing.
-
-Updated TODO.md below.
+- `attempt_completion`
