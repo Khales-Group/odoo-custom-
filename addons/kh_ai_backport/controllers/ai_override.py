@@ -72,12 +72,63 @@ READABLE_MODELS = {
 
 AGENT_PERSONA = "🤖 [Khales AI]"
 
+# ── Language Detection & Translation ─────────────────────────────
+def _detect_lang(text: str) -> str:
+    """Detect if text is Arabic or English"""
+    arabic_chars = sum(1 for c in text if '؀' <= c <= 'ۿ')
+    return 'ar' if arabic_chars > len(text) * 0.2 else 'en'
+
+def _t(key: str, lang: str) -> str:
+    """Simple translation helper"""
+    translations = {
+        'client':          {'ar': '👤 العميل',           'en': '👤 Client'},
+        'period':          {'ar': '📅 الفترة',            'en': '📅 Period'},
+        'invoices':        {'ar': '📤 **فواتير العميل',   'en': '📤 **Customer Invoices'},
+        'total':           {'ar': 'إجمالي',               'en': 'Total'},
+        'paid':            {'ar': 'مدفوع',                'en': 'Paid'},
+        'due':             {'ar': 'متبقي (دين)',           'en': 'Outstanding (Due)'},
+        'expenses':        {'ar': '📥 **المصاريف',        'en': '📥 **Expenses'},
+        'vendor_bills':    {'ar': 'فواتير موردين',         'en': 'Vendor Bills'},
+        'analytic':        {'ar': 'حسابات تحليلية',       'en': 'Analytic Costs'},
+        'result':          {'ar': '**📊 النتيجة:**',      'en': '**📊 Result:**'},
+        'net_profit':      {'ar': 'صافي الربح',           'en': 'Net Profit'},
+        'vendor_bill':     {'ar': 'فاتورة مورد',          'en': 'vendor bill'},
+        'found':           {'ar': 'وجدت',                 'en': 'Found'},
+        'not_found':       {'ar': 'لم أجد',               'en': 'No records found'},
+        'financial_status':{'ar': 'الوضع المالي للمشروع', 'en': 'Project Financial Status'},
+        'searching':       {'ar': 'جاري البحث',           'en': 'Searching'},
+        'updated':         {'ar': 'تم التحديث',           'en': 'Updated'},
+        'error':           {'ar': 'خطأ',                  'en': 'Error'},
+        'no_permission':   {'ar': 'ليس لديك صلاحية',      'en': 'Permission denied'},
+        'records':         {'ar': 'سجل',                  'en': 'record(s)'},
+        'project_cost':    {'ar': 'تكاليف المشاريع',      'en': 'Project Costs'},
+        'top_products':    {'ar': 'أفضل المنتجات مبيعاً', 'en': 'Top Products'},
+        'revenue':         {'ar': 'الإيراد',              'en': 'Revenue'},
+        'cost':            {'ar': 'التكلفة',              'en': 'Cost'},
+        'profit_margins':  {'ar': 'هوامش الربح',          'en': 'Profit Margins'},
+        'category':        {'ar': 'الفئة',                'en': 'Category'},
+        'margin':          {'ar': 'هامش %',               'en': 'Margin %'},
+        'hours':           {'ar': 'الساعات',              'en': 'Hours'},
+        'team_size':       {'ar': 'حجم الفريق',           'en': 'Team Size'},
+        'period_label':    {'ar': 'الفترة',               'en': 'Period'},
+        'invoice_vendor':  {'ar': 'فاتورة مورد',          'en': 'vendor bill'},
+        'partner':         {'ar': 'الشريك',               'en': 'Partner'},
+        'account':         {'ar': 'الحساب',               'en': 'Account'},
+        'lines_updated':   {'ar': 'البنود المحدّثة',      'en': 'Lines Updated'},
+    }
+    t = translations.get(key, {})
+    return t.get(lang, t.get('en', key))
+
 SYSTEM_INSTRUCTION = f"""You are '{AGENT_PERSONA}', an elite ERP assistant and business consultant built into Odoo 19.
 
 ## IDENTITY RULES
 - Start EVERY reply with "{AGENT_PERSONA}: "
 - Be concise, professional, and helpful
-- Support Arabic and English equally
+- LANGUAGE RULE: Always reply in the SAME language the user used.
+  If user writes in English → reply in English.
+  If user writes in Arabic → reply in Arabic.
+  If user mixes both → use the dominant language.
+  Never switch languages unless the user does.
 
 ## TOOL SELECTION RULES
 
@@ -513,7 +564,7 @@ class AIControllerOverride(AIController):
             return {'error': 'google-genai not installed on server'}
 
         # ── 1. Parse Input ────────────────────────────────────────
-        prompt, mail_message_id, chat_history, attachments = self._parse_input(kwargs)
+        prompt, mail_message_id, chat_history, attachments, lang = self._parse_input(kwargs)
 
         # ── 2. Build Gemini contents ──────────────────────────────
         gemini_contents = self._build_contents(chat_history, attachments)
@@ -594,7 +645,7 @@ class AIControllerOverride(AIController):
 
         # ── 4. Route response ─────────────────────────────────────
         if response.function_calls:
-            return self._handle_tool_call(response.function_calls[0], mail_message_id)
+            return self._handle_tool_call(response.function_calls[0], mail_message_id, lang)
         else:
             text = getattr(response, 'text', '') or ''
             if not text.startswith(AGENT_PERSONA):
@@ -643,7 +694,8 @@ class AIControllerOverride(AIController):
                 )
             chat_history = f"User: {prompt}"
 
-        return prompt, mail_message_id, chat_history, attachments
+        lang = _detect_lang(chat_history)
+        return prompt, mail_message_id, chat_history, attachments, lang
 
     # ─────────────────────────────────────────────────────────────
     # CONTENT BUILDER
@@ -689,7 +741,7 @@ class AIControllerOverride(AIController):
     # ─────────────────────────────────────────────────────────────
     # TOOL DISPATCHER
     # ─────────────────────────────────────────────────────────────
-    def _handle_tool_call(self, func, mail_message_id):
+    def _handle_tool_call(self, func, mail_message_id, lang='ar'):
         """تنفيذ الأداة المناسبة وإرجاع النتيجة"""
         name = func.name
         args = func.args
@@ -698,21 +750,21 @@ class AIControllerOverride(AIController):
 
         try:
             if name == "ai_dynamic_read":
-                return self._tool_dynamic_read(args, mail_message_id)
+                return self._tool_dynamic_read(args, mail_message_id, lang)
             elif name == "ai_create_lead":
-                return self._tool_create_lead(args, mail_message_id)
+                return self._tool_create_lead(args, mail_message_id, lang)
             elif name == "ai_create_invoice":
-                return self._tool_create_invoice(args, mail_message_id)
+                return self._tool_create_invoice(args, mail_message_id, lang)
             elif name == "ai_create_bank_stmt":
-                return self._tool_create_bank_stmt(args, mail_message_id)
+                return self._tool_create_bank_stmt(args, mail_message_id, lang)
             elif name == "ai_create_rfq":
-                return self._tool_create_rfq(args, mail_message_id)
+                return self._tool_create_rfq(args, mail_message_id, lang)
             elif name == "ai_analytics":
-                return self._tool_analytics(args, mail_message_id)
+                return self._tool_analytics(args, mail_message_id, lang)
             elif name == "ai_ask_user":
-                return self._tool_ask_user(args, mail_message_id)
+                return self._tool_ask_user(args, mail_message_id, lang)
             elif name == "ai_update_records":
-                return self._tool_update_records(args, mail_message_id)
+                return self._tool_update_records(args, mail_message_id, lang)
             else:
                 self._post_message(f"⛔ أداة غير معروفة: {name}", mail_message_id)
                 return {}
@@ -736,7 +788,7 @@ class AIControllerOverride(AIController):
     # ══════════════════════════════════════════════════════════════
 
     # ── READ (Dynamic) ────────────────────────────────────────────
-    def _tool_dynamic_read(self, args, mail_message_id):
+    def _tool_dynamic_read(self, args, mail_message_id, lang='ar'):
         model_name = args.get('model_name', '').strip()
         keyword    = args.get('keyword', '').strip()
         filters    = args.get('filters', '').strip()
@@ -795,7 +847,7 @@ class AIControllerOverride(AIController):
                     reply_lines.append("")
                 self._post_message("\n".join(reply_lines), mail_message_id)
             else:
-                reply_lines = [f"{AGENT_PERSONA}: 🔍 وجدت **{len(records)}** سجل في {model_name}:"]
+                reply_lines = [f"{AGENT_PERSONA}: 🔍 {_t('found', lang)} **{len(records)}** {_t('records', lang)} in {model_name}:"]
                 for r in records:
                     title = r.get('name') or r.get('display_name') or str(r.get('id'))
                     details = []
@@ -810,14 +862,14 @@ class AIControllerOverride(AIController):
                     reply_lines.append(f"- **{title}**" + (f" — {detail_str}" if detail_str else ""))
                 self._post_message("\n".join(reply_lines), mail_message_id)
         else:
-            no_result = f"{AGENT_PERSONA}: 🔍 لم أجد في النظام ما يطابق '{keyword}'."
+            no_result = f"{AGENT_PERSONA}: 🔍 {_t('not_found', lang)}: '{keyword}'."
             if model_name == 'res.partner' and keyword:
                 no_result += (f"\n💡 جرب البحث في طلبات الشراء القديمة عن المنتج '{keyword}'")
             self._post_message(no_result, mail_message_id)
         return {}
 
     # ── CREATE LEAD ───────────────────────────────────────────────
-    def _tool_create_lead(self, args, mail_message_id):
+    def _tool_create_lead(self, args, mail_message_id, lang='ar'):
         env = request.env  # صلاحيات المستخدم الحقيقي
 
         new_lead = env['crm.lead'].create({
@@ -841,7 +893,7 @@ class AIControllerOverride(AIController):
         }
 
     # ── CREATE INVOICE ────────────────────────────────────────────
-    def _tool_create_invoice(self, args, mail_message_id):
+    def _tool_create_invoice(self, args, mail_message_id, lang='ar'):
         env = request.env  # صلاحيات المستخدم الحقيقي
 
         move_type    = args.get('move_type', 'out_invoice')
@@ -899,7 +951,7 @@ class AIControllerOverride(AIController):
         }
 
     # ── CREATE BANK STATEMENT ─────────────────────────────────────
-    def _tool_create_bank_stmt(self, args, mail_message_id):
+    def _tool_create_bank_stmt(self, args, mail_message_id, lang='ar'):
         env = request.env  # صلاحيات المستخدم الحقيقي
 
         journal = env['account.journal'].search(
@@ -944,7 +996,7 @@ class AIControllerOverride(AIController):
         }
 
     # ── CREATE RFQ ────────────────────────────────────────────────
-    def _tool_create_rfq(self, args, mail_message_id):
+    def _tool_create_rfq(self, args, mail_message_id, lang='ar'):
         env = request.env  # صلاحيات المستخدم الحقيقي
 
         vendor_name  = args.get('vendor_name', '')
@@ -1090,7 +1142,7 @@ class AIControllerOverride(AIController):
         }
 
     # ── ANALYTICS ────────────────────────────────────────────────
-    def _tool_analytics(self, args, mail_message_id):
+    def _tool_analytics(self, args, mail_message_id, lang='ar'):
         """تحليلات مالية وتجارية مباشرة من Odoo ORM"""
         env       = request.env
         report    = args.get('report_type', '')
@@ -1556,7 +1608,7 @@ class AIControllerOverride(AIController):
 
                 projects = [_best]
 
-                report_lines = [f"{AGENT_PERSONA}: 📊 **الوضع المالي للمشروع**\n"]
+                report_lines = [f"{AGENT_PERSONA}: 📊 **{_t('financial_status', lang)}**\n"]
                 for proj in projects:
                     partner    = proj['partner_id'][1] if proj.get('partner_id') else 'غير محدد'
                     partner_id = proj['partner_id'][0] if proj.get('partner_id') else None
@@ -1652,20 +1704,20 @@ class AIControllerOverride(AIController):
 
                     report_lines += [
                         f"**{proj['name']}**",
-                        f"👤 العميل: {partner}",
-                        f"📅 الفترة: {proj.get('date_start') or '-'} → {proj.get('date') or '-'}",
+                        f"{_t('client', lang)}: {partner}",
+                        f"{_t('period', lang)}: {proj.get('date_start') or '-'} → {proj.get('date') or '-'}",
                         "",
-                        f"📤 **فواتير العميل ({inv_count}):**",
-                        f"  • إجمالي:      **{total_invoiced:,.2f}**",
-                        f"  • مدفوع:       **{total_paid:,.2f}**",
-                        f"  • متبقي (دين): **{total_due:,.2f}**",
+                        f"{_t('invoices', lang)} ({inv_count}):**",
+                        f"  • {_t('total', lang)}: **{total_invoiced:,.2f}**",
+                        f"  • {_t('paid', lang)}: **{total_paid:,.2f}**",
+                        f"  • {_t('due', lang)}: **{total_due:,.2f}**",
                         "",
-                        f"📥 **مصاريف ({bill_count} فاتورة مورد + حسابات تحليلية):**",
-                        f"  • فواتير موردين: **{total_bills:,.2f}**",
-                        f"  • حسابات تحليلية: **{analytic_cost:,.2f}**",
+                        f"{_t('expenses', lang)} ({bill_count} {_t('invoice_vendor', lang)} + {_t('analytic', lang)}):**",
+                        f"  • {_t('vendor_bills', lang)}: **{total_bills:,.2f}**",
+                        f"  • {_t('analytic', lang)}: **{analytic_cost:,.2f}**",
                         "",
-                        f"**📊 النتيجة:**",
-                        f"  • صافي الربح: **{profit:,.2f}** {margin_icon} ({margin_pct}%)",
+                        f"{_t('result', lang)}",
+                        f"  • {_t('net_profit', lang)}: **{profit:,.2f}** {margin_icon} ({margin_pct}%)",
                         "─" * 45,
                     ]
                 self._post_message("\n".join(report_lines), mail_message_id)
@@ -1697,7 +1749,7 @@ class AIControllerOverride(AIController):
         return {}
 
     # ── ASK USER ─────────────────────────────────────────────────
-    def _tool_ask_user(self, args, mail_message_id):
+    def _tool_ask_user(self, args, mail_message_id, lang='ar'):
         """عرض خيارات للمستخدم بدل رفض الطلب"""
         question = args.get('question', '')
         options  = args.get('options', [])
@@ -1714,7 +1766,7 @@ class AIControllerOverride(AIController):
         return {}
 
     # ── BULK UPDATE RECORDS ───────────────────────────────────────
-    def _tool_update_records(self, args, mail_message_id):
+    def _tool_update_records(self, args, mail_message_id, lang='ar'):
         env      = request.env
         operation    = args.get('operation', '')
         partner_name = args.get('partner_name', '')
@@ -1793,10 +1845,10 @@ class AIControllerOverride(AIController):
                     errors += 1
 
             self._post_message(
-                f"{AGENT_PERSONA}: ✅ **تم تحديث الحساب**\n"
-                f"• الحساب: **{account.code} - {account.name}**\n"
-                f"• الشريك: **{partner.name if partner else partner_name}**\n"
-                f"• البنود المحدّثة: **{updated}**\n"
+                f"{AGENT_PERSONA}: ✅ **{_t('updated', lang)}**\n"
+                f"• {_t('account', lang)}: **{account.code} - {account.name}**\n"
+                f"• {_t('partner', lang)}: **{partner.name if partner else partner_name}**\n"
+                f"• {_t('lines_updated', lang)}: **{updated}**\n"
                 + (f"• فشل التحديث: {errors}\n" if errors else ""),
                 mail_message_id
             )
