@@ -522,7 +522,7 @@ class AIControllerOverride(AIController):
             return {'error': 'google-genai not installed on server'}
 
         # ── 1. Parse Input ────────────────────────────────────────
-        prompt, mail_message_id, chat_history, attachments, _ = self._parse_input(kwargs)
+        prompt, mail_message_id, chat_history, attachments = self._parse_input(kwargs)
 
         # ── 2. Build Gemini contents ──────────────────────────────
         gemini_contents = self._build_contents(chat_history, attachments)
@@ -745,7 +745,7 @@ class AIControllerOverride(AIController):
             elif name == "ai_update_records":
                 return self._tool_update_records(args, mail_message_id)
             else:
-                return {"error": f"Unknown tool: {name}"}
+                return { "error": f"Unknown tool: {name}" }
         except Exception as e:
             _logger.exception(f"Tool {name} error")
             return {"error": str(e)}
