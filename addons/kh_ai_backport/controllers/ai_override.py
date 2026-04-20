@@ -74,11 +74,22 @@ AGENT_PERSONA = "🤖 [Khales AI]"
 
 # ── Language Detection & Translation ─────────────────────────────
 def _detect_lang(text: str) -> str:
-    """Detect language from USER lines only — ignore AI Arabic responses"""
-    user_lines = [l[5:] for l in text.splitlines() if l.startswith('User:')]
-    user_text  = ' '.join(user_lines) if user_lines else text
-    arabic_chars = sum(1 for c in user_text if '؀' <= c <= 'ۿ')
-    total = max(len(user_text.strip()), 1)
+    """Detect language — prioritize the LAST user message"""
+    lines = text.splitlines()
+    user_lines = [l[5:].strip() for l in lines if l.startswith('User:')]
+
+    # Use last user message as primary signal
+    last_msg = user_lines[-1] if user_lines else text
+
+    arabic_chars = sum(1 for c in last_msg if '؀' <= c <= 'ۿ')
+    total = max(len(last_msg.strip()), 1)
+    if total > 3:  # Only if message has meaningful content
+        return 'ar' if arabic_chars > total * 0.15 else 'en'
+
+    # Fallback: majority of all user messages
+    all_user = ' '.join(user_lines)
+    arabic_chars = sum(1 for c in all_user if '؀' <= c <= 'ۿ')
+    total = max(len(all_user.strip()), 1)
     return 'ar' if arabic_chars > total * 0.15 else 'en'
 
 def _t(key: str, lang: str) -> str:
@@ -165,15 +176,20 @@ IMPORTANT: "خلينا نجهز عرض طلب/RFQ لـ X" → ai_create_rfq with
 Do NOT use ai_dynamic_read before creating RFQ. The tool handles vendor lookup automatically.
 - "شو وضع مشروع X ماليا"               → report_type='project_financial', project_name='X'
 - "شو مصاريف مشروع X"                  → report_type='project_financial', project_name='X'
-- "شو الوضع المالي تبعو/تبعها/عليه"   → SCAN HISTORY for project name, report_type='project_financial'
+- "شو الوضع المالي تبعو/تبعها/عليه"   → SCAN HISTORY for name, report_type='project_financial'
+- "financial report" / "finical report" → if name mentioned in history: report_type='project_financial'
+- "finical report for Ali Falamarzi"    → report_type='project_financial', project_name='Ali Falamarzi'
 - "كم فلوس صرفنا على مشروع X"          → report_type='project_financial', project_name='X'
 
-CRITICAL CONTEXT RULE: The user often refers to a project mentioned EARLIER in the conversation
-using words like: تبعو, تبعها, عليه, عنه, هذا المشروع, it, this project.
-In this case you MUST scan the conversation history, find the project name or number,
+CRITICAL CONTEXT RULE: The user often refers to a person/project mentioned EARLIER in the conversation.
+Trigger words: تبعو, تبعها, عليه, عنه, هذا المشروع, it, this project, this one, yes this is it.
+Also trigger when user says just "financial report" / "finical report" / "تقرير مالي" after mentioning a name.
+You MUST scan conversation history, find the most recently mentioned person/project name,
 and pass it as project_name. NEVER return empty project_name.
-Example: User said "Project: 00033 - Ahmed Matar Aldhaheri" then asks "شو الوضع المالي تبعو"
-→ extract "00033" from history and pass project_name='00033'.
+Example 1: User said "Ali Falamarzi" then says "financial report"
+→ project_name='Ali Falamarzi', report_type='project_financial'
+Example 2: User said "Project: 00033 - Ahmed..." then asks "شو الوضع المالي تبعو"
+→ extract "00033" from history, project_name='00033'
 ALWAYS use this tool for ANY financial/project question. NEVER say "I cannot calculate".
 
 ### WRITE Tools (Fixed):
