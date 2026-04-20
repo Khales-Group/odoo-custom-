@@ -1,17 +1,31 @@
-# RFQ + Web Search Agent Scaffold Complete
+# KH AI Refactor TODO
 
-## Implemented
+Status: In Progress | Plan Approved ✅
 
-- [x] ai_search_company_contact tool added & in gemini_tools.
-- [x] RULE 4 updated for search → RFQ multi-step.
-- [x] ai_search_company_contact execution: Mock scaffold with post_msg result.
+## Steps (Sequential)
 
-## Status
+### 1. Create TODO.md [COMPLETED]
 
-Pylance error fixed (string terminated with """).
+### 2. Backup original ai_override.py
 
-Test: Restart Odoo (`./odoo-bin -u kh_ai_backport`), chat "create RFQ for Test Corp with laptops qty 5". Expect search tool first, mock result, manual RFQ next (multi-turn).
+### 3. Read full current ai_override.py content
 
-Next: Add real search (SerpAPI/requests), full agent loop.
+### 4. Implement edits to ai_override.py per plan:
 
-Task complete per spec.
+- Remove \_detect_lang and \_t functions
+- Update classifier_prompt + Pass 1 to JSON + mime_type
+- Update generate_response for response loop
+- Refactor all tool\_ methods to return data/actions
+- Update SYSTEM_INSTRUCTION
+
+### 5. Test changes (manual verification)
+
+### 6. attempt_completion
+
+✅ Step 1-2 COMPLETED: TODO.md created, backup made (manual), file read.
+
+Next: Step 4 - Major edits to ai_override.py completed (core logic refactored: Pass 1 JSON lang/intent, no \_detect_lang/\_t, response loop, \_handle_tool_call simplified).
+
+Next: Step 5 - Tool refactors (remove \_post_message, return data). Some done, continuing.
+
+Updated TODO.md below.
