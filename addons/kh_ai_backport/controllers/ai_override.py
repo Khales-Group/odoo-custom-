@@ -74,9 +74,12 @@ AGENT_PERSONA = "🤖 [Khales AI]"
 
 # ── Language Detection & Translation ─────────────────────────────
 def _detect_lang(text: str) -> str:
-    """Detect if text is Arabic or English"""
-    arabic_chars = sum(1 for c in text if '؀' <= c <= 'ۿ')
-    return 'ar' if arabic_chars > len(text) * 0.2 else 'en'
+    """Detect language from USER lines only — ignore AI Arabic responses"""
+    user_lines = [l[5:] for l in text.splitlines() if l.startswith('User:')]
+    user_text  = ' '.join(user_lines) if user_lines else text
+    arabic_chars = sum(1 for c in user_text if '؀' <= c <= 'ۿ')
+    total = max(len(user_text.strip()), 1)
+    return 'ar' if arabic_chars > total * 0.15 else 'en'
 
 def _t(key: str, lang: str) -> str:
     """Simple translation helper"""
@@ -1580,18 +1583,41 @@ class AIControllerOverride(AIController):
 
                 _kw = project_keyword.lower()
 
+                _skip_words = {'project', 'client', 'matar', 'ahmed', 'ahmad', 'saeed',
+                               'salem', 'ali', 'omar', 'rashed', 'abdulla', 'khaled',
+                               'mohamed', 'mohammed', 'opportunity', 'and', 'the'}
+
+                def _word_sim(a, b):
+                    return _SM(None, a.lower(), b.lower()).ratio()
+
                 def _score(p):
-                    _n = str(p.get('name') or '').lower()
+                    _n  = str(p.get('name') or '').lower()
                     _pa = str(p['partner_id'][1] if p.get('partner_id') else '').lower()
                     _full = _n + ' ' + _pa
-                    # نقاط الكلمات
-                    _hits = sum(1 for w in _kw.split() if len(w) > 1 and w in _full)
-                    # بونس الرقم
+
+                    # كلمات الـ query بعد إزالة الشائعة
+                    _kw_words = [w for w in _kw.split() if len(w) > 2 and w not in _skip_words]
+                    if not _kw_words:
+                        _kw_words = [w for w in _kw.split() if len(w) > 2]
+
+                    # كلمات اسم المشروع
+                    _pn_words = [w for w in _re.split(r'[\s\-|:]+', _full) if len(w) > 2]
+
+                    # مطابقة fuzzy على مستوى الكلمة
+                    _total = 0.0
+                    for _kw_word in _kw_words:
+                        _best = max((_word_sim(_kw_word, pw) for pw in _pn_words), default=0)
+                        if _best > 0.75:
+                            _total += 4 * _best
+                        elif _best > 0.6:
+                            _total += 2 * _best
+
+                    # بونس رقم المشروع
                     _num = _re.search(r'\d{4,5}', _kw)
-                    _nb  = 10 if _num and _num.group() in _n else 0
-                    # fuzzy
-                    _fz  = _SM(None, _kw, _n).ratio()
-                    return _hits * 3 + _nb + _fz
+                    if _num and _num.group() in _n:
+                        _total += 10
+
+                    return _total
 
                 _ranked = sorted(_all, key=_score, reverse=True)
                 _best   = _ranked[0] if _ranked else None
