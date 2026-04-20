@@ -72,17 +72,79 @@ READABLE_MODELS = {
 
 AGENT_PERSONA = "🤖 [Khales AI]"
 
+# ── Language Detection & Translation ─────────────────────────────
+def _detect_lang(text: str) -> str:
+    """Detect language — prioritize the LAST user message"""
+    lines = text.splitlines()
+    user_lines = [l[5:].strip() for l in lines if l.startswith('User:')]
 
+    # Use last user message as primary signal
+    last_msg = user_lines[-1] if user_lines else text
 
-SYSTEM_INSTRUCTION_TEMPLATE = """You are '{AGENT_PERSONA}', an elite ERP assistant and business consultant built into Odoo 19.
+    arabic_chars = sum(1 for c in last_msg if '؀' <= c <= 'ۿ')
+    total = max(len(last_msg.strip()), 1)
+    if total > 3:  # Only if message has meaningful content
+        return 'ar' if arabic_chars > total * 0.15 else 'en'
+
+    # Fallback: majority of all user messages
+    all_user = ' '.join(user_lines)
+    arabic_chars = sum(1 for c in all_user if '؀' <= c <= 'ۿ')
+    total = max(len(all_user.strip()), 1)
+    return 'ar' if arabic_chars > total * 0.15 else 'en'
+
+def _t(key: str, lang: str) -> str:
+    """Simple translation helper"""
+    translations = {
+        'client':          {'ar': '👤 العميل',           'en': '👤 Client'},
+        'period':          {'ar': '📅 الفترة',            'en': '📅 Period'},
+        'invoices':        {'ar': '📤 **فواتير العميل',   'en': '📤 **Customer Invoices'},
+        'total':           {'ar': 'إجمالي',               'en': 'Total'},
+        'paid':            {'ar': 'مدفوع',                'en': 'Paid'},
+        'due':             {'ar': 'متبقي (دين)',           'en': 'Outstanding (Due)'},
+        'expenses':        {'ar': '📥 **المصاريف',        'en': '📥 **Expenses'},
+        'vendor_bills':    {'ar': 'فواتير موردين',         'en': 'Vendor Bills'},
+        'analytic':        {'ar': 'حسابات تحليلية',       'en': 'Analytic Costs'},
+        'result':          {'ar': '**📊 النتيجة:**',      'en': '**📊 Result:**'},
+        'net_profit':      {'ar': 'صافي الربح',           'en': 'Net Profit'},
+        'vendor_bill':     {'ar': 'فاتورة مورد',          'en': 'vendor bill'},
+        'found':           {'ar': 'وجدت',                 'en': 'Found'},
+        'not_found':       {'ar': 'لم أجد',               'en': 'No records found'},
+        'financial_status':{'ar': 'الوضع المالي للمشروع', 'en': 'Project Financial Status'},
+        'searching':       {'ar': 'جاري البحث',           'en': 'Searching'},
+        'updated':         {'ar': 'تم التحديث',           'en': 'Updated'},
+        'error':           {'ar': 'خطأ',                  'en': 'Error'},
+        'no_permission':   {'ar': 'ليس لديك صلاحية',      'en': 'Permission denied'},
+        'records':         {'ar': 'سجل',                  'en': 'record(s)'},
+        'project_cost':    {'ar': 'تكاليف المشاريع',      'en': 'Project Costs'},
+        'top_products':    {'ar': 'أفضل المنتجات مبيعاً', 'en': 'Top Products'},
+        'revenue':         {'ar': 'الإيراد',              'en': 'Revenue'},
+        'cost':            {'ar': 'التكلفة',              'en': 'Cost'},
+        'profit_margins':  {'ar': 'هوامش الربح',          'en': 'Profit Margins'},
+        'category':        {'ar': 'الفئة',                'en': 'Category'},
+        'margin':          {'ar': 'هامش %',               'en': 'Margin %'},
+        'hours':           {'ar': 'الساعات',              'en': 'Hours'},
+        'team_size':       {'ar': 'حجم الفريق',           'en': 'Team Size'},
+        'period_label':    {'ar': 'الفترة',               'en': 'Period'},
+        'invoice_vendor':  {'ar': 'فاتورة مورد',          'en': 'vendor bill'},
+        'partner':         {'ar': 'الشريك',               'en': 'Partner'},
+        'account':         {'ar': 'الحساب',               'en': 'Account'},
+        'lines_updated':   {'ar': 'البنود المحدّثة',      'en': 'Lines Updated'},
+    }
+    t = translations.get(key, {})
+    return t.get(lang, t.get('en', key))
+
+SYSTEM_INSTRUCTION = f"""You are '{AGENT_PERSONA}', an elite ERP assistant and business consultant built into Odoo 19.
 
 ## IDENTITY RULES
 - Start EVERY reply with "{AGENT_PERSONA}: "
 - Be concise, professional, and helpful
-- LANGUAGE RULE: Reply ALWAYS in the detected user language: {user_lang}.
-  Never switch languages.
+- LANGUAGE RULE: Always reply in the SAME language the user used.
+  If user writes in English → reply in English.
+  If user writes in Arabic → reply in Arabic.
+  If user mixes both → use the dominant language.
+  Never switch languages unless the user does.
 
-""" + '''## TOOL SELECTION RULES
+## TOOL SELECTION RULES
 
 ### READ Tool (ai_dynamic_read):
 Use when user asks to "find", "search", "show", "list", "ابحث", "دور", "اعرض", "كم عدد"
@@ -177,8 +239,7 @@ RULE: Always move the conversation FORWARD. Numbers are choices, not values.
 - Never invent financial data
 - Never guess at financial amounts  
 - Ask for clarification ONLY when genuinely ambiguous — offer options, not dead ends
-'''
-
+"""
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -522,7 +583,7 @@ class AIControllerOverride(AIController):
             return {'error': 'google-genai not installed on server'}
 
         # ── 1. Parse Input ────────────────────────────────────────
-        prompt, mail_message_id, chat_history, attachments = self._parse_input(kwargs)
+        prompt, mail_message_id, chat_history, attachments, lang = self._parse_input(kwargs)
 
         # ── 2. Build Gemini contents ──────────────────────────────
         gemini_contents = self._build_contents(chat_history, attachments)
@@ -603,35 +664,13 @@ class AIControllerOverride(AIController):
 
         # ── 4. Route response ─────────────────────────────────────
         if response.function_calls:
-            if response.function_calls:
-                tool_result = self._handle_tool_call(response.function_calls[0], mail_message_id, user_lang)
-                if isinstance(tool_result, dict) and tool_result.get('type') == 'ir.actions.act_window':
-                    return tool_result
-                # Data result - feed back to Gemini
-                second_response = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=gemini_contents + [
-                        types.Part.from_function_response(
-                            name=response.function_calls[0].name,
-                            response={"result": tool_result}
-                        )
-                    ],
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_instruction,
-                        temperature=0.3,
-                    ),
-                )
-                text = getattr(second_response, 'text', '') or ''
-                if not text.startswith(AGENT_PERSONA):
-                    text = f"{AGENT_PERSONA}: {text}"
-                self._post_message(text, mail_message_id)
-                return {}
-            else:
-                text = getattr(response, 'text', '') or ''
-                if not text.startswith(AGENT_PERSONA):
-                    text = f"{AGENT_PERSONA}: {text}"
-                self._post_message(text, mail_message_id)
-                return {}
+            return self._handle_tool_call(response.function_calls[0], mail_message_id, lang)
+        else:
+            text = getattr(response, 'text', '') or ''
+            if not text.startswith(AGENT_PERSONA):
+                text = f"{AGENT_PERSONA}: {text}"
+            self._post_message(text, mail_message_id)
+            return {}
 
     # ─────────────────────────────────────────────────────────────
     # INPUT PARSER
@@ -674,7 +713,8 @@ class AIControllerOverride(AIController):
                 )
             chat_history = f"User: {prompt}"
 
-        return prompt, mail_message_id, chat_history, attachments, None
+        lang = _detect_lang(chat_history)
+        return prompt, mail_message_id, chat_history, attachments, lang
 
     # ─────────────────────────────────────────────────────────────
     # CONTENT BUILDER
@@ -729,27 +769,24 @@ class AIControllerOverride(AIController):
 
         try:
             if name == "ai_dynamic_read":
-                return self._tool_dynamic_read(args, mail_message_id)
+                return self._tool_dynamic_read(args, mail_message_id, lang)
             elif name == "ai_create_lead":
-                return self._tool_create_lead(args, mail_message_id)
+                return self._tool_create_lead(args, mail_message_id, lang)
             elif name == "ai_create_invoice":
-                return self._tool_create_invoice(args, mail_message_id)
+                return self._tool_create_invoice(args, mail_message_id, lang)
             elif name == "ai_create_bank_stmt":
-                return self._tool_create_bank_stmt(args, mail_message_id)
+                return self._tool_create_bank_stmt(args, mail_message_id, lang)
             elif name == "ai_create_rfq":
-                return self._tool_create_rfq(args, mail_message_id)
+                return self._tool_create_rfq(args, mail_message_id, lang)
             elif name == "ai_analytics":
-                return self._tool_analytics(args, mail_message_id)
+                return self._tool_analytics(args, mail_message_id, lang)
             elif name == "ai_ask_user":
-                return self._tool_ask_user(args, mail_message_id)
+                return self._tool_ask_user(args, mail_message_id, lang)
             elif name == "ai_update_records":
-                return self._tool_update_records(args, mail_message_id)
+                return self._tool_update_records(args, mail_message_id, lang)
             else:
-                return { "error": f"Unknown tool: {name}" }
-        except Exception as e:
-            _logger.exception(f"Tool {name} error")
-            return {"error": str(e)}
-
+                self._post_message(f"⛔ أداة غير معروفة: {name}", mail_message_id)
+                return {}
 
         except AccessError:
             self._post_message(
