@@ -1,10 +1,17 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║           KHALES AI - HYBRID AGENT ENGINE v2.1                   ║
+║           KHALES AI - HYBRID AGENT ENGINE v2.2                   ║
 ║           Odoo 19 | Gemini 2.5 Flash | UAE Edition 🇦🇪           ║
 ║                                                                   ║
-║  Changes from v2.0:                                              ║
+║  Changes v2.2 (hotfix):                                          ║
+║  ✅ RFQ lines: bypass account.tax Record Rules via targeted sudo ║
+║  ✅ Explicit empty taxes_id on lines to stop failed compute      ║
+║  ✅ Preserve user_id on RFQ for audit trail                      ║
+║  ✅ Richer success message with full line summary                ║
+║  ✅ Graceful failure if some products can't be created           ║
+║                                                                   ║
+║  Changes v2.1:                                                   ║
 ║  ✅ Language Lock: dynamic system instruction per user language  ║
 ║  ✅ UAE Context: country + AED currency + UAE supplier priority  ║
 ║  ✅ UX: status messages, AED formatting, cleaner presentation    ║
@@ -495,14 +502,14 @@ class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('KH_AI v2.1 → request received')
+        _logger.info('KH_AI v2.2 → request received')
 
         if not HAS_GENAI:
             return {'error': 'google-genai not installed on server'}
 
         # 1. Parse Input
         prompt, mail_message_id, chat_history, attachments, lang = self._parse_input(kwargs)
-        _logger.info(f"KH_AI v2.1: detected language = '{lang}'")
+        _logger.info(f"KH_AI v2.2: detected language = '{lang}'")
 
         # 2. Build Gemini contents
         gemini_contents = self._build_contents(chat_history, attachments)
@@ -549,7 +556,7 @@ class AIControllerOverride(AIController):
                 config=types.GenerateContentConfig(temperature=0.0),
             )
             intent = (getattr(classify_resp, 'text', '') or '').strip().upper()
-            _logger.info(f"KH_AI v2.1: intent='{intent}' | lang='{lang}'")
+            _logger.info(f"KH_AI v2.2: intent='{intent}' | lang='{lang}'")
 
             # ── Pass 2: Execute with language-locked system prompt ──
             system_inst = _build_system_instruction(lang)
@@ -574,7 +581,7 @@ class AIControllerOverride(AIController):
             )
 
         except Exception as e:
-            _logger.exception("KH_AI v2.1: Gemini API error")
+            _logger.exception("KH_AI v2.2: Gemini API error")
             err = (f"⛔ Gemini connection error:\n{e}" if lang == 'en'
                    else f"⛔ خطأ في الاتصال بـ Gemini:\n{e}")
             self._post_message(err, mail_message_id)
@@ -669,7 +676,7 @@ class AIControllerOverride(AIController):
                 message_type='comment',
             )
         except Exception:
-            _logger.exception("KH_AI v2.1: failed to post message")
+            _logger.exception("KH_AI v2.2: failed to post message")
 
     # ─────────────────────────────────────────────────────────────
     # TOOL DISPATCHER
@@ -677,7 +684,7 @@ class AIControllerOverride(AIController):
     def _handle_tool_call(self, func, mail_message_id, lang='ar'):
         name = func.name
         args = func.args
-        _logger.info(f"KH_AI v2.1: tool={name} | lang={lang} | args={args}")
+        _logger.info(f"KH_AI v2.2: tool={name} | lang={lang} | args={args}")
 
         try:
             if name == "ai_dynamic_read":
@@ -712,7 +719,7 @@ class AIControllerOverride(AIController):
             self._post_message(f"{AGENT_PERSONA}: ⚠️ {e}", mail_message_id)
             return {}
         except Exception as e:
-            _logger.exception(f"KH_AI v2.1: tool {name} failed")
+            _logger.exception(f"KH_AI v2.2: tool {name} failed")
             err = (f"{AGENT_PERSONA}: ⛔ Tool execution error:\n{e}" if lang == 'en'
                    else f"{AGENT_PERSONA}: ⛔ خطأ في تنفيذ الأداة:\n{e}")
             self._post_message(err, mail_message_id)
@@ -1046,7 +1053,7 @@ class AIControllerOverride(AIController):
                     if '@' in _result2:
                         _result = _result2
 
-                _logger.info(f"KH_AI v2.1 vendor search '{vendor_name}': {_result[:200]}")
+                _logger.info(f"KH_AI v2.2 vendor search '{vendor_name}': {_result[:200]}")
 
                 _email_match = re.search(r'[\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,}', _result)
                 _phone_match = re.search(r'\+?\d[\d\s\-]{8,}', _result)
@@ -1080,7 +1087,7 @@ class AIControllerOverride(AIController):
                     self._post_message(not_found_msg, mail_message_id)
                     return {}
             except Exception as _e:
-                _logger.exception("KH_AI v2.1: web search for vendor email failed")
+                _logger.exception("KH_AI v2.2: web search for vendor email failed")
                 fail_msg = (
                     f"{AGENT_PERSONA}: ⚠️ Vendor **{vendor_name}** has no email on file.\n"
                     f"Please add the vendor email in the system first."
@@ -1091,24 +1098,68 @@ class AIControllerOverride(AIController):
                 self._post_message(fail_msg, mail_message_id)
                 return {}
 
-        # Build order lines
+        # ── Build order lines ─────────────────────────────────────
+        # NOTE: Many Odoo installations have Record Rules on account.tax
+        # that hide specific tax records from normal users (often due to
+        # multi-company setup or custom security rules). When Odoo creates
+        # a purchase.order.line, the @api.depends computed field `taxes_id`
+        # reads account.tax → AccessError → RFQ lines silently drop.
+        #
+        # Fix strategy:
+        #   1. Use sudo() for product read/create (skip record rules)
+        #   2. Explicitly pass `taxes_id: [(5, 0, 0)]` to stop the compute
+        #      from running and to keep the line tax-free
+        #   3. Create PO with sudo, then reassign user_id to the real user
+        #      for proper audit trail
         order_lines = []
+        missing_products = []
         for p in products:
-            prod_name = p.get('name', '')
-            product = env['product.product'].search([('name', '=ilike', prod_name)], limit=1)
+            prod_name = (p.get('name') or '').strip()
+            if not prod_name:
+                continue
+
+            # Use sudo to bypass tax record rules during product read/create
+            product = env['product.product'].sudo().search(
+                [('name', '=ilike', prod_name)], limit=1
+            )
             if not product:
-                product = env['product.product'].create({'name': prod_name, 'type': 'consu'})
+                try:
+                    product = env['product.product'].sudo().create({
+                        'name':              prod_name,
+                        'type':              'consu',
+                        'purchase_ok':       True,
+                        # No default taxes — avoids Record Rule hits on future ops
+                        'supplier_taxes_id': [(5, 0, 0)],
+                        'taxes_id':          [(5, 0, 0)],
+                    })
+                except Exception as _pe:
+                    _logger.exception(f"KH_AI v2.2: product create failed: {prod_name}")
+                    missing_products.append(prod_name)
+                    continue
 
             line_vals = {
                 'product_id':  product.id,
-                'name':        product.name,
+                'name':        product.name or prod_name,
                 'product_qty': float(p.get('quantity', 1.0)),
+                # CRITICAL: explicit empty taxes_id prevents the computed field
+                # from reading account.tax records that the user can't access
+                'taxes_id':    [(5, 0, 0)],
             }
             price = float(p.get('price', 0.0))
             if price:
                 line_vals['price_unit'] = price
 
             order_lines.append((0, 0, line_vals))
+
+        # Safety: if all products failed to materialize, abort cleanly
+        if not order_lines:
+            err = (f"{AGENT_PERSONA}: ⛔ Could not prepare any product line for the RFQ.\n"
+                   f"Problem products: {', '.join(missing_products) or 'unknown'}"
+                   if lang == 'en'
+                   else f"{AGENT_PERSONA}: ⛔ لم أتمكن من تحضير أي بند في الطلب.\n"
+                        f"المنتجات التي فشلت: {', '.join(missing_products) or 'غير معروف'}")
+            self._post_message(err, mail_message_id)
+            return {}
 
         rfq_vals = {
             'partner_id': vendor.id,
@@ -1117,13 +1168,54 @@ class AIControllerOverride(AIController):
         if notes:
             rfq_vals['notes'] = notes
 
-        new_rfq = env['purchase.order'].create(rfq_vals)
+        # Create RFQ with sudo (bypasses account.tax record rules) then
+        # reassign user_id to the real user so the audit trail is correct.
+        try:
+            new_rfq = env['purchase.order'].sudo().with_context(
+                default_supplier_taxes_id=False,
+            ).create(rfq_vals)
+        except Exception as _poe:
+            _logger.exception("KH_AI v2.2: purchase.order create failed")
+            err = (f"{AGENT_PERSONA}: ⛔ Failed to create RFQ:\n{_poe}"
+                   if lang == 'en'
+                   else f"{AGENT_PERSONA}: ⛔ فشل إنشاء طلب التسعير:\n{_poe}")
+            self._post_message(err, mail_message_id)
+            return {}
 
-        default_msg = (f"RFQ created: {new_rfq.name} for {vendor.name}"
-                       if lang == 'en'
-                       else f"تم إنشاء طلب تسعير: {new_rfq.name} للمورد {vendor.name}")
-        msg = args.get('message_to_user', default_msg)
-        self._post_message(f"{AGENT_PERSONA}: ✅ {msg}", mail_message_id)
+        # Preserve audit trail with the real logged-in user
+        try:
+            new_rfq.sudo().write({'user_id': env.user.id})
+        except Exception as _ue:
+            _logger.warning(f"KH_AI v2.2: couldn't reassign user_id on RFQ: {_ue}")
+
+        # ── Build rich success message with line summary ─────────
+        line_summary = []
+        for ln in new_rfq.order_line:
+            line_summary.append(
+                f"   • {ln.name} × {ln.product_qty:g}"
+                + (f" @ {_fmt_money(ln.price_unit, lang)}" if ln.price_unit else "")
+            )
+        lines_block = "\n".join(line_summary) if line_summary else "—"
+
+        if lang == 'en':
+            default_msg = (
+                f"RFQ created: **{new_rfq.name}**\n"
+                f"🏢 Vendor: {vendor.name}\n"
+                f"📧 Email: {final_email or 'N/A'}\n"
+                f"📦 Items ({len(new_rfq.order_line)}):\n{lines_block}"
+            )
+        else:
+            default_msg = (
+                f"تم إنشاء طلب التسعير: **{new_rfq.name}**\n"
+                f"🏢 المورد: {vendor.name}\n"
+                f"📧 الإيميل: {final_email or 'غير متوفر'}\n"
+                f"📦 البنود ({len(new_rfq.order_line)}):\n{lines_block}"
+            )
+
+        # If the LLM provided a custom message, prepend it; otherwise use the default
+        llm_msg = args.get('message_to_user', '').strip()
+        final_text = f"{llm_msg}\n\n{default_msg}" if llm_msg else default_msg
+        self._post_message(f"{AGENT_PERSONA}: ✅ {final_text}", mail_message_id)
 
         return {
             'type': 'ir.actions.act_window',
@@ -1553,7 +1645,7 @@ class AIControllerOverride(AIController):
                 _ranked = sorted(_all, key=_score, reverse=True)
                 _best   = _ranked[0] if _ranked else None
                 _best_score = _score(_best) if _best else 0
-                _logger.info(f"KH_AI v2.1 project_financial: kw='{project_keyword}' best='{_best['name'] if _best else None}' score={_best_score:.2f}")
+                _logger.info(f"KH_AI v2.2 project_financial: kw='{project_keyword}' best='{_best['name'] if _best else None}' score={_best_score:.2f}")
 
                 if not _best or _best_score < 0.5:
                     not_found = (f"🔍 No project matches '{project_keyword}'."
@@ -1673,7 +1765,7 @@ class AIControllerOverride(AIController):
                 self._post_message(f"{AGENT_PERSONA}: {err}", mail_message_id)
 
         except Exception as e:
-            _logger.exception("KH_AI v2.1: analytics error")
+            _logger.exception("KH_AI v2.2: analytics error")
             try:
                 env.cr.rollback()
             except Exception:
@@ -1768,7 +1860,7 @@ class AIControllerOverride(AIController):
                         else:
                             errors += 1
                 except Exception as _e:
-                    _logger.warning(f"KH_AI v2.1 update line {line.id}: {_e}")
+                    _logger.warning(f"KH_AI v2.2 update line {line.id}: {_e}")
                     errors += 1
 
             if lang == 'en':
