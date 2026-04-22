@@ -1,20 +1,24 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║           KHALES AI - HYBRID AGENT ENGINE v2.2                   ║
+║           KHALES AI - HYBRID AGENT ENGINE v2.3                   ║
 ║           Odoo 19 | Gemini 2.5 Flash | UAE Edition 🇦🇪           ║
 ║                                                                   ║
-║  Changes v2.2 (hotfix):                                          ║
+║  Changes v2.3 (hotfix):                                          ║
+║  ✅ Robust response text extraction (handles grounding quirks)   ║
+║  ✅ Graceful fallback on empty Gemini responses                  ║
+║  ✅ Stronger classifier for 'uae suppliers' → WEB_SEARCH         ║
+║  ✅ Finish-reason + safety diagnostic logging                    ║
+║                                                                   ║
+║  Changes v2.2:                                                   ║
 ║  ✅ RFQ lines: bypass account.tax Record Rules via targeted sudo ║
 ║  ✅ Explicit empty taxes_id on lines to stop failed compute      ║
 ║  ✅ Preserve user_id on RFQ for audit trail                      ║
 ║  ✅ Richer success message with full line summary                ║
-║  ✅ Graceful failure if some products can't be created           ║
 ║                                                                   ║
 ║  Changes v2.1:                                                   ║
 ║  ✅ Language Lock: dynamic system instruction per user language  ║
 ║  ✅ UAE Context: country + AED currency + UAE supplier priority  ║
-║  ✅ UX: status messages, AED formatting, cleaner presentation    ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -502,14 +506,14 @@ class AIControllerOverride(AIController):
 
     @http.route('/ai/generate_response', type='json', auth='user', csrf=False)
     def generate_response(self, **kwargs):
-        _logger.info('KH_AI v2.2 → request received')
+        _logger.info('KH_AI v2.3 → request received')
 
         if not HAS_GENAI:
             return {'error': 'google-genai not installed on server'}
 
         # 1. Parse Input
         prompt, mail_message_id, chat_history, attachments, lang = self._parse_input(kwargs)
-        _logger.info(f"KH_AI v2.2: detected language = '{lang}'")
+        _logger.info(f"KH_AI v2.3: detected language = '{lang}'")
 
         # 2. Build Gemini contents
         gemini_contents = self._build_contents(chat_history, attachments)
@@ -536,14 +540,22 @@ class AIControllerOverride(AIController):
                 "You are classifying a user message in a UAE-based ERP conversation.\n\n"
                 "Categories:\n"
                 "- ODOO_ACTION  -> create/update/delete/send records\n"
-                "- ODOO_READ    -> search/find/list/analyze data, reports, financial status\n"
-                "- WEB_SEARCH   -> external internet info (UAE suppliers, prices, market)\n"
+                "- ODOO_READ    -> search INTERNAL Odoo data (existing suppliers, invoices, reports)\n"
+                "- WEB_SEARCH   -> external internet info (NEW suppliers, UAE market, online prices)\n"
                 "- CHAT         -> pure greetings with NO business intent\n\n"
                 "ODOO_ACTION keywords: انشئ, اعمل, جهز, ابعث, ارسل, أضف, خلينا نجهز, "
                 "طلب تسعير, RFQ, فاتورة, lead, create, send\n"
-                "ODOO_READ keywords: دور, ابحث, اعرض, كم, شو وضع, تقرير, فواتير, موردين, عملاء, search, find, show\n"
-                "WEB_SEARCH triggers: 'outside the system', 'خارج النظام', 'عبر الإنترنت', 'online', "
-                "'search the internet', 'other suppliers', 'موردين آخرين', 'UAE suppliers'\n\n"
+                "ODOO_READ keywords: دور داخل النظام, اعرض الموجود, كم, شو وضع, تقرير, "
+                "فواتير النظام, موردين النظام, عملاء النظام, find in system, show existing\n"
+                "WEB_SEARCH triggers (ANY of these → WEB_SEARCH, do not second-guess):\n"
+                "  • 'outside the system' / 'خارج النظام' / 'عبر الإنترنت' / 'online'\n"
+                "  • 'search the internet' / 'search online' / 'ابحث على الإنترنت'\n"
+                "  • 'UAE suppliers' / 'uae suppliers' / 'Dubai suppliers' / 'موردين الإمارات'\n"
+                "  • 'other suppliers' / 'new suppliers' / 'موردين آخرين' / 'موردين جدد'\n"
+                "  • 'find me a supplier' / 'recommend a vendor'\n"
+                "  • any 'suppliers' request AFTER the assistant offered to search online\n\n"
+                "CRITICAL: If the previous assistant message offered 'search for UAE suppliers online' "
+                "and user replied with 'yes' / 'uae suppliers' / 'search' / 'ابحث' → WEB_SEARCH.\n"
                 "IMPORTANT: pronouns (تبعو, تبعها, عليه, this, it) referring to earlier record → ODOO_READ\n\n"
                 f"Conversation context:\n{chat_history[-800:]}\n\n"
                 f"Latest user message: {last_user_msg}\n\n"
@@ -556,7 +568,7 @@ class AIControllerOverride(AIController):
                 config=types.GenerateContentConfig(temperature=0.0),
             )
             intent = (getattr(classify_resp, 'text', '') or '').strip().upper()
-            _logger.info(f"KH_AI v2.2: intent='{intent}' | lang='{lang}'")
+            _logger.info(f"KH_AI v2.3: intent='{intent}' | lang='{lang}'")
 
             # ── Pass 2: Execute with language-locked system prompt ──
             system_inst = _build_system_instruction(lang)
@@ -581,7 +593,7 @@ class AIControllerOverride(AIController):
             )
 
         except Exception as e:
-            _logger.exception("KH_AI v2.2: Gemini API error")
+            _logger.exception("KH_AI v2.3: Gemini API error")
             err = (f"⛔ Gemini connection error:\n{e}" if lang == 'en'
                    else f"⛔ خطأ في الاتصال بـ Gemini:\n{e}")
             self._post_message(err, mail_message_id)
@@ -591,11 +603,72 @@ class AIControllerOverride(AIController):
         if response.function_calls:
             return self._handle_tool_call(response.function_calls[0], mail_message_id, lang)
         else:
-            text = getattr(response, 'text', '') or ''
+            text = self._extract_response_text(response)
+            if not text:
+                # Log diagnostic info so we can see WHY the response was empty
+                try:
+                    cands = getattr(response, 'candidates', None) or []
+                    fr = getattr(cands[0], 'finish_reason', None) if cands else None
+                    sf = getattr(cands[0], 'safety_ratings', None) if cands else None
+                    _logger.warning(
+                        f"KH_AI v2.3: empty response. intent='{intent}' | "
+                        f"finish_reason={fr} | safety={sf}"
+                    )
+                except Exception:
+                    pass
+
+                # Graceful fallback — don't show an empty bubble
+                text = (
+                    "I couldn't generate a response for that. "
+                    "Could you try rephrasing with more specific keywords "
+                    "(e.g. 'search online for UAE block suppliers in Dubai')?"
+                    if lang == 'en'
+                    else "لم أتمكن من توليد رد لهذا الطلب. "
+                         "هل يمكنك إعادة الصياغة بكلمات أكثر تحديداً "
+                         "(مثلاً: 'ابحث على الإنترنت عن موردين بلوك في دبي')؟"
+                )
             if not text.startswith(AGENT_PERSONA):
                 text = f"{AGENT_PERSONA}: {text}"
             self._post_message(text, mail_message_id)
             return {}
+
+    # ─────────────────────────────────────────────────────────────
+    # RESPONSE TEXT EXTRACTOR (v2.3)
+    # ─────────────────────────────────────────────────────────────
+    def _extract_response_text(self, response) -> str:
+        """
+        Robust text extraction from Gemini responses.
+
+        With grounding (google_search) Gemini sometimes returns an empty
+        `.text` even when `response.candidates[0].content.parts[*].text`
+        contains the actual answer. Also covers multi-part responses.
+        """
+        # 1. Primary: the convenient .text accessor
+        try:
+            text = getattr(response, 'text', '') or ''
+            if text and text.strip():
+                return text.strip()
+        except Exception:
+            pass
+
+        # 2. Fallback: walk candidates → content → parts
+        try:
+            for cand in (getattr(response, 'candidates', None) or []):
+                content = getattr(cand, 'content', None)
+                if content is None:
+                    continue
+                parts = getattr(content, 'parts', None) or []
+                chunks = []
+                for part in parts:
+                    part_text = getattr(part, 'text', None)
+                    if part_text:
+                        chunks.append(part_text)
+                if chunks:
+                    return '\n'.join(chunks).strip()
+        except Exception as _e:
+            _logger.warning(f"KH_AI v2.3: fallback text extraction failed: {_e}")
+
+        return ''
 
     # ─────────────────────────────────────────────────────────────
     # INPUT PARSER
@@ -676,7 +749,7 @@ class AIControllerOverride(AIController):
                 message_type='comment',
             )
         except Exception:
-            _logger.exception("KH_AI v2.2: failed to post message")
+            _logger.exception("KH_AI v2.3: failed to post message")
 
     # ─────────────────────────────────────────────────────────────
     # TOOL DISPATCHER
@@ -684,7 +757,7 @@ class AIControllerOverride(AIController):
     def _handle_tool_call(self, func, mail_message_id, lang='ar'):
         name = func.name
         args = func.args
-        _logger.info(f"KH_AI v2.2: tool={name} | lang={lang} | args={args}")
+        _logger.info(f"KH_AI v2.3: tool={name} | lang={lang} | args={args}")
 
         try:
             if name == "ai_dynamic_read":
@@ -719,7 +792,7 @@ class AIControllerOverride(AIController):
             self._post_message(f"{AGENT_PERSONA}: ⚠️ {e}", mail_message_id)
             return {}
         except Exception as e:
-            _logger.exception(f"KH_AI v2.2: tool {name} failed")
+            _logger.exception(f"KH_AI v2.3: tool {name} failed")
             err = (f"{AGENT_PERSONA}: ⛔ Tool execution error:\n{e}" if lang == 'en'
                    else f"{AGENT_PERSONA}: ⛔ خطأ في تنفيذ الأداة:\n{e}")
             self._post_message(err, mail_message_id)
@@ -1053,7 +1126,7 @@ class AIControllerOverride(AIController):
                     if '@' in _result2:
                         _result = _result2
 
-                _logger.info(f"KH_AI v2.2 vendor search '{vendor_name}': {_result[:200]}")
+                _logger.info(f"KH_AI v2.3 vendor search '{vendor_name}': {_result[:200]}")
 
                 _email_match = re.search(r'[\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,}', _result)
                 _phone_match = re.search(r'\+?\d[\d\s\-]{8,}', _result)
@@ -1087,7 +1160,7 @@ class AIControllerOverride(AIController):
                     self._post_message(not_found_msg, mail_message_id)
                     return {}
             except Exception as _e:
-                _logger.exception("KH_AI v2.2: web search for vendor email failed")
+                _logger.exception("KH_AI v2.3: web search for vendor email failed")
                 fail_msg = (
                     f"{AGENT_PERSONA}: ⚠️ Vendor **{vendor_name}** has no email on file.\n"
                     f"Please add the vendor email in the system first."
@@ -1133,7 +1206,7 @@ class AIControllerOverride(AIController):
                         'taxes_id':          [(5, 0, 0)],
                     })
                 except Exception as _pe:
-                    _logger.exception(f"KH_AI v2.2: product create failed: {prod_name}")
+                    _logger.exception(f"KH_AI v2.3: product create failed: {prod_name}")
                     missing_products.append(prod_name)
                     continue
 
@@ -1175,7 +1248,7 @@ class AIControllerOverride(AIController):
                 default_supplier_taxes_id=False,
             ).create(rfq_vals)
         except Exception as _poe:
-            _logger.exception("KH_AI v2.2: purchase.order create failed")
+            _logger.exception("KH_AI v2.3: purchase.order create failed")
             err = (f"{AGENT_PERSONA}: ⛔ Failed to create RFQ:\n{_poe}"
                    if lang == 'en'
                    else f"{AGENT_PERSONA}: ⛔ فشل إنشاء طلب التسعير:\n{_poe}")
@@ -1186,7 +1259,7 @@ class AIControllerOverride(AIController):
         try:
             new_rfq.sudo().write({'user_id': env.user.id})
         except Exception as _ue:
-            _logger.warning(f"KH_AI v2.2: couldn't reassign user_id on RFQ: {_ue}")
+            _logger.warning(f"KH_AI v2.3: couldn't reassign user_id on RFQ: {_ue}")
 
         # ── Build rich success message with line summary ─────────
         line_summary = []
@@ -1645,7 +1718,7 @@ class AIControllerOverride(AIController):
                 _ranked = sorted(_all, key=_score, reverse=True)
                 _best   = _ranked[0] if _ranked else None
                 _best_score = _score(_best) if _best else 0
-                _logger.info(f"KH_AI v2.2 project_financial: kw='{project_keyword}' best='{_best['name'] if _best else None}' score={_best_score:.2f}")
+                _logger.info(f"KH_AI v2.3 project_financial: kw='{project_keyword}' best='{_best['name'] if _best else None}' score={_best_score:.2f}")
 
                 if not _best or _best_score < 0.5:
                     not_found = (f"🔍 No project matches '{project_keyword}'."
@@ -1765,7 +1838,7 @@ class AIControllerOverride(AIController):
                 self._post_message(f"{AGENT_PERSONA}: {err}", mail_message_id)
 
         except Exception as e:
-            _logger.exception("KH_AI v2.2: analytics error")
+            _logger.exception("KH_AI v2.3: analytics error")
             try:
                 env.cr.rollback()
             except Exception:
@@ -1860,7 +1933,7 @@ class AIControllerOverride(AIController):
                         else:
                             errors += 1
                 except Exception as _e:
-                    _logger.warning(f"KH_AI v2.2 update line {line.id}: {_e}")
+                    _logger.warning(f"KH_AI v2.3 update line {line.id}: {_e}")
                     errors += 1
 
             if lang == 'en':
