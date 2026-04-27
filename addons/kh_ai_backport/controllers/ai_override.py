@@ -244,6 +244,11 @@ NEVER return empty project_name — scan history.
 - ai_create_bank_stmt   → "أنشئ كشف بنكي", "bank statement"
 - ai_create_rfq         → "أنشئ RFQ", "اطلب من مورد", "طلب تسعير"
 - ai_update_records     → "set account for X"
+- ai_extract_references → "extract references", "fill reference column",
+                          "set ref from label", "استخرج المراجع",
+                          "املأ خانة المرجع من اللابل"
+  → Pulls text after "|" in payment_ref and writes it to the ref field.
+  → Optional statement_name filter (e.g. "KPM Statement 2022-12-31").
 
 ### RFQ Pattern:
 If user asks to create/send RFQ → call ai_create_rfq DIRECTLY.
@@ -480,9 +485,36 @@ def _build_tools() -> "types.Tool":
         )
     )
 
+    ai_extract_references = types.FunctionDeclaration(
+        name="ai_extract_references",
+        description=(
+            "Extract reference codes (ECS xxx, Cheque xxx, etc.) from bank statement line "
+            "labels and write them to the 'ref' field. The reference is the text AFTER "
+            "the '|' separator in the label. "
+            "Triggers: 'extract references', 'fill reference column', 'set ref from label', "
+            "'استخرج المراجع', 'املأ خانة المرجع', 'حدّث المرجع من اللابل'."
+        ),
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "statement_name": types.Schema(
+                    type=types.Type.STRING,
+                    description="Optional. Filter by bank statement name (e.g. 'KPM Statement 2022-12-31'). If omitted, processes all statements.",
+                ),
+                "overwrite": types.Schema(
+                    type=types.Type.BOOLEAN,
+                    description="If true, overwrite lines that already have a ref. Default false (only fill empty refs).",
+                ),
+                "message_to_user": types.Schema(type=types.Type.STRING),
+            },
+            required=["message_to_user"],
+        ),
+    )
+
     return types.Tool(function_declarations=[
         ai_dynamic_read, ai_create_lead, ai_create_invoice, ai_create_bank_stmt,
         ai_create_rfq, ai_analytics, ai_ask_user, ai_update_records,
+        ai_extract_references,
     ])
 
 
@@ -778,6 +810,8 @@ class AIControllerOverride(AIController):
                 return self._tool_ask_user(args, mail_message_id, lang)
             elif name == "ai_update_records":
                 return self._tool_update_records(args, mail_message_id, lang)
+            elif name == "ai_extract_references":
+                return self._tool_extract_references(args, mail_message_id, lang)
             else:
                 err = (f"⛔ Unknown tool: {name}" if lang == 'en'
                        else f"⛔ أداة غير معروفة: {name}")
@@ -1954,3 +1988,123 @@ class AIControllerOverride(AIController):
                    else f"⚠️ العملية '{operation}' غير مدعومة حالياً.")
             self._post_message(f"{AGENT_PERSONA}: {err}", mail_message_id)
             return {}
+
+    # ── EXTRACT REFERENCES FROM BANK STATEMENT LABELS ─────────────
+    def _tool_extract_references(self, args, mail_message_id, lang='ar'):
+        """
+        Pull reference codes (ECS xxxx, Cheque xxxx, Cheque 30-6-2024 …)
+        out of bank statement line labels and write them to `ref`.
+
+        Logic: split payment_ref on the LAST '|' and use the trailing chunk.
+        Skips lines whose label has no '|' or whose tail is empty.
+        """
+        env = request.env
+
+        statement_name = (args.get('statement_name') or '').strip()
+        overwrite      = bool(args.get('overwrite', False))
+
+        # Optional statement filter
+        domain = [('statement_id', '!=', False)]
+        matched_stmts = None
+        if statement_name:
+            matched_stmts = env['account.bank.statement'].sudo().search(
+                [('name', 'ilike', statement_name)]
+            )
+            if not matched_stmts:
+                err = (f"🔍 No bank statement matches '{statement_name}'."
+                       if lang == 'en'
+                       else f"🔍 لم أجد كشفاً بنكياً يطابق '{statement_name}'.")
+                self._post_message(f"{AGENT_PERSONA}: {err}", mail_message_id)
+                return {}
+
+            domain.append(('statement_id', 'in', matched_stmts.ids))
+
+        # Only touch empty refs unless explicitly told otherwise
+        if not overwrite:
+            domain.append(('ref', 'in', [False, '']))
+
+        lines = env['account.bank.statement.line'].sudo().search(domain, limit=5000)
+
+        if not lines:
+            msg = ("🔍 No bank statement lines need a reference update."
+                   if lang == 'en'
+                   else "🔍 لا توجد بنود تحتاج تحديث المرجع.")
+            self._post_message(f"{AGENT_PERSONA}: {msg}", mail_message_id)
+            return {}
+
+        updated     = 0
+        skipped_pipe   = 0   # no '|' in label
+        skipped_empty  = 0   # empty tail after '|'
+        failed         = 0
+        samples        = []
+
+        # Strip helper — clean trailing ellipsis, dots, spaces, tabs
+        def _clean_tail(s: str) -> str:
+            s = (s or '').strip()
+            # remove a trailing "..." (1-3 dots) that the grid often adds
+            s = re.sub(r'\.{1,3}$', '', s).strip()
+            return s
+
+        for line in lines:
+            label = line.payment_ref or ''
+            if '|' not in label:
+                skipped_pipe += 1
+                continue
+
+            # Last '|' is safer in case the label itself contains a pipe
+            ref_text = _clean_tail(label.rsplit('|', 1)[1])
+
+            if not ref_text:
+                skipped_empty += 1
+                continue
+
+            try:
+                line.sudo().write({'ref': ref_text})
+                updated += 1
+                if len(samples) < 5:
+                    shown_label = (label[:55] + '…') if len(label) > 55 else label
+                    samples.append(f"   • {shown_label} → **{ref_text}**")
+            except Exception as e:
+                _logger.warning(f"KH_AI v2.4: ref update failed on line {line.id}: {e}")
+                failed += 1
+
+        # ── Build response ────────────────────────────────────────
+        if lang == 'en':
+            out = [f"{AGENT_PERSONA}: ✅ **References extracted from labels**"]
+            if statement_name:
+                out.append(f"• Statement filter: **{statement_name}** "
+                           f"({len(matched_stmts)} matched)")
+            out += [
+                f"• Lines processed: **{len(lines)}**",
+                f"• Updated: **{updated}**",
+                f"• Skipped (no `|`): **{skipped_pipe}**",
+                f"• Skipped (empty tail): **{skipped_empty}**",
+            ]
+            if failed:
+                out.append(f"• Failed: **{failed}**")
+            if samples:
+                out.append("\n**Sample updates:**")
+                out.extend(samples)
+            if not overwrite and updated:
+                out.append("\n💡 Use `overwrite=true` to also replace existing references.")
+        else:
+            out = [f"{AGENT_PERSONA}: ✅ **تم استخراج المراجع من اللابل**"]
+            if statement_name:
+                out.append(f"• الكشف المُحدَّد: **{statement_name}** "
+                           f"({len(matched_stmts)} مطابق)")
+            out += [
+                f"• البنود المعالجة: **{len(lines)}**",
+                f"• تم تحديثها: **{updated}**",
+                f"• تجاهل (بدون `|`): **{skipped_pipe}**",
+                f"• تجاهل (فارغ بعد `|`): **{skipped_empty}**",
+            ]
+            if failed:
+                out.append(f"• فشل: **{failed}**")
+            if samples:
+                out.append("\n**عينة من التحديثات:**")
+                out.extend(samples)
+            if not overwrite and updated:
+                out.append("\n💡 استخدم `overwrite=true` لاستبدال المراجع الموجودة أيضاً.")
+
+        self._post_message("\n".join(out), mail_message_id)
+        return {}
