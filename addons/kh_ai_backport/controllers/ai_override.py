@@ -1908,11 +1908,17 @@ class AIControllerOverride(AIController):
         account_name = args.get('account_name', '')
 
         if operation == 'set_bank_statement_account':
-            account = None
+            # ── 1. Find the target account ────────────────────────────
+            base_acc_domain = [('company_ids', 'in', env.company.id)]
+            account = env['account.account'].browse()
             if account_code:
-                account = env['account.account'].search([('code', '=', account_code)], limit=1)
+                account = env['account.account'].sudo().search(
+                    base_acc_domain + [('code', '=', account_code)], limit=1
+                )
             if not account and account_name:
-                account = env['account.account'].search([('name', 'ilike', account_name)], limit=1)
+                account = env['account.account'].sudo().search(
+                    base_acc_domain + [('name', 'ilike', account_name)], limit=1
+                )
             if not account:
                 err = (f"⛔ No account found with code '{account_code}' or name '{account_name}'."
                        if lang == 'en'
@@ -1920,66 +1926,117 @@ class AIControllerOverride(AIController):
                 self._post_message(f"{AGENT_PERSONA}: {err}", mail_message_id)
                 return {}
 
-            partner = None
+            # ── 2. Find the partner ────────────────────────────────────
+            partner = env['res.partner'].browse()
             if partner_name:
-                partner = env['res.partner'].search([('name', 'ilike', partner_name)], limit=1)
+                partner = env['res.partner'].sudo().search(
+                    [('name', '=ilike', partner_name)], limit=1
+                ) or env['res.partner'].sudo().search(
+                    [('name', 'ilike', partner_name)], limit=1
+                )
 
-            domain = [('statement_id', '!=', False)]
+            # ── 3. Build statement-line domain (partner_id OR label match) ──
+            line_domain = [('statement_id', '!=', False)]
             if partner:
-                domain.append(('partner_id', '=', partner.id))
+                line_domain += ['|',
+                                ('partner_id', '=', partner.id),
+                                ('payment_ref', 'ilike', partner.name)]
             elif partner_name:
-                domain.append(('payment_ref', 'ilike', partner_name))
-
-            stmt_lines = env['account.bank.statement.line'].sudo().search(domain, limit=200)
-
-            if not stmt_lines:
-                err = (f"🔍 No bank statement lines found"
-                       + (f" for partner '{partner_name}'." if partner_name else ".")
+                line_domain.append(('payment_ref', 'ilike', partner_name))
+            else:
+                err = ("⚠️ Please specify the partner name."
                        if lang == 'en'
-                       else f"🔍 لم أجد بنود bank statement"
-                       + (f" للشريك '{partner_name}'." if partner_name else "."))
+                       else "⚠️ يرجى تحديد اسم الشريك.")
                 self._post_message(f"{AGENT_PERSONA}: {err}", mail_message_id)
                 return {}
 
+            stmt_lines = env['account.bank.statement.line'].sudo().search(line_domain)
+
+            if not stmt_lines:
+                msg = (f"🔍 No bank statement lines found for '{partner.name if partner else partner_name}'."
+                       if lang == 'en'
+                       else f"🔍 لم أجد بنود كشف بنكي لـ '{partner.name if partner else partner_name}'.")
+                self._post_message(f"{AGENT_PERSONA}: {msg}", mail_message_id)
+                return {}
+
+            # ── 4. Update each line's non-bank (counterpart) move line ──
             updated = 0
-            errors  = 0
-            for line in stmt_lines:
+            skipped_no_counterpart = 0
+            failed = 0
+            samples = []
+
+            for st_line in stmt_lines:
                 try:
-                    move_lines = env['account.move.line'].sudo().search([
-                        ('statement_line_id', '=', line.id),
-                        ('account_id.account_type', 'not in', ['asset_cash', 'liability_current']),
-                    ], limit=1)
+                    move = st_line.move_id
+                    if not move:
+                        failed += 1
+                        continue
 
-                    if move_lines:
-                        move_lines.sudo().write({'account_id': account.id})
-                        updated += 1
-                    else:
-                        if hasattr(line, 'account_id'):
-                            line.sudo().write({'account_id': account.id})
-                            updated += 1
-                        else:
-                            errors += 1
-                except Exception as _e:
-                    _logger.warning(f"KH_AI v2.4 update line {line.id}: {_e}")
-                    errors += 1
+                    journal      = st_line.journal_id
+                    bank_account = journal.default_account_id
 
+                    counterpart_lines = move.line_ids.filtered(
+                        lambda ml: ml.account_id.id != bank_account.id
+                    )
+                    counterpart_lines = counterpart_lines.filtered(
+                        lambda ml: ml.account_id.id != account.id
+                    )
+
+                    if not counterpart_lines:
+                        skipped_no_counterpart += 1
+                        continue
+
+                    was_posted = move.state == 'posted'
+                    if was_posted:
+                        move.sudo().button_draft()
+
+                    counterpart_lines.sudo().write({'account_id': account.id})
+
+                    if was_posted:
+                        move.sudo().action_post()
+
+                    updated += 1
+                    if len(samples) < 5:
+                        lbl = (st_line.payment_ref or '')[:55]
+                        samples.append(f"   • {lbl} → **{account.code} {account.name}**")
+
+                except Exception as e:
+                    _logger.warning(f"KH_AI v2.4 set_bank_statement_account on line {st_line.id}: {e}")
+                    failed += 1
+
+            # ── 5. Report ──────────────────────────────────────────────
+            who = partner.name if partner else partner_name
             if lang == 'en':
-                result = (
-                    f"{AGENT_PERSONA}: ✅ **{_t('updated', lang)}**\n"
-                    f"• {_t('account', lang)}: **{account.code} - {account.name}**\n"
-                    f"• {_t('partner', lang)}: **{partner.name if partner else partner_name}**\n"
-                    f"• {_t('lines_updated', lang)}: **{updated}**\n"
-                    + (f"• Failed: {errors}\n" if errors else "")
-                )
+                out = [
+                    f"{AGENT_PERSONA}: ✅ **Account assignment complete**",
+                    f"• Partner: **{who}**",
+                    f"• Account: **{account.code} - {account.display_name}**",
+                    f"• Lines matched: **{len(stmt_lines)}**",
+                    f"• Updated: **{updated}**",
+                ]
+                if skipped_no_counterpart:
+                    out.append(f"• Skipped (no counterpart line): **{skipped_no_counterpart}**")
+                if failed:
+                    out.append(f"• Failed: **{failed}**")
+                if samples:
+                    out.append("\n**Sample updates:**")
+                    out.extend(samples)
             else:
-                result = (
-                    f"{AGENT_PERSONA}: ✅ **{_t('updated', lang)}**\n"
-                    f"• {_t('account', lang)}: **{account.code} - {account.name}**\n"
-                    f"• {_t('partner', lang)}: **{partner.name if partner else partner_name}**\n"
-                    f"• {_t('lines_updated', lang)}: **{updated}**\n"
-                    + (f"• فشل التحديث: {errors}\n" if errors else "")
-                )
-            self._post_message(result, mail_message_id)
+                out = [
+                    f"{AGENT_PERSONA}: ✅ **تم تحديث الحساب**",
+                    f"• الشريك: **{who}**",
+                    f"• الحساب: **{account.code} - {account.display_name}**",
+                    f"• البنود المطابقة: **{len(stmt_lines)}**",
+                    f"• تم تحديثها: **{updated}**",
+                ]
+                if skipped_no_counterpart:
+                    out.append(f"• تم تجاوزها (لا يوجد سطر مقابل): **{skipped_no_counterpart}**")
+                if failed:
+                    out.append(f"• فشل: **{failed}**")
+                if samples:
+                    out.append("\n**عينة من التحديثات:**")
+                    out.extend(samples)
+            self._post_message("\n".join(out), mail_message_id)
             return {}
 
         else:
