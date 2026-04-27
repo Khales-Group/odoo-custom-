@@ -90,6 +90,12 @@ READABLE_MODELS = {
     'account.bank.statement.line': ['payment_ref', 'amount', 'partner_id', 'date', 'journal_id', 'statement_id', 'move_id'],
 }
 
+# Fields to use for keyword search per model (defaults to 'name')
+KEYWORD_FIELDS = {
+    'account.bank.statement.line': ['payment_ref', 'partner_id.name'],
+    'account.bank.statement':      ['name'],
+}
+
 
 # ══════════════════════════════════════════════════════════════════
 #  LANGUAGE DETECTION (IMPROVED — v2.1)
@@ -857,7 +863,15 @@ class AIControllerOverride(AIController):
 
         domain = []
         if keyword:
-            domain.append(('name', 'ilike', keyword))
+            kw_fields = KEYWORD_FIELDS.get(model_name, ['name'])
+            if len(kw_fields) == 1:
+                domain.append((kw_fields[0], 'ilike', keyword))
+            else:
+                # OR across multiple keyword fields
+                or_clauses = ['|'] * (len(kw_fields) - 1)
+                for f in kw_fields:
+                    or_clauses.append((f, 'ilike', keyword))
+                domain.extend(or_clauses)
         if filters:
             try:
                 extra = json.loads(filters)
