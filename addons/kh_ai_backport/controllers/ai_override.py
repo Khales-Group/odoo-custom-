@@ -86,7 +86,8 @@ READABLE_MODELS = {
     'hr.employee':            ['name', 'job_title', 'department_id', 'work_email'],
     'product.product':        ['name', 'list_price', 'qty_available', 'categ_id'],
     'stock.picking':          ['name', 'partner_id', 'state', 'scheduled_date', 'picking_type_id'],
-    'account.bank.statement': ['name', 'date', 'balance_start', 'balance_end_real', 'journal_id'],
+    'account.bank.statement':      ['name', 'date', 'balance_start', 'balance_end_real', 'journal_id'],
+    'account.bank.statement.line': ['payment_ref', 'amount', 'partner_id', 'date', 'journal_id', 'statement_id', 'move_id'],
 }
 
 
@@ -865,7 +866,7 @@ class AIControllerOverride(AIController):
                 pass
 
         env = request.env
-        records = env[model_name].search_read(domain, fields=allowed_fields, limit=limit)
+        records = env(su=True)[model_name].search_read(domain, fields=allowed_fields, limit=limit)
 
         if not records:
             no_results = (
