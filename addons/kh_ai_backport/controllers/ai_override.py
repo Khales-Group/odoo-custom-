@@ -98,6 +98,85 @@ KEYWORD_FIELDS = {
 
 
 # ══════════════════════════════════════════════════════════════════
+#  ROBUST PARTNER / BANK-LINE MATCHING (v2.5)
+# ══════════════════════════════════════════════════════════════════
+
+_PARTNER_NOISE = {
+    'the', 'and', 'company', 'co', 'corp', 'corporation', 'ltd', 'llc',
+    'inc', 'pjsc', 'pjs', 'pjsclu', 'group', 'holding', 'holdings',
+    'international', 'general', 'trading', 'establishment', 'est',
+    'in', 'of', 'for', 'a', 'an',
+}
+
+
+def _partner_keyword_variants(keyword: str) -> list:
+    keyword = (keyword or '').strip()
+    if not keyword:
+        return []
+    variants = [keyword]
+    no_dots = re.sub(r'[.,]', '', keyword)
+    no_dots = re.sub(r'\s+', ' ', no_dots).strip()
+    if no_dots and no_dots not in variants:
+        variants.append(no_dots)
+    words = [w for w in re.findall(r'\w+', no_dots)
+             if w.lower() not in _PARTNER_NOISE and len(w) > 2]
+    if len(words) >= 3:
+        v = ' '.join(words[:3])
+        if v not in variants:
+            variants.append(v)
+    if len(words) >= 2:
+        v = ' '.join(words[:2])
+        if v not in variants:
+            variants.append(v)
+    return variants
+
+
+def _find_partners_robust(env, keyword: str, limit: int = 50):
+    Partner = env['res.partner'].sudo()
+    if not keyword:
+        return Partner.browse()
+    for variant in _partner_keyword_variants(keyword):
+        hits = Partner.search([('name', '=ilike', variant)], limit=limit)
+        if hits:
+            return hits
+        hits = Partner.search([('name', 'ilike', variant)], limit=limit)
+        if hits:
+            return hits
+    return Partner.browse()
+
+
+def _find_bank_lines_for_partner(env, keyword: str):
+    StLine = env['account.bank.statement.line'].sudo()
+    AmlObj = env['account.move.line'].sudo()
+
+    partners = _find_partners_robust(env, keyword)
+    variants = _partner_keyword_variants(keyword)
+
+    or_clauses = []
+    if partners:
+        or_clauses.append(('partner_id', 'in', partners.ids))
+    for v in variants:
+        or_clauses.append(('payment_ref', 'ilike', v))
+
+    if not or_clauses:
+        return StLine.browse(), partners
+
+    domain = ['|'] * (len(or_clauses) - 1) + or_clauses
+    lines = StLine.search(domain)
+
+    if partners:
+        amls = AmlObj.search([
+            ('partner_id', 'in', partners.ids),
+            ('move_id.statement_line_id', '!=', False),
+        ])
+        if amls:
+            move_ids = amls.mapped('move_id').ids
+            lines |= StLine.search([('move_id', 'in', move_ids)])
+
+    return lines, partners
+
+
+# ══════════════════════════════════════════════════════════════════
 #  LANGUAGE DETECTION (IMPROVED — v2.1)
 # ══════════════════════════════════════════════════════════════════
 
@@ -250,7 +329,19 @@ NEVER return empty project_name — scan history.
 - ai_create_invoice     → "أنشئ فاتورة", "create invoice/bill"
 - ai_create_bank_stmt   → "أنشئ كشف بنكي", "bank statement"
 - ai_create_rfq         → "أنشئ RFQ", "اطلب من مورد", "طلب تسعير"
-- ai_update_records     → "set account for X"
+- ai_update_records     → "set account X for all transactions of partner Y",
+                          "categorize all <partner> bank lines as <account>",
+                          "set account 6030 for Etisalat / Du / Emirates Telecom",
+                          "حط الحساب 6030 لكل عمليات اتصالات",
+                          "صنّف عمليات <مورد> على حساب <code>"
+  → operation = 'set_bank_statement_account'
+  → partner_name = the partner the user mentioned (PASS AS-IS, even long names)
+  → account_code (preferred) OR account_name
+  → Optional dry_run=true if the user asks to "preview" / "show me first" / "اعرضلي قبل ما تنفّذ"
+
+CRITICAL: When the user combines a SEARCH ("find transactions for partner X")
+followed by an ASSIGN ("set account 6030"), call ai_update_records DIRECTLY
+with both partner_name and account_code in one shot — don't search first.
 - ai_extract_references → "extract references", "fill reference column",
                           "set ref from label", "استخرج المراجع",
                           "املأ خانة المرجع من اللابل"
@@ -486,6 +577,8 @@ def _build_tools() -> "types.Tool":
                 "partner_name": types.Schema(type=types.Type.STRING),
                 "account_code": types.Schema(type=types.Type.STRING),
                 "account_name": types.Schema(type=types.Type.STRING),
+                "dry_run":      types.Schema(type=types.Type.BOOLEAN,
+                                description="If true, preview what would be updated without writing. Default false."),
                 "message_to_user": types.Schema(type=types.Type.STRING),
             },
             required=["operation", "message_to_user"]
@@ -880,6 +973,43 @@ class AIControllerOverride(AIController):
                 pass
 
         env = request.env
+
+        # Special path: bank statement lines use the robust partner matcher
+        if model_name == 'account.bank.statement.line' and keyword:
+            bank_lines, matched_partners = _find_bank_lines_for_partner(env, keyword)
+            if bank_lines:
+                records = bank_lines[:limit].read(allowed_fields)
+                if matched_partners:
+                    pnames = ', '.join(matched_partners.mapped('name')[:3])
+                    hint_header = (
+                        f"{AGENT_PERSONA}: 🔍 Found **{len(bank_lines)}** bank line(s) "
+                        f"for partner(s): _{pnames}_"
+                        if lang == 'en'
+                        else
+                        f"{AGENT_PERSONA}: 🔍 وجدت **{len(bank_lines)}** بند بنكي "
+                        f"للشريك: _{pnames}_"
+                    )
+                else:
+                    hint_header = (
+                        f"{AGENT_PERSONA}: 🔍 Found **{len(bank_lines)}** bank line(s) matching '{keyword}'"
+                        if lang == 'en'
+                        else f"{AGENT_PERSONA}: 🔍 وجدت **{len(bank_lines)}** بند بنكي يطابق '{keyword}'"
+                    )
+                body = [hint_header]
+                for r in records:
+                    partner_id = r.get('partner_id')
+                    pname = partner_id[1] if isinstance(partner_id, (list, tuple)) and len(partner_id) == 2 else '—'
+                    label = (r.get('payment_ref') or '')[:60]
+                    amt   = float(r.get('amount') or 0)
+                    body.append(f"- {r.get('date')} | {label} | _{pname}_ | **{_fmt_money(amt, lang)}**")
+                cta = ("\n💬 Want me to set an account for all these? Tell me the account code or name."
+                       if lang == 'en'
+                       else "\n💬 تريد تعيين حساب لكل هذه البنود؟ أخبرني بكود أو اسم الحساب.")
+                body.append(cta)
+                self._post_message("\n".join(body), mail_message_id)
+                return {}
+            # fall through to standard search if helper also finds nothing
+
         records = env(su=True)[model_name].search_read(domain, fields=allowed_fields, limit=limit)
 
         if not records:
@@ -1923,9 +2053,10 @@ class AIControllerOverride(AIController):
         account_name = args.get('account_name', '')
 
         if operation == 'set_bank_statement_account':
-            senv = env(su=True)
+            senv    = env(su=True)
+            dry_run = bool(args.get('dry_run', False))
 
-            # ── 1. Find the target account ────────────────────────────
+            # ── 1. Resolve target account ─────────────────────────────
             base_acc_domain = [('company_ids', 'in', env.company.id)]
             account = senv['account.account'].browse()
             if account_code:
@@ -1935,6 +2066,8 @@ class AIControllerOverride(AIController):
             if not account and account_name:
                 account = senv['account.account'].search(
                     base_acc_domain + [('name', 'ilike', account_name)], limit=1
+                ) or senv['account.account'].search(
+                    base_acc_domain + [('code', 'ilike', account_name)], limit=1
                 )
             if not account:
                 err = (f"⛔ No account found with code '{account_code}' or name '{account_name}'."
@@ -1943,41 +2076,59 @@ class AIControllerOverride(AIController):
                 self._post_message(f"{AGENT_PERSONA}: {err}", mail_message_id)
                 return {}
 
-            # ── 2. Find the partner ────────────────────────────────────
-            partner = senv['res.partner'].browse()
-            if partner_name:
-                partner = senv['res.partner'].search(
-                    [('name', '=ilike', partner_name)], limit=1
-                ) or senv['res.partner'].search(
-                    [('name', 'ilike', partner_name)], limit=1
-                )
-
-            # ── 3. Build statement-line domain (partner_id OR label match) ──
-            line_domain = [('statement_id', '!=', False)]
-            if partner:
-                line_domain += ['|',
-                                ('partner_id', '=', partner.id),
-                                ('payment_ref', 'ilike', partner.name)]
-            elif partner_name:
-                line_domain.append(('payment_ref', 'ilike', partner_name))
-            else:
+            # ── 2. Robust partner + bank-line lookup ──────────────────
+            if not partner_name:
                 err = ("⚠️ Please specify the partner name."
                        if lang == 'en'
                        else "⚠️ يرجى تحديد اسم الشريك.")
                 self._post_message(f"{AGENT_PERSONA}: {err}", mail_message_id)
                 return {}
 
-            stmt_lines = senv['account.bank.statement.line'].search(line_domain)
+            stmt_lines, partners = _find_bank_lines_for_partner(senv, partner_name)
 
             if not stmt_lines:
-                msg = (f"🔍 No bank statement lines found for '{partner.name if partner else partner_name}'."
-                       if lang == 'en'
-                       else f"🔍 لم أجد بنود كشف بنكي لـ '{partner.name if partner else partner_name}'.")
-                self._post_message(f"{AGENT_PERSONA}: {msg}", mail_message_id)
+                if not partners:
+                    msg = ("🔍 No partner matches" if lang == 'en' else "🔍 لم أجد شريكاً مطابقاً")
+                else:
+                    pnames = ', '.join(partners.mapped('name')[:3])
+                    msg = (f"🔍 No bank statement lines found for: {pnames}"
+                           if lang == 'en'
+                           else f"🔍 لم أجد بنود كشف بنكي لـ: {pnames}")
+                variants_hint = ', '.join(_partner_keyword_variants(partner_name))
+                hint = (f"\n💡 Tried: {variants_hint}" if lang == 'en'
+                        else f"\n💡 جربت: {variants_hint}")
+                self._post_message(f"{AGENT_PERSONA}: {msg}{hint}", mail_message_id)
                 return {}
 
-            # ── 4. Update each line's non-bank (counterpart) move line ──
+            # ── 3. Dry-run preview ────────────────────────────────────
+            partner_label = ', '.join(partners.mapped('name')[:3]) if partners else partner_name
+            if dry_run:
+                if lang == 'en':
+                    preview = [
+                        f"{AGENT_PERSONA}: 🔍 **Preview — would update {len(stmt_lines)} lines**",
+                        f"• Partner match: **{partner_label}**",
+                        f"• Target account: **{account.code} - {account.display_name}**",
+                        "", "**Sample (first 10):**",
+                    ]
+                else:
+                    preview = [
+                        f"{AGENT_PERSONA}: 🔍 **معاينة — سيتم تحديث {len(stmt_lines)} بند**",
+                        f"• الشريك المطابق: **{partner_label}**",
+                        f"• الحساب المستهدف: **{account.code} - {account.display_name}**",
+                        "", "**عينة (أول 10):**",
+                    ]
+                for st in stmt_lines[:10]:
+                    lbl = (st.payment_ref or '')[:60]
+                    preview.append(f"   • {st.date} | {lbl} | {_fmt_money(st.amount, lang)}")
+                confirm = ("\n💬 Reply 'confirm' to apply." if lang == 'en'
+                           else "\n💬 رد بـ 'confirm' للتنفيذ.")
+                preview.append(confirm)
+                self._post_message("\n".join(preview), mail_message_id)
+                return {}
+
+            # ── 4. Apply the update ───────────────────────────────────
             updated = 0
+            skipped_already_set    = 0
             skipped_no_counterpart = 0
             failed = 0
             samples = []
@@ -1989,48 +2140,54 @@ class AIControllerOverride(AIController):
                         failed += 1
                         continue
 
-                    journal      = senv['account.journal'].browse(st_line.journal_id.id)
-                    bank_account = journal.default_account_id
+                    bank_account = senv['account.journal'].browse(
+                        st_line.journal_id.id
+                    ).default_account_id
 
-                    counterpart_lines = move.line_ids.filtered(
+                    counterpart = move.line_ids.filtered(
                         lambda ml: ml.account_id.id != bank_account.id
                     )
-                    counterpart_lines = counterpart_lines.filtered(
-                        lambda ml: ml.account_id.id != account.id
+                    already     = counterpart.filtered(
+                        lambda ml: ml.account_id.id == account.id
                     )
+                    counterpart = counterpart - already
 
-                    if not counterpart_lines:
+                    if not counterpart and already:
+                        skipped_already_set += 1
+                        continue
+                    if not counterpart:
                         skipped_no_counterpart += 1
                         continue
 
                     was_posted = move.state == 'posted'
                     if was_posted:
                         move.button_draft()
-
-                    counterpart_lines.write({'account_id': account.id})
-
+                    counterpart.write({'account_id': account.id})
                     if was_posted:
                         move.action_post()
 
                     updated += 1
                     if len(samples) < 5:
                         lbl = (st_line.payment_ref or '')[:55]
-                        samples.append(f"   • {lbl} → **{account.code} {account.name}**")
+                        samples.append(f"   • {st_line.date} | {lbl} → **{account.code}**")
 
                 except Exception as e:
-                    _logger.warning(f"KH_AI v2.4 set_bank_statement_account on line {st_line.id}: {e}")
+                    _logger.warning(
+                        f"KH_AI v2.5 set_bank_statement_account on line {st_line.id}: {e}"
+                    )
                     failed += 1
 
-            # ── 5. Report ──────────────────────────────────────────────
-            who = partner.name if partner else partner_name
+            # ── 5. Report ─────────────────────────────────────────────
             if lang == 'en':
                 out = [
                     f"{AGENT_PERSONA}: ✅ **Account assignment complete**",
-                    f"• Partner: **{who}**",
+                    f"• Partner: **{partner_label}**",
                     f"• Account: **{account.code} - {account.display_name}**",
                     f"• Lines matched: **{len(stmt_lines)}**",
                     f"• Updated: **{updated}**",
                 ]
+                if skipped_already_set:
+                    out.append(f"• Already on target account: **{skipped_already_set}**")
                 if skipped_no_counterpart:
                     out.append(f"• Skipped (no counterpart line): **{skipped_no_counterpart}**")
                 if failed:
@@ -2041,11 +2198,13 @@ class AIControllerOverride(AIController):
             else:
                 out = [
                     f"{AGENT_PERSONA}: ✅ **تم تحديث الحساب**",
-                    f"• الشريك: **{who}**",
+                    f"• الشريك: **{partner_label}**",
                     f"• الحساب: **{account.code} - {account.display_name}**",
                     f"• البنود المطابقة: **{len(stmt_lines)}**",
                     f"• تم تحديثها: **{updated}**",
                 ]
+                if skipped_already_set:
+                    out.append(f"• على الحساب المستهدف مسبقاً: **{skipped_already_set}**")
                 if skipped_no_counterpart:
                     out.append(f"• تم تجاوزها (لا يوجد سطر مقابل): **{skipped_no_counterpart}**")
                 if failed:
