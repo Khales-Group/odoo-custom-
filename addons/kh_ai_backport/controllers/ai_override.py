@@ -1908,15 +1908,17 @@ class AIControllerOverride(AIController):
         account_name = args.get('account_name', '')
 
         if operation == 'set_bank_statement_account':
+            senv = env(su=True)
+
             # ── 1. Find the target account ────────────────────────────
             base_acc_domain = [('company_ids', 'in', env.company.id)]
-            account = env['account.account'].browse()
+            account = senv['account.account'].browse()
             if account_code:
-                account = env['account.account'].sudo().search(
+                account = senv['account.account'].search(
                     base_acc_domain + [('code', '=', account_code)], limit=1
                 )
             if not account and account_name:
-                account = env['account.account'].sudo().search(
+                account = senv['account.account'].search(
                     base_acc_domain + [('name', 'ilike', account_name)], limit=1
                 )
             if not account:
@@ -1927,11 +1929,11 @@ class AIControllerOverride(AIController):
                 return {}
 
             # ── 2. Find the partner ────────────────────────────────────
-            partner = env['res.partner'].browse()
+            partner = senv['res.partner'].browse()
             if partner_name:
-                partner = env['res.partner'].sudo().search(
+                partner = senv['res.partner'].search(
                     [('name', '=ilike', partner_name)], limit=1
-                ) or env['res.partner'].sudo().search(
+                ) or senv['res.partner'].search(
                     [('name', 'ilike', partner_name)], limit=1
                 )
 
@@ -1950,7 +1952,7 @@ class AIControllerOverride(AIController):
                 self._post_message(f"{AGENT_PERSONA}: {err}", mail_message_id)
                 return {}
 
-            stmt_lines = env['account.bank.statement.line'].sudo().search(line_domain)
+            stmt_lines = senv['account.bank.statement.line'].search(line_domain)
 
             if not stmt_lines:
                 msg = (f"🔍 No bank statement lines found for '{partner.name if partner else partner_name}'."
@@ -1967,12 +1969,12 @@ class AIControllerOverride(AIController):
 
             for st_line in stmt_lines:
                 try:
-                    move = st_line.move_id
+                    move = senv['account.move'].browse(st_line.move_id.id)
                     if not move:
                         failed += 1
                         continue
 
-                    journal      = st_line.journal_id
+                    journal      = senv['account.journal'].browse(st_line.journal_id.id)
                     bank_account = journal.default_account_id
 
                     counterpart_lines = move.line_ids.filtered(
@@ -1988,12 +1990,12 @@ class AIControllerOverride(AIController):
 
                     was_posted = move.state == 'posted'
                     if was_posted:
-                        move.sudo().button_draft()
+                        move.button_draft()
 
-                    counterpart_lines.sudo().write({'account_id': account.id})
+                    counterpart_lines.write({'account_id': account.id})
 
                     if was_posted:
-                        move.sudo().action_post()
+                        move.action_post()
 
                     updated += 1
                     if len(samples) < 5:
