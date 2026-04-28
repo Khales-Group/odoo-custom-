@@ -342,6 +342,12 @@ NEVER return empty project_name — scan history.
 CRITICAL: When the user combines a SEARCH ("find transactions for partner X")
 followed by an ASSIGN ("set account 6030"), call ai_update_records DIRECTLY
 with both partner_name and account_code in one shot — don't search first.
+- ai_read_chatter       → "summarize project X", "what happened on task Y",
+                          "show notes for project Z", "what's the status of X",
+                          "لخّص مشروع X", "وش صار في مشروع Y", "ايش آخر أخبار المشروع"
+  → model_name = 'project.project' (or 'project.task', 'sale.order', etc.)
+  → record_name = the project/record name the user mentioned
+  → Reads all chatter messages and returns an AI-written summary.
 - ai_extract_references → "extract references", "fill reference column",
                           "set ref from label", "استخرج المراجع",
                           "املأ خانة المرجع من اللابل"
@@ -611,10 +617,32 @@ def _build_tools() -> "types.Tool":
         ),
     )
 
+    ai_read_chatter = types.FunctionDeclaration(
+        name="ai_read_chatter",
+        description=(
+            "Read and summarize the chatter (messages, notes, emails) on an Odoo record. "
+            "Use for: 'summarize project X', 'what happened on task Y', 'show me the notes for project Z', "
+            "'لخّص مشروع X', 'وش صار في مشروع Y', 'ايش آخر أخبار المشروع'."
+        ),
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "model_name":   types.Schema(type=types.Type.STRING,
+                                description="Odoo model, e.g. 'project.project', 'project.task', 'sale.order'"),
+                "record_name":  types.Schema(type=types.Type.STRING,
+                                description="Name or partial name of the record to look up"),
+                "limit":        types.Schema(type=types.Type.INTEGER,
+                                description="Max messages to fetch (default 40, max 100)"),
+                "message_to_user": types.Schema(type=types.Type.STRING),
+            },
+            required=["model_name", "record_name", "message_to_user"]
+        )
+    )
+
     return types.Tool(function_declarations=[
         ai_dynamic_read, ai_create_lead, ai_create_invoice, ai_create_bank_stmt,
         ai_create_rfq, ai_analytics, ai_ask_user, ai_update_records,
-        ai_extract_references,
+        ai_extract_references, ai_read_chatter,
     ])
 
 
@@ -912,6 +940,8 @@ class AIControllerOverride(AIController):
                 return self._tool_update_records(args, mail_message_id, lang)
             elif name == "ai_extract_references":
                 return self._tool_extract_references(args, mail_message_id, lang)
+            elif name == "ai_read_chatter":
+                return self._tool_read_chatter(args, mail_message_id, lang)
             else:
                 err = (f"⛔ Unknown tool: {name}" if lang == 'en'
                        else f"⛔ أداة غير معروفة: {name}")
@@ -2340,4 +2370,110 @@ class AIControllerOverride(AIController):
                 out.append("\n💡 استخدم `overwrite=true` لاستبدال المراجع الموجودة أيضاً.")
 
         self._post_message("\n".join(out), mail_message_id)
+        return {}
+
+    # ── READ CHATTER & SUMMARIZE ──────────────────────────────────
+    def _tool_read_chatter(self, args, mail_message_id, lang='ar'):
+        env  = request.env
+        senv = env(su=True)
+
+        model_name  = (args.get('model_name')  or '').strip()
+        record_name = (args.get('record_name') or '').strip()
+        limit       = min(int(args.get('limit', 40)), 100)
+
+        if not model_name or not record_name:
+            err = ("⚠️ Please provide both model and record name."
+                   if lang == 'en'
+                   else "⚠️ يرجى تحديد اسم النموذج والسجل.")
+            self._post_message(f"{AGENT_PERSONA}: {err}", mail_message_id)
+            return {}
+
+        # ── Find the record ───────────────────────────────────────
+        try:
+            Model = senv[model_name]
+        except KeyError:
+            err = (f"⛔ Model '{model_name}' not found."
+                   if lang == 'en'
+                   else f"⛔ النموذج '{model_name}' غير موجود.")
+            self._post_message(f"{AGENT_PERSONA}: {err}", mail_message_id)
+            return {}
+
+        record = Model.search([('name', 'ilike', record_name)], limit=1)
+        if not record:
+            err = (f"🔍 No '{model_name}' record found matching '{record_name}'."
+                   if lang == 'en'
+                   else f"🔍 لم أجد سجلاً في '{model_name}' يطابق '{record_name}'.")
+            self._post_message(f"{AGENT_PERSONA}: {err}", mail_message_id)
+            return {}
+
+        record_display = record.display_name or record_name
+
+        # ── Fetch chatter messages ────────────────────────────────
+        messages = senv['mail.message'].search([
+            ('model',        '=',  model_name),
+            ('res_id',       '=',  record.id),
+            ('message_type', 'in', ['comment', 'email']),
+        ], order='date asc', limit=limit)
+
+        if not messages:
+            msg = (f"🔍 No chatter messages found on **{record_display}**."
+                   if lang == 'en'
+                   else f"🔍 لا توجد رسائل في الشاتر لـ **{record_display}**.")
+            self._post_message(f"{AGENT_PERSONA}: {msg}", mail_message_id)
+            return {}
+
+        # ── Build transcript for Gemini to summarize ─────────────
+        lines = []
+        for msg in messages:
+            author  = msg.author_id.name if msg.author_id else '?'
+            date_s  = str(msg.date)[:16]
+            body    = html2plaintext(msg.body or '').strip()
+            body    = re.sub(r'\n{3,}', '\n\n', body)
+            if body:
+                lines.append(f"[{date_s}] {author}: {body}")
+
+        transcript = "\n".join(lines)
+
+        if lang == 'en':
+            prompt = (
+                f"Below are the chatter messages from the Odoo record "
+                f"**{record_display}** ({model_name}).\n\n"
+                f"Please write a concise summary: key decisions, status updates, "
+                f"open action items, and any blockers. Use bullet points.\n\n"
+                f"---\n{transcript}\n---"
+            )
+        else:
+            prompt = (
+                f"فيما يلي رسائل الشاتر من سجل Odoo "
+                f"**{record_display}** ({model_name}).\n\n"
+                f"اكتب ملخصاً موجزاً: القرارات الرئيسية، تحديثات الحالة، "
+                f"البنود المفتوحة، وأي عوائق. استخدم نقاطاً.\n\n"
+                f"---\n{transcript}\n---"
+            )
+
+        # ── Post header then ask Gemini to summarize ──────────────
+        header = (
+            f"{AGENT_PERSONA}: 📋 **Chatter summary — {record_display}**\n"
+            f"_(fetched {len(messages)} message(s))_\n\n"
+            if lang == 'en'
+            else
+            f"{AGENT_PERSONA}: 📋 **ملخص الشاتر — {record_display}**\n"
+            f"_(تم جلب {len(messages)} رسالة)_\n\n"
+        )
+
+        # Use Gemini to produce the summary text
+        try:
+            api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
+            client  = genai.Client(api_key=api_key)
+            summary_resp = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.3),
+            )
+            summary_text = self._extract_response_text(summary_resp)
+        except Exception as e:
+            _logger.warning(f"KH_AI v2.5 chatter summary Gemini call failed: {e}")
+            summary_text = transcript[:3000]
+
+        self._post_message(header + summary_text, mail_message_id)
         return {}
