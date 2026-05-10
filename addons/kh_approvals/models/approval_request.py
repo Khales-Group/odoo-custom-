@@ -471,22 +471,16 @@ class KhApprovalRequest(models.Model):
                 
                 # Check for Sharjah (shrajah) or Fujairah
                 if any(t in tags_lower for t in ['sharjah', 'shrajah', 'fujairah']):
-                    approver_id = 369  # Majed
-                    step_name = "Flexible Project Approval - Sharjah/Fujairah"
-                else:
-                    approver_id = 385  # Mamon
-                    step_name = "Flexible Project Approval  - Other Locations"
-                
-                vals_list.append({
-                    "request_id": rec.id,
-                    "name": step_name,
-                    "approver_id": approver_id,
-                    "required": True,
-                    "state": "waiting",
-                    "company_id": rec.company_id.id,
-                    "sequence": 1,  # Ensure this is the first step
-                    "approval_stage": current_stage,
-                })
+                    vals_list.append({
+                        "request_id": rec.id,
+                        "name": "Flexible Project Approval - Sharjah/Fujairah",
+                        "approver_id": 369,  # Majed
+                        "required": True,
+                        "state": "waiting",
+                        "company_id": rec.company_id.id,
+                        "sequence": 1,
+                        "approval_stage": current_stage,
+                    })
 
             if not rule and not vals_list:
                 continue
