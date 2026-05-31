@@ -269,11 +269,10 @@ class KhalesAiReport(models.AbstractModel):
                 cases_html = ''
                 for c in cases:
                     try:
-                        # ---- بيانات القضية الأساسية (أسماء الحقول من الموديل الفعلي) ----
+                        # ---- بيانات القضية الأساسية ----
                         cname = c.x_name or 'بدون عنوان'
                         stage = c.x_studio_stage_id.name if c.x_studio_stage_id else '-'
                         ctype = c.x_studio_type or '-'
-                        # القيمة: monetary أو نصي
                         cval_m = c.x_studio_value
                         cval_c = c.x_studio_contract_value or ''
                         cval = ('%s %s' % (cval_m, c.x_studio_currency_id.name if c.x_studio_currency_id else '')).strip() if cval_m else (cval_c or '-')
@@ -285,9 +284,31 @@ class KhalesAiReport(models.AbstractModel):
                         digest.append('النوع: %s | المرحلة: %s | القيمة: %s | تاريخ: %s | تاريخ الانتهاء: %s | المسؤول: %s'
                                       % (ctype, stage, cval, cdate, cend, resp))
 
-                        # ---- النوتز (html field) ----
-                        notes_raw = html2plaintext(c.x_studio_notes or '').strip()
-                        notes_display = self._clip(notes_raw, 800)
+                        # ---- التفاصيل: نجمع كل حقول HTML/Text في السجل ----
+                        # x_studio_notes قد يكون فاضياً — Studio يولّد أسماء عشوائية مثل x_studio_html_field_xxx
+                        all_text_parts = []
+                        for fname in c._fields:
+                            if not fname.startswith('x_'):
+                                continue
+                            ftype = c._fields[fname].type
+                            if ftype not in ('html', 'text', 'char'):
+                                continue
+                            try:
+                                val = c[fname]
+                                if not val or val is False:
+                                    continue
+                                txt = html2plaintext(val).strip() if ftype == 'html' else str(val).strip()
+                                # تجاهل القيم القصيرة جداً أو اللي هي اسم الموديل نفسه
+                                if len(txt) > 20 and fname not in ('x_name', 'x_studio_type',
+                                                                    'x_studio_partner_email',
+                                                                    'x_studio_partner_phone',
+                                                                    'x_studio_plot_number',
+                                                                    'x_studio_contract_value'):
+                                    all_text_parts.append(txt)
+                            except Exception:
+                                continue
+                        notes_raw = '\n'.join(all_text_parts).strip()
+                        notes_display = self._clip(notes_raw, 1200)
                         notes_block = ''
                         if notes_display:
                             notes_block = ('<div style="font-size:12px;color:#444;margin:6px 0;background:#fafafa;'
@@ -296,11 +317,12 @@ class KhalesAiReport(models.AbstractModel):
                                            + notes_display.replace('\n', '<br>') + '</div>')
                             digest.append('   📝 تفاصيل القضية:\n%s' % notes_raw)
 
-                        # ---- الشاتر: كل الرسائل مصنّفة ----
-                        # نقرأ عبر message_ids مباشرة على السجل لتجنب أخطاء البحث
-                        all_msgs = c.message_ids.sudo().filtered(
-                            lambda m: m.message_type in ('comment', 'email', 'notification')
-                        ).sorted('date', reverse=True)[:30]
+                        # ---- الشاتر: بحث مباشر بـ res_id (أضمن من c.message_ids) ----
+                        all_msgs = env['mail.message'].sudo().search([
+                            ('res_id', '=', c.id),
+                            ('model', '=', 'x_reports'),
+                            ('message_type', 'in', ['comment', 'email', 'notification']),
+                        ], order='date desc', limit=30)
 
                         chat_html = ''
                         digest.append('   📋 سجل النشاط والتواصل:')
