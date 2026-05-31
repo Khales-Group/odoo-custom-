@@ -212,8 +212,8 @@ class KhalesAiReport(models.AbstractModel):
                 ('res_id', '=', pid),
                 ('author_id', '=', partner_id),
                 ('date', '>=', date_from_str),
-                ('message_type', 'in', ['comment', 'email']),
-            ], order='date desc', limit=20)
+                ('message_type', 'in', ['comment', 'email', 'notification']),
+            ], order='date desc', limit=30)
             proj_log_html = ''
             for m in proj_logs:
                 body_txt = html2plaintext(m.body or '').strip()
@@ -270,17 +270,26 @@ class KhalesAiReport(models.AbstractModel):
                 if not ts_html:
                     ts_html = '<tr><td colspan="3" style="%s color:#999;">لا يوجد تايمشيت</td></tr>' % TC
 
+                # كل رسائل التاسك — نفس نهج المحامي (comment + email + notification)
                 tnotes = env['mail.message'].sudo().search([
-                    ('model', '=', 'project.task'), ('res_id', '=', t.id),
-                    ('author_id', '=', partner_id), ('message_type', '=', 'comment')],
-                    order='date desc', limit=8)
+                    ('model', '=', 'project.task'),
+                    ('res_id', '=', t.id),
+                    ('author_id', '=', partner_id),
+                    ('message_type', 'in', ['comment', 'email', 'notification']),
+                ], order='date desc', limit=20)
                 notes_html = ''
                 for m in tnotes:
-                    txt = html2plaintext(m.body or '').strip()
+                    body_txt = html2plaintext(m.body or '').strip()
+                    subj_txt = (m.subject or '').strip()
+                    txt = body_txt or subj_txt
                     if not txt:
                         continue
-                    notes_html += '<li style="color:#444;">%s</li>' % self._clip(txt, 250)
-                    digest.append('      نوت: %s' % self._clip(txt, 200))
+                    msg_date = str(m.date)[:10]
+                    notes_html += ('<li style="margin:3px 0;padding:4px 8px;background:#f8f9fa;'
+                                   'border-right:3px solid #714B67;border-radius:3px;">'
+                                   '<span style="font-size:10px;color:#999;">%s</span> %s</li>'
+                                   % (msg_date, self._clip(txt, 300)))
+                    digest.append('      نوت (%s): %s' % (msg_date, self._clip(txt, 300)))
                 if not notes_html:
                     notes_html = '<li style="color:#bbb;">لا يوجد</li>'
 
