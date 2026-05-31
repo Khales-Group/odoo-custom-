@@ -265,83 +265,142 @@ class KhalesAiReport(models.AbstractModel):
                 order='write_date desc', limit=50)
             legal_count = len(cases)
             if cases:
-                digest.append('--- قضايا/عقود قانونية ---')
+                digest.append('--- قضايا/عقود قانونية (%d) ---' % legal_count)
                 cases_html = ''
                 for c in cases:
-                    cname = c.x_name or '-'
-                    stage = c.x_studio_stage_id.name if c.x_studio_stage_id else '-'
-                    ctype = c.x_studio_type or '-'
-                    cval = c.x_studio_value or c.x_studio_contract_value or '-'
-                    cdate = c.x_studio_date or '-'
-                    digest.append('قضية: %s | نوع: %s | مرحلة: %s | قيمة: %s | تاريخ: %s'
-                                  % (cname, ctype, stage, cval, cdate))
+                    cname  = c.x_name or '-'
+                    stage  = c.x_studio_stage_id.name if c.x_studio_stage_id else '-'
+                    ctype  = c.x_studio_type or '-'
+                    cval   = c.x_studio_value or c.x_studio_contract_value or '-'
+                    cdate  = c.x_studio_date or '-'
+                    cend   = getattr(c, 'x_studio_end_date', None) or '-'
+                    resp   = c.x_studio_user_id.name if c.x_studio_user_id else 'غير محدد'
+                    proj   = c.x_studio_project_id.name if getattr(c, 'x_studio_project_id', None) else '-'
 
-                    notes_txt = self._clip(html2plaintext(c.x_studio_notes or ''), 300)
-                    notes_block = ('<div style="font-size:12px;color:#555;margin:4px 0;">'
-                                   '<strong>📝 ملاحظات:</strong> %s</div>' % notes_txt) if notes_txt else ''
-                    if notes_txt:
-                        digest.append('   ملاحظات: %s' % notes_txt)
+                    digest.append('\n=== قضية/عقد: %s ===' % cname)
+                    digest.append('النوع: %s | المرحلة: %s | القيمة: %s | تاريخ البداية: %s | تاريخ الانتهاء: %s | المسؤول: %s'
+                                  % (ctype, stage, cval, cdate, cend, resp))
 
-                    # الشاتر = شو انعمل فعلاً
+                    # --- النوتز/التفاصيل ---
+                    notes_raw = html2plaintext(c.x_studio_notes or '').strip()
+                    notes_display = self._clip(notes_raw, 800)
+                    notes_block = ''
+                    if notes_display:
+                        notes_block = ('<div style="font-size:12px;color:#444;margin:6px 0;background:#fafafa;'
+                                       'border-right:3px solid #b8860b;padding:6px 10px;border-radius:4px;">'
+                                       '<strong>📝 تفاصيل/ملاحظات:</strong><br>'
+                                       + notes_display.replace('\n', '<br>') + '</div>')
+                        digest.append('   📝 تفاصيل القضية:\n%s' % notes_raw)
+
+                    # --- الشاتر مصنّف ---
                     cmsgs = env['mail.message'].sudo().search([
                         ('model', '=', 'x_reports'), ('res_id', '=', c.id),
                         ('message_type', 'in', ['comment', 'email', 'notification'])],
-                        order='date desc', limit=10)
+                        order='date desc', limit=30)
                     chat_html = ''
+                    digest.append('   📋 سجل النشاط والتواصل:')
                     for m in cmsgs:
-                        txt = html2plaintext(m.body or '').strip()
-                        # fallback على الـ subject لو الـ body فاضي (مثل رسائل "Email done")
-                        if not txt:
-                            txt = (m.subject or '').strip()
-                        if not txt:
-                            continue
-                        chat_html += ('<li style="color:#444;">%s '
-                                      '<span style="color:#999;font-size:10px;">(%s)</span></li>'
-                                      % (self._clip(txt, 220), str(m.date)[:10]))
-                        digest.append('   تحديث (%s): %s' % (str(m.date)[:10], self._clip(txt, 200)))
-                    if not chat_html:
-                        chat_html = '<li style="color:#bbb;">لا يوجد تحديثات بالشاتر</li>'
+                        body_txt = html2plaintext(m.body or '').strip()
+                        subj_txt = (m.subject or '').strip()
+                        act_type_name = m.mail_activity_type_id.name if m.mail_activity_type_id else None
 
-                    # الأنشطة المفتوحة
-                    cacts = env['mail.activity'].sudo().search([
-                        ('res_model', '=', 'x_reports'), ('res_id', '=', c.id), ('user_id', '=', uid)])
-                    # الأنشطة المنجزة (Done) — محفوظة بـ active=False
+                        if act_type_name:
+                            # رسالة إنجاز نشاط
+                            feedback = body_txt or subj_txt or '(أُنجز بدون ملاحظات إضافية)'
+                            label  = '✅ أنجز نشاط [%s]' % act_type_name
+                            content = feedback
+                            item_style = 'background:#d4edda;color:#155724;border-right:3px solid #28a745;'
+                        elif m.message_type == 'email':
+                            subject_part = ('الموضوع: %s | ' % subj_txt) if subj_txt else ''
+                            label  = '📧 بريد إلكتروني'
+                            content = subject_part + (body_txt or '(بدون محتوى)')
+                            item_style = 'background:#cce5ff;color:#004085;border-right:3px solid #004085;'
+                        elif m.message_type == 'notification':
+                            label  = '🔄 تغيير في النظام'
+                            content = body_txt or subj_txt or ''
+                            item_style = 'background:#fff3cd;color:#856404;border-right:3px solid #ffc107;'
+                        else:
+                            label  = '💬 ملاحظة/تعليق'
+                            content = body_txt or subj_txt or ''
+                            item_style = 'background:#f8f9fa;color:#333;border-right:3px solid #6c757d;'
+
+                        if not content:
+                            continue
+
+                        display = self._clip(content, 400)
+                        msg_date = str(m.date)[:16]
+                        chat_html += ('<li style="margin:5px 0;padding:6px 10px;%s border-radius:4px;list-style:none;">'
+                                      '<strong>%s</strong> <span style="color:#999;font-size:10px;">(%s)</span><br>'
+                                      '<span style="font-size:12px;line-height:1.5;">%s</span></li>'
+                                      % (item_style, label, msg_date, display.replace('\n', '<br>')))
+                        digest.append('      [%s] (%s):\n         %s' % (label, msg_date, self._clip(content, 500)))
+
+                    if not chat_html:
+                        chat_html = '<li style="color:#bbb;list-style:none;">لا يوجد تحديثات بالشاتر</li>'
+
+                    # --- الأنشطة المنجزة (Done) ---
                     cacts_done = env['mail.activity'].sudo().with_context(active_test=False).search([
                         ('res_model', '=', 'x_reports'), ('res_id', '=', c.id),
                         ('user_id', '=', uid), ('active', '=', False)])
-                    act_html = ''
-                    for a in list(cacts) + list(cacts_done):
-                        is_done = not a.active if hasattr(a, 'active') else False
-                        over = bool(not is_done and a.date_deadline and str(a.date_deadline) < today_str)
-                        if is_done:
-                            clr = 'color:#27AE60;'
-                            tag = 'منجزة ✓'
-                        elif over:
-                            clr = FLAG
-                            tag = 'متأخّرة'
-                            flags.append('خطوة متأخّرة على قضية "%s"' % cname[:30])
+                    done_html = ''
+                    if cacts_done:
+                        digest.append('   ✅ أنشطة أنجزها الموظف:')
+                    for a in cacts_done:
+                        atype    = a.activity_type_id.name if a.activity_type_id else 'نشاط'
+                        summ     = a.summary or '(بدون عنوان محدد)'
+                        deadline = str(a.date_deadline) if a.date_deadline else '-'
+                        done_html += ('<li style="margin:4px 0;padding:6px 10px;background:#d4edda;'
+                                      'border-right:3px solid #28a745;border-radius:4px;list-style:none;">'
+                                      '<strong>✅ منجز — [%s]:</strong> %s '
+                                      '<span style="color:#999;font-size:10px;">(كان موعدها: %s)</span></li>'
+                                      % (atype, summ, deadline))
+                        digest.append('      ✅ أنجز [%s]: "%s" — كانت مجدولة بتاريخ %s' % (atype, summ, deadline))
+
+                    # --- الأنشطة المفتوحة ---
+                    cacts = env['mail.activity'].sudo().search([
+                        ('res_model', '=', 'x_reports'), ('res_id', '=', c.id), ('user_id', '=', uid)])
+                    open_html = ''
+                    if cacts:
+                        digest.append('   🔔 أنشطة مجدولة قادمة:')
+                    for a in cacts:
+                        atype    = a.activity_type_id.name if a.activity_type_id else 'نشاط'
+                        summ     = a.summary or '(بدون عنوان)'
+                        deadline = str(a.date_deadline) if a.date_deadline else '-'
+                        over     = bool(a.date_deadline and str(a.date_deadline) < today_str)
+                        if over:
+                            flags.append('خطوة متأخّرة على قضية "%s": %s' % (cname[:25], summ[:30]))
+                            open_html += ('<li style="margin:4px 0;padding:6px 10px;background:#fdecea;'
+                                          'border-right:3px solid #E74C3C;border-radius:4px;list-style:none;">'
+                                          '<strong>🚩 متأخّرة — [%s]:</strong> %s '
+                                          '<span style="color:#922;font-size:10px;">(كان الموعد: %s)</span></li>'
+                                          % (atype, summ, deadline))
+                            digest.append('      🚩 [%s]: "%s" — موعدها كان %s [متأخرة!]' % (atype, summ, deadline))
                         else:
-                            clr = 'color:#27AE60;'
-                            tag = 'بوقتها'
-                        summ = a.summary or (a.activity_type_id.name if a.activity_type_id else 'بدون عنوان')
-                        act_html += '<li><span style="%s">[%s]</span> %s (%s)</li>' % (clr, tag, summ, a.date_deadline or '-')
-                        digest.append('   %s: %s (موعد %s)%s' % (
-                            'خطوة منجزة' if is_done else 'خطوة جاية',
-                            summ, a.date_deadline or '-',
-                            ' [منجزة]' if is_done else (' [متأخرة]' if over else '')))
-                    if not act_html:
-                        act_html = '<li style="color:#bbb;">لا يوجد خطوات مجدولة</li>'
+                            open_html += ('<li style="margin:4px 0;padding:6px 10px;background:#e8f5e9;'
+                                          'border-right:3px solid #27AE60;border-radius:4px;list-style:none;">'
+                                          '<strong>🔔 قادمة — [%s]:</strong> %s '
+                                          '<span style="color:#999;font-size:10px;">(الموعد: %s)</span></li>'
+                                          % (atype, summ, deadline))
+                            digest.append('      🔔 [%s]: "%s" — الموعد %s' % (atype, summ, deadline))
+
+                    act_section = ''
+                    if done_html or open_html:
+                        act_section = ('<div style="font-size:12px;color:#714B67;font-weight:bold;margin-top:10px;">📋 الأنشطة:</div>'
+                                       '<ul style="margin:4px 0;padding:0;">%s%s</ul>'
+                                       % (done_html, open_html))
 
                     cases_html += (
-                        '<div style="border:1px solid #e3c97a;border-radius:6px;padding:10px;margin:8px 0;background:#fffdf5;">'
-                        '<div style="font-weight:bold;color:#8a6d1a;font-size:14px;">⚖️ %s</div>'
-                        '<div style="font-size:12px;color:#666;margin:4px 0 6px;">النوع: <strong>%s</strong> | '
-                        'المرحلة: <strong>%s</strong> | القيمة: %s | التاريخ: %s</div>%s'
-                        '<div style="font-size:12px;color:#714B67;font-weight:bold;">🗒️ آخر التحديثات (شو انعمل):</div>'
-                        '<ul style="margin:3px 0;padding-right:18px;font-size:12px;">%s</ul>'
-                        '<div style="font-size:12px;color:#714B67;font-weight:bold;margin-top:6px;">🔔 الخطوات الجاية:</div>'
-                        '<ul style="margin:3px 0;padding-right:18px;font-size:12px;">%s</ul></div>'
-                        % (cname, ctype, stage, cval, cdate, notes_block, chat_html, act_html))
+                        '<div style="border:1px solid #e3c97a;border-radius:8px;padding:12px;margin:10px 0;background:#fffdf5;">'
+                        '<div style="font-weight:bold;color:#8a6d1a;font-size:15px;border-bottom:1px solid #f0d080;'
+                        'padding-bottom:6px;margin-bottom:8px;">⚖️ %s</div>'
+                        '<div style="font-size:12px;color:#666;margin-bottom:8px;">'
+                        '📌 النوع: <strong>%s</strong> | المرحلة: <strong>%s</strong> | '
+                        'القيمة: <strong>%s</strong> | التاريخ: <strong>%s</strong></div>'
+                        '%s'
+                        '<div style="font-size:12px;color:#714B67;font-weight:bold;margin-top:10px;">🗒️ سجل النشاط والتواصل:</div>'
+                        '<ul style="margin:4px 0;padding:0;">%s</ul>'
+                        '%s</div>'
+                        % (cname, ctype, stage, cval, cdate, notes_block, chat_html, act_section))
 
                 legal_html = ('<div style="border:2px solid #b8860b;border-radius:8px;padding:12px;margin-bottom:14px;background:#fffbea;">'
                     '<h4 style="margin:0 0 8px;color:#b8860b;">⚖️ القضايا/العقود (تطبيق Law) — %d</h4>%s</div>'
@@ -405,19 +464,25 @@ class KhalesAiReport(models.AbstractModel):
             return box + ttl + '<div style="color:#856404;">⚠️ مفتاح gemini.api.key غير موجود.</div></div>'
 
         prompt = (
-            "أنت محلل أداء موظفين في شركة بالإمارات. هاد توثيق شغل الموظف '%s' خلال آخر %d يوم من نظام Odoo.\n"
-            "مجال شغل هذا الموظف: %s. حلّل **فقط** المجال الموجود — لا تتوقّع تايمشيت من موظف قانوني، "
-            "ولا تتوقّع قضايا من موظف مشاريع.\n\n"
+            "أنت محلل أداء موظفين في شركة هندسية وقانونية بالإمارات. "
+            "هاد توثيق شغل الموظف '%s' خلال آخر %d يوم مسحوب من نظام Odoo.\n"
+            "مجال شغل هذا الموظف: %s.\n"
+            "قواعد التحليل:\n"
+            "- حلّل فقط المجال الموجود في البيانات.\n"
+            "- البيانات تشمل: تفاصيل كل قضية/عقد، سجل النشاط والتواصل المصنّف (✅ أنشطة منجزة، 📧 بريد، 💬 ملاحظات، 🔄 تغييرات)، "
+            "والأنشطة المنجزة والمجدولة.\n"
+            "- ✅ في السجل = نشاط أنجزه الموظف فعلاً (مثل: إرسال إيميل، حضور جلسة، تحضير وثيقة).\n"
+            "- اذكر كل نشاط منجز بالاسم والتفاصيل — لا تجمّع ولا تختصر.\n\n"
             "مؤشرات: %s\n"
             "إشارات تلقائية: %s\n\n"
             "البيانات التفصيلية:\n%s\n\n"
-            "اكتب تحليلاً بالعربي بصيغة HTML بسيطة فقط (<p> <strong> <ul><li>):\n"
-            "1. <strong>ملخّص الشغل:</strong> شو اشتغل عليه فعلاً، مرتّب حسب المشروع أو القضية.\n"
-            "2. <strong>أهم ما تم إنجازه:</strong> (للقضايا: من التحديثات؛ للمشاريع: من التاسكات المنجزة).\n"
-            "3. <strong>الوضع الحالي والخطوات الجاية:</strong> وين واصل وشو المطلوب بعدين.\n"
-            "4. <strong>جودة التوثيق:</strong> قوية/متوسطة/ضعيفة مع السبب.\n"
-            "5. <strong>نقاط للمدير:</strong> 2-4 نقاط أو أسئلة لازم ينتبهلها.\n"
-            "اعتمد فقط على البيانات، لا تخترع أرقاماً أو وقائع."
+            "اكتب تحليلاً تفصيلياً بالعربي بصيغة HTML بسيطة فقط (<p> <strong> <ul><li>):\n"
+            "1. <strong>ملخّص الشغل لكل قضية/عقد على حدة:</strong> اذكر اسم القضية ثم شو اشتغل عليها تحديداً.\n"
+            "2. <strong>الأنشطة المنجزة بالتفصيل:</strong> لكل نشاط منجز (✅): اذكر نوعه، موضوعه، وما تم إنجازه فعلاً بناءً على محتوى الشاتر والنوتز.\n"
+            "3. <strong>الوضع الحالي والخطوات الجاية:</strong> وين واصل كل قضية وشو المطلوب بعدين.\n"
+            "4. <strong>جودة التوثيق:</strong> قوية/متوسطة/ضعيفة مع السبب الواضح بناءً على البيانات الموجودة.\n"
+            "5. <strong>نقاط للمدير:</strong> 3-5 نقاط عملية بناءً على ما شفته في البيانات.\n"
+            "اعتمد فقط على البيانات الموجودة، لا تخترع أرقاماً أو وقائع، ولا تقول 'لا يوجد بيانات' إذا كانت البيانات موجودة أمامك."
             % (name, days, domain_label, kpis, ', '.join(flags) if flags else 'لا يوجد', digest_text)
         )
         try:
