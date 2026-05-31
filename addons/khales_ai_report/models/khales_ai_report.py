@@ -161,6 +161,20 @@ class KhalesAiReport(models.AbstractModel):
             if p not in all_pids:
                 all_pids.append(p)
 
+        # مشاريع كتب فيها الموظف نوتز/رسائل هالشهر (حتى لو ما عنده تاسكات فيها)
+        proj_with_notes = env['mail.message'].sudo().search([
+            ('model', '=', 'project.project'),
+            ('author_id', '=', partner_id),
+            ('date', '>=', date_from_str),
+            ('message_type', 'in', ['comment', 'email']),
+        ]).mapped('res_id')
+        for p in proj_with_notes:
+            if p not in all_pids:
+                proj_rec = env['project.project'].sudo().browse(p)
+                if proj_rec.exists():
+                    project_names[p] = proj_rec.name
+                    all_pids.append(p)
+
         done_count = 0
         projects_html = ''
         for pid in all_pids:
