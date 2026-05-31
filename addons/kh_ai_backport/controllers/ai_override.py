@@ -88,12 +88,19 @@ READABLE_MODELS = {
     'stock.picking':          ['name', 'partner_id', 'state', 'scheduled_date', 'picking_type_id'],
     'account.bank.statement':      ['name', 'date', 'balance_start', 'balance_end_real', 'journal_id'],
     'account.bank.statement.line': ['payment_ref', 'amount', 'partner_id', 'date', 'journal_id', 'statement_id', 'move_id'],
+    'x_reports': [
+        'x_name', 'x_studio_stage_id', 'x_studio_type', 'x_studio_partner_id',
+        'x_studio_user_id', 'x_studio_company_id', 'x_studio_contract_value',
+        'x_studio_date', 'x_studio_notes', 'x_studio_plot_number',
+        'x_studio_partner_phone', 'x_studio_partner_email', 'x_studio_value',
+    ],
 }
 
 # Fields to use for keyword search per model (defaults to 'name')
 KEYWORD_FIELDS = {
     'account.bank.statement.line': ['payment_ref', 'partner_id.name'],
     'account.bank.statement':      ['name'],
+    'x_reports':                   ['x_name'],
 }
 
 
@@ -367,6 +374,18 @@ For external info — answer directly. ALWAYS add "UAE" / "Dubai" context to you
 - Numbers (1, 2, 3) are CHOICES from prior options, not data.
 - Always move forward.
 
+## LAW MODULE (x_reports)
+This company has a **Law Management** module (model: `x_reports`) that tracks legal cases and contracts.
+- **Stages**: جديد-New → تحت الاجراء → تحت التداول → دعاوي مفصولة → تنفيذات → Completed
+- **Types**: Case (قضية) or Contract (عقد)
+- **Key fields**: x_name (title), x_studio_stage_id (stage), x_studio_type, x_studio_partner_id (contact),
+  x_studio_user_id (responsible), x_studio_notes (notes), x_studio_contract_value, x_studio_date, x_studio_value
+- Case names are mostly in **Arabic** — always search with Arabic text as-is; do NOT translate.
+- When the user asks about a law case, dispute (منازعة), contract, or legal matter:
+  → Use `ai_law_case_report` for a full structured report (done / status / next steps).
+  → Trigger words: "لخّص القضية", "ايش صار", "وش اللي تم", "الخطوات القادمة", "اكتب تقرير",
+    "summarize case", "case report", "what happened", "what's next", "status of case".
+
 ## SAFETY
 - Never invent financial data.
 - Ask for clarification ONLY when genuinely ambiguous — offer options, not dead ends.
@@ -639,10 +658,36 @@ def _build_tools() -> "types.Tool":
         )
     )
 
+    ai_law_case_report = types.FunctionDeclaration(
+        name="ai_law_case_report",
+        description=(
+            "Generate a full AI report for a law case or contract in the Law module (x_reports). "
+            "Reads case details + all chatter messages, then produces: what was done (timeline), "
+            "current status, and recommended next steps. "
+            "Use when the user asks about a legal case, dispute (منازعة), or contract — "
+            "e.g. 'لخّص القضية', 'ايش صار في منازعة X', 'اكتب تقرير عن قضية Y', "
+            "'summarize case X', 'what is the status of case Y', 'what happened'."
+        ),
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "case_keyword": types.Schema(
+                    type=types.Type.STRING,
+                    description=(
+                        "Part of the case name to search for — can be Arabic or English. "
+                        "E.g. '275/2025' or 'منازعه تنفيذ' or 'الشركة العالمية'."
+                    )
+                ),
+                "message_to_user": types.Schema(type=types.Type.STRING),
+            },
+            required=["case_keyword", "message_to_user"]
+        )
+    )
+
     return types.Tool(function_declarations=[
         ai_dynamic_read, ai_create_lead, ai_create_invoice, ai_create_bank_stmt,
         ai_create_rfq, ai_analytics, ai_ask_user, ai_update_records,
-        ai_extract_references, ai_read_chatter,
+        ai_extract_references, ai_read_chatter, ai_law_case_report,
     ])
 
 
@@ -942,6 +987,8 @@ class AIControllerOverride(AIController):
                 return self._tool_extract_references(args, mail_message_id, lang)
             elif name == "ai_read_chatter":
                 return self._tool_read_chatter(args, mail_message_id, lang)
+            elif name == "ai_law_case_report":
+                return self._tool_law_case_report(args, mail_message_id, lang)
             else:
                 err = (f"⛔ Unknown tool: {name}" if lang == 'en'
                        else f"⛔ أداة غير معروفة: {name}")
@@ -2476,4 +2523,163 @@ class AIControllerOverride(AIController):
             summary_text = transcript[:3000]
 
         self._post_message(header + summary_text, mail_message_id)
+        return {}
+
+    # ── LAW CASE REPORT ───────────────────────────────────────────
+    def _tool_law_case_report(self, args, mail_message_id, lang='ar'):
+        """
+        Full AI report for a law case (x_reports):
+        - Searches by case_keyword (Arabic-safe ilike)
+        - Reads all case fields + all chatter messages (including notifications for stage changes)
+        - Asks Gemini to produce a structured report: case details, timeline, current status, next steps
+        """
+        env  = request.env
+        senv = env(su=True)
+
+        keyword = (args.get('case_keyword') or '').strip()
+        if not keyword:
+            err = ("⚠️ Please provide a case name or keyword to search."
+                   if lang == 'en'
+                   else "⚠️ يرجى تحديد اسم القضية أو كلمة مفتاحية للبحث.")
+            self._post_message(f"{AGENT_PERSONA}: {err}", mail_message_id)
+            return {}
+
+        # ── Find the case ─────────────────────────────────────────
+        try:
+            LawCase = senv['x_reports']
+        except KeyError:
+            err = ("⛔ Law module (x_reports) is not installed."
+                   if lang == 'en'
+                   else "⛔ وحدة القانون (x_reports) غير مثبتة.")
+            self._post_message(f"{AGENT_PERSONA}: {err}", mail_message_id)
+            return {}
+
+        record = LawCase.search([('x_name', 'ilike', keyword)], limit=1)
+        if not record:
+            err = (f"🔍 No law case found matching **{keyword}**."
+                   if lang == 'en'
+                   else f"🔍 لم أجد قضية تطابق **{keyword}**.")
+            self._post_message(f"{AGENT_PERSONA}: {err}", mail_message_id)
+            return {}
+
+        case_name = record.x_name or keyword
+
+        # ── Read case fields ──────────────────────────────────────
+        def _val(field):
+            try:
+                v = record[field]
+                if hasattr(v, 'name'):
+                    return v.name or ''
+                if hasattr(v, 'display_name'):
+                    return v.display_name or ''
+                return str(v) if v not in (False, None) else ''
+            except Exception:
+                return ''
+
+        stage      = _val('x_studio_stage_id')
+        case_type  = _val('x_studio_type')
+        contact    = _val('x_studio_partner_id')
+        responsible= _val('x_studio_user_id')
+        company    = _val('x_studio_company_id')
+        contract_v = _val('x_studio_contract_value')
+        value      = _val('x_studio_value')
+        date       = _val('x_studio_date')
+        plot_no    = _val('x_studio_plot_number')
+        phone      = _val('x_studio_partner_phone')
+        email      = _val('x_studio_partner_email')
+        notes_html = record.x_studio_notes or ''
+        notes_text = html2plaintext(notes_html).strip() if notes_html else ''
+
+        # ── Fetch all chatter messages (comments + notifications) ─
+        messages = senv['mail.message'].search([
+            ('model',  '=',  'x_reports'),
+            ('res_id', '=',  record.id),
+            ('message_type', 'in', ['comment', 'email', 'notification']),
+        ], order='date asc', limit=100)
+
+        chatter_lines = []
+        for msg in messages:
+            author = msg.author_id.name if msg.author_id else '?'
+            date_s = str(msg.date)[:16]
+            body   = html2plaintext(msg.body or '').strip()
+            body   = re.sub(r'\n{3,}', '\n\n', body)
+            if body:
+                chatter_lines.append(f"[{date_s}] {author}: {body}")
+
+        chatter_transcript = "\n".join(chatter_lines) if chatter_lines else "—"
+
+        # ── Build prompt for Gemini ───────────────────────────────
+        case_meta = (
+            f"اسم القضية: {case_name}\n"
+            f"النوع: {case_type or '—'}\n"
+            f"المرحلة الحالية: {stage or '—'}\n"
+            f"الطرف المقابل / جهة الاتصال: {contact or '—'}\n"
+            f"المسؤول: {responsible or '—'}\n"
+            f"الشركة: {company or '—'}\n"
+            f"قيمة العقد: {contract_v or value or '—'}\n"
+            f"التاريخ: {date or '—'}\n"
+            f"رقم القطعة/الأرض: {plot_no or '—'}\n"
+            f"الهاتف: {phone or '—'}\n"
+            f"الإيميل: {email or '—'}\n"
+        )
+        if notes_text:
+            case_meta += f"\nملاحظات القضية:\n{notes_text}\n"
+
+        if lang == 'en':
+            prompt = (
+                f"You are a legal case analyst. Below is data from the Law Management system for case: **{case_name}**\n\n"
+                f"## Case Details\n{case_meta}\n"
+                f"## Chatter / Activity Log\n{chatter_transcript}\n\n"
+                f"Write a structured professional report with these sections:\n"
+                f"1. **Case Overview** — brief description of the case and its nature\n"
+                f"2. **Timeline of Events** — chronological bullet points of what happened\n"
+                f"3. **Current Status** — stage, latest development, any pending court dates\n"
+                f"4. **Next Steps / Recommendations** — what needs to be done next\n"
+                f"5. **Key Risks or Blockers** (if any)\n"
+                f"Be concise and professional."
+            )
+        else:
+            prompt = (
+                f"أنت محلل قانوني. فيما يلي بيانات من نظام إدارة القضايا للقضية: **{case_name}**\n\n"
+                f"## تفاصيل القضية\n{case_meta}\n"
+                f"## سجل المحادثات والأنشطة\n{chatter_transcript}\n\n"
+                f"اكتب تقريراً قانونياً منظماً يشمل الأقسام التالية:\n"
+                f"1. **نظرة عامة على القضية** — وصف موجز للقضية وطبيعتها\n"
+                f"2. **الجدول الزمني للأحداث** — نقاط زمنية تسلسلية لما تم إنجازه\n"
+                f"3. **الوضع الحالي** — المرحلة، آخر المستجدات، أي جلسات أو مواعيد قادمة\n"
+                f"4. **الخطوات التالية والتوصيات** — ما يجب القيام به بعد ذلك\n"
+                f"5. **المخاطر أو العوائق الرئيسية** (إن وجدت)\n"
+                f"كن موجزاً ومهنياً."
+            )
+
+        # ── Post header ───────────────────────────────────────────
+        n_msgs = len(messages)
+        header = (
+            f"{AGENT_PERSONA}: ⚖️ **Law Case Report — {case_name}**\n"
+            f"_Stage: {stage} | {n_msgs} message(s) in chatter_\n\n"
+            if lang == 'en'
+            else
+            f"{AGENT_PERSONA}: ⚖️ **تقرير القضية — {case_name}**\n"
+            f"_المرحلة: {stage} | {n_msgs} رسالة في الشاتر_\n\n"
+        )
+
+        try:
+            api_key = request.env['ir.config_parameter'].sudo().get_param('gemini.api.key')
+            client  = genai.Client(api_key=api_key)
+            resp = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.3),
+            )
+            report_text = self._extract_response_text(resp)
+        except Exception as e:
+            _logger.warning(f"KH_AI law_case_report Gemini call failed: {e}")
+            report_text = (
+                f"**Case:** {case_name}\n**Stage:** {stage}\n\n{notes_text or chatter_transcript[:2000]}"
+                if lang == 'en'
+                else
+                f"**القضية:** {case_name}\n**المرحلة:** {stage}\n\n{notes_text or chatter_transcript[:2000]}"
+            )
+
+        self._post_message(header + report_text, mail_message_id)
         return {}
