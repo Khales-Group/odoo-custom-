@@ -261,7 +261,8 @@ class KhalesAiReport(models.AbstractModel):
         legal_html, legal_count = '', 0
         try:
             cases = env['x_reports'].sudo().search(
-                [('x_studio_user_id', '=', uid)], order='write_date desc', limit=50)
+                ['|', ('x_studio_user_id', '=', uid), ('create_uid', '=', uid)],
+                order='write_date desc', limit=50)
             legal_count = len(cases)
             if cases:
                 digest.append('--- قضايا/عقود قانونية ---')
