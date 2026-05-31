@@ -121,22 +121,32 @@ class KhalesAiReport(models.AbstractModel):
         if ts_no_desc:
             flags.append('%d سطر تايمشيت بدون وصف' % ts_no_desc)
 
-        # تاسكات اتعدّلت في الفترة
-        user_tasks = env['project.task'].sudo().search([
-            ('user_ids', 'in', [uid]), ('write_date', '>=', date_from_str)])
-        task_ids = set(user_tasks.ids) | set(lines_by_task.keys())
+        task_ids = set(lines_by_task.keys())
 
-        # + تاسكات عليها أكتفيتي للموظف (مفتوحة)
+        # 1. كل التاسكات المعيّنة للموظف وما زالت مفتوحة (بغض النظر عن التاريخ)
+        task_ids |= set(env['project.task'].sudo().search([
+            ('user_ids', 'in', [uid]),
+            ('stage_id.fold', '=', False),
+        ]).mapped('id'))
+
+        # 2. تاسكات أنجزها أو عدّلها في الفترة
+        task_ids |= set(env['project.task'].sudo().search([
+            ('user_ids', 'in', [uid]),
+            ('write_date', '>=', date_from_str),
+        ]).mapped('id'))
+
+        # 3. تاسكات عليها أكتفيتي مفتوحة للموظف
         task_ids |= set(env['mail.activity'].sudo().search([
             ('res_model', '=', 'project.task'), ('user_id', '=', uid),
         ]).mapped('res_id'))
 
-        # + تاسكات كتب فيها الموظف رسالة في الفترة
+        # 4. تاسكات كتب فيها الموظف رسالة هالشهر
         task_ids |= set(env['mail.message'].sudo().search([
             ('model', '=', 'project.task'),
             ('author_id', '=', partner_id),
             ('date', '>=', date_from_str),
         ]).mapped('res_id'))
+
         all_tasks = env['project.task'].sudo().browse(list(task_ids)).exists()
         tasks_by_project, no_project = {}, []
         for t in all_tasks:
