@@ -132,18 +132,65 @@ class KhalesAiReport(models.AbstractModel):
             if p not in all_pids:
                 all_pids.append(p)
 
+        # مشاريع كتب فيها الموظف نوتز مباشرة على المشروع هالشهر
+        proj_with_notes = env['mail.message'].sudo().search([
+            ('model', '=', 'project.project'),
+            ('author_id', '=', partner_id),
+            ('date', '>=', date_from_str),
+            ('message_type', 'in', ['comment', 'email', 'notification']),
+        ]).mapped('res_id')
+        for p in proj_with_notes:
+            if p not in all_pids:
+                proj_rec = env['project.project'].sudo().browse(p)
+                if proj_rec.exists():
+                    project_names[p] = proj_rec.name
+                    all_pids.append(p)
+
+        # حقول HTML/text للمشروع — مرة واحدة قبل الحلقة (نفس نهج x_reports)
+        proj_html_fields = env['ir.model.fields'].sudo().search_read(
+            [('model', '=', 'project.project'),
+             ('ttype', 'in', ['html', 'text']),
+             ('name', 'like', 'x_studio_')],
+            ['name', 'field_description', 'ttype']
+        )
+
         done_count = 0
         projects_html = ''
-        
+
         if all_pids:
             digest.append('--- مجال المشاريع والمهام الحالية ---')
 
         for pid in all_pids:
-            pname = project_names.get(pid, 'مشروع غير محدد')
+            proj_rec = env['project.project'].sudo().browse(pid)
+            pname = (proj_rec.name if proj_rec.exists() else None) or project_names.get(pid, 'مشروع غير محدد')
             proj_tasks = tasks_by_project.get(pid, [])
             loose = project_loose.get(pid, 0.0)
-            
+
             digest.append('\n=== مشروع: %s ===' % pname)
+
+            # معلومات المشروع الأساسية
+            if proj_rec.exists():
+                proj_stage   = proj_rec.stage_id.name if proj_rec.stage_id else '-'
+                proj_manager = proj_rec.user_id.name if proj_rec.user_id else '-'
+                proj_start   = str(proj_rec.date_start) if proj_rec.date_start else '-'
+                proj_end     = str(proj_rec.date) if proj_rec.date else '-'
+                digest.append('  المرحلة: %s | المدير: %s | البداية: %s | الانتهاء: %s'
+                               % (proj_stage, proj_manager, proj_start, proj_end))
+
+                # ---- حقول المشروع (HTML/text) — نفس نهج x_reports ----
+                proj_field_texts = []
+                for finfo in proj_html_fields:
+                    try:
+                        val = proj_rec[finfo['name']]
+                        if val:
+                            txt = html2plaintext(str(val)).strip() if finfo['ttype'] == 'html' else str(val).strip()
+                            if txt and len(txt) > 15:
+                                proj_field_texts.append('%s:\n%s' % (finfo['field_description'], txt))
+                    except Exception:
+                        continue
+                if proj_field_texts:
+                    combined = '\n---\n'.join(proj_field_texts)
+                    digest.append('   📋 حقول وتفاصيل المشروع:\n%s' % combined)
 
             loose_html = ''
             if loose > 0:
@@ -152,6 +199,61 @@ class KhalesAiReport(models.AbstractModel):
                     % self._fmt(loose))
                 digest.append('  [وقت عام غير مربوط بتاسك]: %.2f ساعة' % loose)
 
+            # ---- شاتر المشروع (كل الرسائل — نفس نهج x_reports بلا فلتر author) ----
+            proj_msgs = env['mail.message'].sudo().search([
+                ('model', '=', 'project.project'),
+                ('res_id', '=', pid),
+                ('date', '>=', date_from_str),
+                ('message_type', 'in', ['comment', 'email', 'notification']),
+            ], order='date desc', limit=30)
+
+            proj_chat_html = ''
+            digest.append('   📋 سجل نشاط المشروع:')
+            for m in proj_msgs:
+                try:
+                    body_txt = html2plaintext(m.body or '').strip()
+                    subj_txt = (m.subject or '').strip()
+                    author   = m.author_id.name if m.author_id else '?'
+                    act_type_name = None
+                    try:
+                        if m.mail_activity_type_id:
+                            act_type_name = m.mail_activity_type_id.name
+                    except Exception:
+                        pass
+
+                    if act_type_name:
+                        content = body_txt or subj_txt or '(تم الإنجاز)'
+                        label = '✅ أنجز نشاط'
+                        item_style = 'background:#d4edda;color:#155724;border-right:3px solid #28a745;'
+                    elif m.message_type == 'email':
+                        content = ('الموضوع: %s' % subj_txt + (' | ' + body_txt if body_txt else '')) if subj_txt else (body_txt or '-')
+                        label = '📧 بريد إلكتروني'
+                        item_style = 'background:#cce5ff;color:#004085;border-right:3px solid #004085;'
+                    elif m.message_type == 'notification':
+                        content = body_txt or subj_txt or ''
+                        label = '🔄 تغيير/تحديث'
+                        item_style = 'background:#fff3cd;color:#856404;border-right:3px solid #ffc107;'
+                    else:
+                        content = body_txt or subj_txt or ''
+                        label = '💬 ملاحظة'
+                        item_style = 'background:#f8f9fa;color:#333;border-right:3px solid #6c757d;'
+
+                    if not content:
+                        continue
+                    msg_date = str(m.date)[:16]
+                    proj_chat_html += ('<li style="margin:5px 0;padding:6px 10px;%sborder-radius:4px;list-style:none;">'
+                                       '<strong>%s</strong> — <span style="color:#555;font-size:11px;">%s</span> '
+                                       '<span style="font-size:10px;color:#999;">(%s)</span><br>'
+                                       '<span style="font-size:12px;line-height:1.5;">%s</span></li>'
+                                       % (item_style, label, author, msg_date,
+                                          self._clip(content, 400).replace('\n', '<br>')))
+                    digest.append('      [%s] %s (%s): %s' % (label, author, msg_date, self._clip(content, 400)))
+                except Exception:
+                    continue
+            if not proj_chat_html:
+                proj_chat_html = '<li style="color:#aaa;list-style:none;padding:6px;">لا يوجد رسائل في الشاتر</li>'
+
+            # ---- أكتفيتيز مفتوحة على المشروع ----
             pacts = env['mail.activity'].sudo().search([
                 ('res_model', '=', 'project.project'), ('res_id', '=', pid), ('user_id', '=', uid)])
             pa_html = ''
@@ -163,12 +265,16 @@ class KhalesAiReport(models.AbstractModel):
                     flags.append('أكتفيتي متأخّرة على المشروع "%s"' % pname[:30])
                 summ = a.summary or (a.activity_type_id.name if a.activity_type_id else 'بدون عنوان')
                 pa_html += '<li><span style="%s">[%s]</span> %s (%s)</li>' % (clr, tag, summ, a.date_deadline or '-')
-                digest.append('  🔔 أكتفيتي للمشروع: %s (تاريخ الاستحقاق: %s)%s' % (summ, a.date_deadline or '-', ' [متأخرة!]' if over else ''))
-            if not pa_html:
-                pa_html = '<li style="color:#bbb;">لا يوجد</li>'
-            project_level_html = ('<div style="background:#eef2f7;border-radius:6px;padding:6px 10px;margin-bottom:8px;">'
-                '<div style="font-size:12px;color:#2C3E50;font-weight:bold;">🔔 أكتفيتيز على المشروع نفسه:</div>'
-                '<ul style="margin:3px 0;padding-right:18px;font-size:12px;">%s</ul></div>' % pa_html)
+                digest.append('  🔔 أكتفيتي مجدولة: %s (موعد %s)%s' % (summ, a.date_deadline or '-', ' [متأخرة!]' if over else ''))
+
+            project_level_html = (
+                '<div style="border:1px solid #b0c4de;border-radius:6px;padding:8px 10px;margin-bottom:8px;background:#f8faff;">'
+                '<div style="font-size:12px;color:#2C3E50;font-weight:bold;margin-bottom:4px;">🗒️ سجل نشاط المشروع:</div>'
+                '<ul style="margin:3px 0;padding:0;font-size:12px;">%s</ul>'
+                '%s'
+                '</div>'
+                % (proj_chat_html, ('<div style="margin-top:6px;"><strong>🔔 أنشطة مجدولة:</strong><ul style="margin:2px 0;padding-right:18px;font-size:12px;">%s</ul></div>' % pa_html) if pa_html else '')
+            )
 
             tasks_html = ''
             for t in proj_tasks:
