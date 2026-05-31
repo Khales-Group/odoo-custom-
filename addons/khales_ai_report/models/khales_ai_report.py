@@ -346,7 +346,7 @@ class KhalesAiReport(models.AbstractModel):
 
                                 if act_type_name:
                                     content = body_txt or subj_txt or '(تم الإنجاز)'
-                                    label = '✅ أنجز نشاط [%s]' % act_type_name
+                                    label = '✅ أنجز نشاط'
                                     item_style = 'background:#d4edda;color:#155724;border-right:3px solid #28a745;'
                                 elif m.message_type == 'email':
                                     content = ('الموضوع: %s' % subj_txt + (' | ' + body_txt if body_txt else '')) if subj_txt else (body_txt or '-')
@@ -395,17 +395,17 @@ class KhalesAiReport(models.AbstractModel):
                                     flags.append('خطوة متأخّرة على قضية "%s": %s' % (cname[:25], summ[:30]))
                                     act_html += ('<li style="margin:4px 0;padding:6px 10px;background:#fdecea;'
                                                  'border-right:3px solid #E74C3C;border-radius:4px;list-style:none;">'
-                                                 '<strong>🚩 متأخّرة [%s]:</strong> %s '
+                                                 '<strong>🚩 متأخّرة:</strong> %s '
                                                  '<span style="font-size:10px;color:#922;">(موعدها: %s)</span></li>'
-                                                 % (atype, summ, ddl))
-                                    digest.append('      🚩 [%s] "%s" موعد %s [متأخرة!]' % (atype, summ, ddl))
+                                                 % (summ, ddl))
+                                    digest.append('      🚩 "%s" موعد %s [متأخرة!]' % (summ, ddl))
                                 else:
                                     act_html += ('<li style="margin:4px 0;padding:6px 10px;background:#e8f5e9;'
                                                  'border-right:3px solid #27AE60;border-radius:4px;list-style:none;">'
-                                                 '<strong>🔔 قادمة [%s]:</strong> %s '
+                                                 '<strong>🔔 قادمة:</strong> %s '
                                                  '<span style="font-size:10px;color:#555;">(موعدها: %s)</span></li>'
-                                                 % (atype, summ, ddl))
-                                    digest.append('      🔔 [%s] "%s" موعد %s' % (atype, summ, ddl))
+                                                 % (summ, ddl))
+                                    digest.append('      🔔 "%s" موعد %s' % (summ, ddl))
                             except Exception:
                                 continue
 
