@@ -121,9 +121,22 @@ class KhalesAiReport(models.AbstractModel):
         if ts_no_desc:
             flags.append('%d سطر تايمشيت بدون وصف' % ts_no_desc)
 
+        # تاسكات اتعدّلت في الفترة
         user_tasks = env['project.task'].sudo().search([
             ('user_ids', 'in', [uid]), ('write_date', '>=', date_from_str)])
         task_ids = set(user_tasks.ids) | set(lines_by_task.keys())
+
+        # + تاسكات عليها أكتفيتي للموظف (مفتوحة)
+        task_ids |= set(env['mail.activity'].sudo().search([
+            ('res_model', '=', 'project.task'), ('user_id', '=', uid),
+        ]).mapped('res_id'))
+
+        # + تاسكات كتب فيها الموظف رسالة في الفترة
+        task_ids |= set(env['mail.message'].sudo().search([
+            ('model', '=', 'project.task'),
+            ('author_id', '=', partner_id),
+            ('date', '>=', date_from_str),
+        ]).mapped('res_id'))
         all_tasks = env['project.task'].sudo().browse(list(task_ids)).exists()
         tasks_by_project, no_project = {}, []
         for t in all_tasks:
@@ -191,7 +204,7 @@ class KhalesAiReport(models.AbstractModel):
                     flags.append('تاسك "%s" Done بدون دليل' % t.name[:35])
                 if is_done and hrs == 0:
                     flags.append('تاسك "%s" Done بدون وقت' % t.name[:35])
-                digest.append('  تاسك: %s | مرحلة: %s | ساعات: %.2f | دليل: %s' % (t.name, stage, hrs, evid_s))
+                digest.append('  تاسك: %s | المشروع: %s | مرحلة: %s | ساعات: %.2f | دليل: %s' % (t.name, pname, stage, hrs, evid_s))
 
                 ts_html = ''
                 for ln in lines_by_task.get(t.id, []):
@@ -227,7 +240,7 @@ class KhalesAiReport(models.AbstractModel):
                         flags.append('أكتفيتي متأخّرة على تاسك "%s"' % t.name[:30])
                     summ = a.summary or (a.activity_type_id.name if a.activity_type_id else 'بدون عنوان')
                     acts_html += '<li><span style="%s">[%s]</span> %s (%s)</li>' % (clr, tag, summ, a.date_deadline or '-')
-                    digest.append('      أكتفيتي: %s (موعد %s)%s' % (summ, a.date_deadline or '-', ' [متأخرة]' if over else ''))
+                    digest.append('      أكتفيتي على [%s / %s]: %s (موعد %s)%s' % (pname, t.name, summ, a.date_deadline or '-', ' [متأخرة]' if over else ''))
                 if not acts_html:
                     acts_html = '<li style="color:#bbb;">لا يوجد</li>'
 
