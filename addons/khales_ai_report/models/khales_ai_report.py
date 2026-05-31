@@ -286,10 +286,13 @@ class KhalesAiReport(models.AbstractModel):
                     cmsgs = env['mail.message'].sudo().search([
                         ('model', '=', 'x_reports'), ('res_id', '=', c.id),
                         ('message_type', 'in', ['comment', 'email', 'notification'])],
-                        order='date desc', limit=6)
+                        order='date desc', limit=10)
                     chat_html = ''
                     for m in cmsgs:
                         txt = html2plaintext(m.body or '').strip()
+                        # fallback على الـ subject لو الـ body فاضي (مثل رسائل "Email done")
+                        if not txt:
+                            txt = (m.subject or '').strip()
                         if not txt:
                             continue
                         chat_html += ('<li style="color:#444;">%s '
@@ -299,18 +302,33 @@ class KhalesAiReport(models.AbstractModel):
                     if not chat_html:
                         chat_html = '<li style="color:#bbb;">لا يوجد تحديثات بالشاتر</li>'
 
+                    # الأنشطة المفتوحة
                     cacts = env['mail.activity'].sudo().search([
                         ('res_model', '=', 'x_reports'), ('res_id', '=', c.id), ('user_id', '=', uid)])
+                    # الأنشطة المنجزة (Done) — محفوظة بـ active=False
+                    cacts_done = env['mail.activity'].sudo().with_context(active_test=False).search([
+                        ('res_model', '=', 'x_reports'), ('res_id', '=', c.id),
+                        ('user_id', '=', uid), ('active', '=', False)])
                     act_html = ''
-                    for a in cacts:
-                        over = bool(a.date_deadline and str(a.date_deadline) < today_str)
-                        clr = FLAG if over else 'color:#27AE60;'
-                        tag = 'متأخّرة' if over else 'بوقتها'
-                        if over:
+                    for a in list(cacts) + list(cacts_done):
+                        is_done = not a.active if hasattr(a, 'active') else False
+                        over = bool(not is_done and a.date_deadline and str(a.date_deadline) < today_str)
+                        if is_done:
+                            clr = 'color:#27AE60;'
+                            tag = 'منجزة ✓'
+                        elif over:
+                            clr = FLAG
+                            tag = 'متأخّرة'
                             flags.append('خطوة متأخّرة على قضية "%s"' % cname[:30])
+                        else:
+                            clr = 'color:#27AE60;'
+                            tag = 'بوقتها'
                         summ = a.summary or (a.activity_type_id.name if a.activity_type_id else 'بدون عنوان')
                         act_html += '<li><span style="%s">[%s]</span> %s (%s)</li>' % (clr, tag, summ, a.date_deadline or '-')
-                        digest.append('   خطوة جاية: %s (موعد %s)%s' % (summ, a.date_deadline or '-', ' [متأخرة]' if over else ''))
+                        digest.append('   %s: %s (موعد %s)%s' % (
+                            'خطوة منجزة' if is_done else 'خطوة جاية',
+                            summ, a.date_deadline or '-',
+                            ' [منجزة]' if is_done else (' [متأخرة]' if over else '')))
                     if not act_html:
                         act_html = '<li style="color:#bbb;">لا يوجد خطوات مجدولة</li>'
 
