@@ -1,4 +1,11 @@
 # -*- coding: utf-8 -*-
+# ============================================================
+#  محتوى models/khales_ai_report.py  (نسخة مخصصة للمشاريع والنوتات)
+#  لكل موظف: يجمع شغلو من حيث ما يشتغل فعلاً —
+#   • مشاريع: تاسك ← تايمشيت/نوتات/أكتفيتيز ومعرفتها بالتفصيل
+#   • قانوني (x_reports): قضية ← تحديثات/ملاحظات/أكتفيتيز
+#  Gemini يحلّل المجال الموجود فقط بناءً على النوتات والتايمشيت
+# ============================================================
 import logging
 import datetime
 
@@ -70,7 +77,7 @@ class KhalesAiReport(models.AbstractModel):
         return self._finalize('📊 تقرير الموظفين الشهري - %s (%d موظف)' % (datetime.date.today(), count), wrapper)
 
     # ============================================================
-    # بناء قسم موظف واحد
+    # بناء قسم موظف واحد — جلب المشاريع والنوتات بالتفصيل
     # ============================================================
     def _build_user_section(self, user, days):
         env = self.env
@@ -85,7 +92,7 @@ class KhalesAiReport(models.AbstractModel):
 
         flags, digest = [], []
 
-        # ========== مجال المشاريع ==========
+        # ========== مجال المشاريع (تاسك/تايمشيت/نوتات) ==========
         ts_lines = env['account.analytic.line'].sudo().search([
             ('user_id', '=', uid), ('project_id', '!=', False), ('date', '>=', date_from)],
             order='date desc')
@@ -108,33 +115,9 @@ class KhalesAiReport(models.AbstractModel):
         if ts_no_desc:
             flags.append('%d سطر تايمشيت بدون وصف' % ts_no_desc)
 
-        # جمع التاسكات من 4 مصادر
-        task_ids = set(lines_by_task.keys())
-
-        # 1. تاسكات مفتوحة معيّنة للموظف
-        task_ids |= set(env['project.task'].sudo().search([
-            ('user_ids', 'in', [uid]),
-            ('stage_id.fold', '=', False),
-        ]).mapped('id'))
-
-        # 2. تاسكات اتعدّلت في الفترة
-        task_ids |= set(env['project.task'].sudo().search([
-            ('user_ids', 'in', [uid]),
-            ('write_date', '>=', date_from_str),
-        ]).mapped('id'))
-
-        # 3. تاسكات عليها أكتفيتي للموظف
-        task_ids |= set(env['mail.activity'].sudo().search([
-            ('res_model', '=', 'project.task'), ('user_id', '=', uid),
-        ]).mapped('res_id'))
-
-        # 4. تاسكات كتب فيها الموظف رسالة في الفترة
-        task_ids |= set(env['mail.message'].sudo().search([
-            ('model', '=', 'project.task'),
-            ('author_id', '=', partner_id),
-            ('date', '>=', date_from_str),
-        ]).mapped('res_id'))
-
+        user_tasks = env['project.task'].sudo().search([
+            ('user_ids', 'in', [uid]), ('write_date', '>=', date_from_str)])
+        task_ids = set(user_tasks.ids) | set(lines_by_task.keys())
         all_tasks = env['project.task'].sudo().browse(list(task_ids)).exists()
         tasks_by_project, no_project = {}, []
         for t in all_tasks:
@@ -149,31 +132,17 @@ class KhalesAiReport(models.AbstractModel):
             if p not in all_pids:
                 all_pids.append(p)
 
-        # مشاريع كتب فيها الموظف نوتز/رسائل هالشهر
-        proj_with_notes = env['mail.message'].sudo().search([
-            ('model', '=', 'project.project'),
-            ('author_id', '=', partner_id),
-            ('date', '>=', date_from_str),
-            ('message_type', 'in', ['comment', 'email', 'notification']),
-        ]).mapped('res_id')
-        for p in proj_with_notes:
-            if p not in all_pids:
-                proj_rec = env['project.project'].sudo().browse(p)
-                if proj_rec.exists():
-                    project_names[p] = proj_rec.name
-                    all_pids.append(p)
-
         done_count = 0
         projects_html = ''
-
+        
         if all_pids:
-            digest.append('--- مجال المشاريع والمهام ---')
+            digest.append('--- مجال المشاريع والمهام الحالية ---')
 
         for pid in all_pids:
             pname = project_names.get(pid, 'مشروع غير محدد')
             proj_tasks = tasks_by_project.get(pid, [])
             loose = project_loose.get(pid, 0.0)
-
+            
             digest.append('\n=== مشروع: %s ===' % pname)
 
             loose_html = ''
@@ -183,7 +152,6 @@ class KhalesAiReport(models.AbstractModel):
                     % self._fmt(loose))
                 digest.append('  [وقت عام غير مربوط بتاسك]: %.2f ساعة' % loose)
 
-            # ---- أكتفيتيز مفتوحة على المشروع ----
             pacts = env['mail.activity'].sudo().search([
                 ('res_model', '=', 'project.project'), ('res_id', '=', pid), ('user_id', '=', uid)])
             pa_html = ''
@@ -195,40 +163,12 @@ class KhalesAiReport(models.AbstractModel):
                     flags.append('أكتفيتي متأخّرة على المشروع "%s"' % pname[:30])
                 summ = a.summary or (a.activity_type_id.name if a.activity_type_id else 'بدون عنوان')
                 pa_html += '<li><span style="%s">[%s]</span> %s (%s)</li>' % (clr, tag, summ, a.date_deadline or '-')
-                digest.append('  🔔 أكتفيتي للمشروع: %s (موعد %s)%s' % (summ, a.date_deadline or '-', ' [متأخرة!]' if over else ''))
-
-            # ---- نوتز ورسائل الموظف على المشروع مباشرة ----
-            proj_logs = env['mail.message'].sudo().search([
-                ('model', '=', 'project.project'),
-                ('res_id', '=', pid),
-                ('author_id', '=', partner_id),
-                ('date', '>=', date_from_str),
-                ('message_type', 'in', ['comment', 'email', 'notification']),
-            ], order='date desc', limit=30)
-            proj_log_html = ''
-            for m in proj_logs:
-                body_txt = html2plaintext(m.body or '').strip()
-                subj_txt = (m.subject or '').strip()
-                content = body_txt or subj_txt
-                if not content:
-                    continue
-                msg_date = str(m.date)[:16]
-                proj_log_html += ('<li style="margin:4px 0;padding:5px 8px;background:#f0f4ff;'
-                                  'border-right:3px solid #3498DB;border-radius:4px;">'
-                                  '<span style="font-size:10px;color:#999;">%s</span><br>'
-                                  '<span style="font-size:12px;">%s</span></li>'
-                                  % (msg_date, self._clip(content, 400).replace('\n', '<br>')))
-                digest.append('  📝 نوت على المشروع (%s): %s' % (msg_date, self._clip(content, 400)))
-
-            if not pa_html and not proj_log_html:
+                digest.append('  🔔 أكتفيتي للمشروع: %s (تاريخ الاستحقاق: %s)%s' % (summ, a.date_deadline or '-', ' [متأخرة!]' if over else ''))
+            if not pa_html:
                 pa_html = '<li style="color:#bbb;">لا يوجد</li>'
-
-            project_level_html = (
-                '<div style="background:#eef2f7;border-radius:6px;padding:8px 10px;margin-bottom:8px;">'
-                '<div style="font-size:12px;color:#2C3E50;font-weight:bold;margin-bottom:4px;">📋 نشاط على المشروع:</div>'
-                '<ul style="margin:3px 0;padding-right:18px;font-size:12px;">%s%s</ul></div>'
-                % (pa_html, proj_log_html)
-            )
+            project_level_html = ('<div style="background:#eef2f7;border-radius:6px;padding:6px 10px;margin-bottom:8px;">'
+                '<div style="font-size:12px;color:#2C3E50;font-weight:bold;">🔔 أكتفيتيز على المشروع نفسه:</div>'
+                '<ul style="margin:3px 0;padding-right:18px;font-size:12px;">%s</ul></div>' % pa_html)
 
             tasks_html = ''
             for t in proj_tasks:
@@ -250,38 +190,32 @@ class KhalesAiReport(models.AbstractModel):
                     flags.append('تاسك "%s" Done بدون دليل وثائقي' % t.name[:35])
                 if is_done and hrs == 0:
                     flags.append('تاسك "%s" Done بدون تسجيل ساعات' % t.name[:35])
-
-                digest.append('  📌 تاسك: %s | المشروع: %s | المرحلة: %s | ساعات: %.2f' % (t.name, pname, stage, hrs))
+                
+                # إرسال بيانات التاسك بالتفصيل للـ AI دايجست
+                digest.append('  📌 تاسك: %s | المرحلة: %s | إجمالي الساعات: %.2f' % (t.name, stage, hrs))
 
                 ts_html = ''
                 for ln in lines_by_task.get(t.id, []):
                     dd = (ln.name or '').strip() or '⚠️ بدون وصف'
                     ts_html += '<tr><td style="%s">%s</td><td style="%s">%s</td><td style="%s">%s</td></tr>' % (
                         TC, ln.date, TD, dd, TC, self._fmt(ln.unit_amount or 0.0))
-                    digest.append('      ⏱️ تايمشيت %s: %s (%.2fس)' % (ln.date, dd, ln.unit_amount or 0.0))
+                    digest.append('      ⏱️ تايمشيت بتاريخ %s: %s (%s س)' % (ln.date, dd, ln.unit_amount or 0.0))
                 if not ts_html:
                     ts_html = '<tr><td colspan="3" style="%s color:#999;">لا يوجد تايمشيت</td></tr>' % TC
 
-                # نوتات + رسائل التاسك (comment + email + notification)
+                # جلب نوتات الموظف (التعليقات اليدوية في الشاتير) وهي الأهم للتقرير التفصيلي
                 tnotes = env['mail.message'].sudo().search([
-                    ('model', '=', 'project.task'),
-                    ('res_id', '=', t.id),
-                    ('author_id', '=', partner_id),
-                    ('message_type', 'in', ['comment', 'email', 'notification']),
-                ], order='date desc', limit=20)
+                    ('model', '=', 'project.task'), ('res_id', '=', t.id),
+                    ('author_id', '=', partner_id), ('message_type', '=', 'comment')],
+                    order='date desc', limit=15)
                 notes_html = ''
                 for m in tnotes:
-                    body_txt = html2plaintext(m.body or '').strip()
-                    subj_txt = (m.subject or '').strip()
-                    txt = body_txt or subj_txt
+                    txt = html2plaintext(m.body or '').strip()
                     if not txt:
                         continue
-                    msg_date = str(m.date)[:16]
-                    notes_html += ('<li style="margin:3px 0;padding:4px 8px;background:#f8f9fa;'
-                                   'border-right:3px solid #714B67;border-radius:3px;">'
-                                   '<span style="font-size:10px;color:#999;">%s</span> %s</li>'
-                                   % (msg_date, self._clip(txt, 300)))
-                    digest.append('      📝 نوت كتبها الموظف (%s): %s' % (msg_date, txt))
+                    notes_html += '<li style="color:#444;">%s <span style="font-size:10px;color:#999;">(%s)</span></li>' % (self._clip(txt, 300), str(m.date)[:16])
+                    # كتابة النوتة بالتفصيل في الـ Digest ليقرأها الجيمني ويعرف شو مسوي الموظف بالضبط
+                    digest.append('      📝 نوت كتبها الموظف (%s): %s' % (str(m.date)[:16], txt))
                 if not notes_html:
                     notes_html = '<li style="color:#bbb;">لا يوجد نوتات مسجلة من الموظف</li>'
 
@@ -296,7 +230,7 @@ class KhalesAiReport(models.AbstractModel):
                         flags.append('أكتفيتي متأخّرة على تاسك "%s"' % t.name[:30])
                     summ = a.summary or (a.activity_type_id.name if a.activity_type_id else 'بدون عنوان')
                     acts_html += '<li><span style="%s">[%s]</span> %s (%s)</li>' % (clr, tag, summ, a.date_deadline or '-')
-                    digest.append('      🔔 أكتفيتي على [%s / %s]: %s (موعد %s)%s' % (pname, t.name, summ, a.date_deadline or '-', ' [متأخرة]' if over else ''))
+                    digest.append('      🔔 أكتفيتي مجدولة: %s (موعد %s)%s' % (summ, a.date_deadline or '-', ' [متأخرة]' if over else ''))
                 if not acts_html:
                     acts_html = '<li style="color:#bbb;">لا يوجد</li>'
 
@@ -326,7 +260,7 @@ class KhalesAiReport(models.AbstractModel):
                 '<h4 style="margin:0 0 8px;color:#666;">🗂️ مهام خاصة (بدون مشروع)</h4>'
                 '<ul style="padding-right:18px;font-size:13px;">%s</ul></div>' % np)
 
-        # ========== مجال القانون (x_reports) ==========
+        # ========== مجال القانون (x_reports) — يبقى كما هو لمن يعمل به ==========
         legal_html, legal_count = '', 0
         try:
             active_case_ids = set(env['mail.message'].sudo().search([
@@ -376,10 +310,8 @@ class KhalesAiReport(models.AbstractModel):
                                 raw_val = c[fname]
                                 if raw_val:
                                     txt = html2plaintext(str(raw_val)).strip()
-                                    if txt and len(txt) > 15:
-                                        all_text_parts.append(txt)
-                            except Exception:
-                                continue
+                                    if txt and len(txt) > 15: all_text_parts.append(txt)
+                            except Exception: continue
                         notes_raw = '\n---\n'.join(all_text_parts).strip()
                         notes_display = self._clip(notes_raw, 1200)
                         notes_block = ''
@@ -388,7 +320,7 @@ class KhalesAiReport(models.AbstractModel):
                                            'border-right:3px solid #b8860b;padding:6px 10px;border-radius:4px;">'
                                            '<strong>📝 تفاصيل/ملاحظات:</strong><br>'
                                            + notes_display.replace('\n', '<br>') + '</div>')
-                            digest.append('   📝 تفاصيل القضية:\n%s' % notes_raw)
+                            digest.append('   📝 تفاصيل القضية الأصلية:\n%s' % notes_raw)
 
                         all_msgs = env['mail.message'].sudo().search([
                             ('model', '=', 'x_reports'), ('res_id', '=', c.id),
@@ -402,10 +334,8 @@ class KhalesAiReport(models.AbstractModel):
                                 subj_txt = (m.subject or '').strip()
                                 act_type_name = None
                                 try:
-                                    if m.mail_activity_type_id:
-                                        act_type_name = m.mail_activity_type_id.name
-                                except Exception:
-                                    pass
+                                    if m.mail_activity_type_id: act_type_name = m.mail_activity_type_id.name
+                                except Exception: pass
 
                                 if act_type_name:
                                     content = body_txt or subj_txt or '(تم الإنجاز)'
@@ -424,16 +354,14 @@ class KhalesAiReport(models.AbstractModel):
                                     label = '💬 ملاحظة'
                                     item_style = 'background:#f8f9fa;color:#333;border-right:3px solid #6c757d;'
 
-                                if not content:
-                                    continue
+                                if not content: continue
                                 msg_date = str(m.date)[:16]
                                 chat_html += ('<li style="margin:5px 0;padding:6px 10px;%sborder-radius:4px;list-style:none;">'
                                               '<strong>%s</strong> <span style="font-size:10px;color:#999;">(%s)</span><br>'
                                               '<span style="font-size:12px;line-height:1.5;">%s</span></li>'
                                               % (item_style, label, msg_date, self._clip(content, 400).replace('\n', '<br>')))
                                 digest.append('      [%s] (%s): %s' % (label, msg_date, self._clip(content, 300)))
-                            except Exception:
-                                continue
+                            except Exception: continue
 
                         if not chat_html:
                             chat_html = '<li style="color:#aaa;list-style:none;padding:6px;">لا يوجد رسائل في الشاتر</li>'
@@ -442,9 +370,9 @@ class KhalesAiReport(models.AbstractModel):
                         act_html = ''
                         for a in open_acts:
                             try:
-                                summ = a.summary or (a.note and html2plaintext(a.note).strip()[:80]) or '(بدون عنوان)'
-                                ddl  = str(a.date_deadline) if a.date_deadline else '-'
-                                over = bool(a.date_deadline and str(a.date_deadline) < today_str)
+                                summ  = a.summary or a.note and html2plaintext(a.note).strip()[:80] or '(بدون عنوان)'
+                                ddl   = str(a.date_deadline) if a.date_deadline else '-'
+                                over  = bool(a.date_deadline and str(a.date_deadline) < today_str)
                                 if over:
                                     flags.append('خطوة متأخّرة على قضية "%s": %s' % (cname[:25], summ[:30]))
                                     act_html += ('<li style="margin:4px 0;padding:6px 10px;background:#fdecea;'
@@ -454,8 +382,7 @@ class KhalesAiReport(models.AbstractModel):
                                     act_html += ('<li style="margin:4px 0;padding:6px 10px;background:#e8f5e9;'
                                                  'border-right:3px solid #27AE60;border-radius:4px;list-style:none;">'
                                                  '<strong>🔔 قادمة:</strong> %s <span style="font-size:10px;color:#555;">(موعدها: %s)</span></li>' % (summ, ddl))
-                            except Exception:
-                                continue
+                            except Exception: continue
 
                         act_section = ''
                         if act_html:
@@ -474,9 +401,7 @@ class KhalesAiReport(models.AbstractModel):
                             '<ul style="margin:4px 0;padding:0;">%s</ul>'
                             '%s</div>'
                             % (cname, ctype, stage, cval, cdate, notes_block, chat_html, act_section))
-                    except Exception:
-                        _logger.exception('KH_REPORT: case id=%s', c.id)
-                        continue
+                    except Exception: continue
 
                 legal_html = ('<div style="border:2px solid #b8860b;border-radius:8px;padding:12px;margin-bottom:14px;background:#fffbea;">'
                     '<h4 style="margin:0 0 8px;color:#b8860b;">⚖️ القضايا/العقود (تطبيق Law) — %d</h4>%s</div>'
@@ -484,7 +409,7 @@ class KhalesAiReport(models.AbstractModel):
         except Exception:
             _logger.exception('KH_REPORT: legal section failed')
 
-        # ========== النتيجة النهائية ==========
+        # ========== معالجة النتيجة النهائية ==========
         has_data = bool(all_tasks or legal_count or total_hours > 0)
         flags = list(dict.fromkeys(flags))
         if flags:
@@ -504,13 +429,13 @@ class KhalesAiReport(models.AbstractModel):
         kpis = ' | '.join(kpis_parts) if kpis_parts else 'لا يوجد نشاط رقمي'
 
         domains = []
-        if all_tasks or total_hours > 0:
-            domains.append('إدارة الهندسة والمشاريع')
-        if legal_count:
-            domains.append('الاستشارات والشؤون القانونية')
+        if all_tasks or total_hours > 0: domains.append('إدارة الهندسة والمشاريع')
+        if legal_count: domains.append('الاستشارات والشؤون القانونية')
         domain_label = ' و '.join(domains) if domains else 'غير محدّد'
 
         digest_text = '\n'.join(digest) if digest else 'لا يوجد نشاط تفصيلي.'
+        
+        # استدعاء تحليل الذكاء الاصطناعي مع البيانات المحسّنة والنوتات
         ai_html = self._ai_analysis(user.name, days, kpis, domain_label, digest_text, flags)
 
         section = ('<div style="border-bottom:3px solid #714B67;margin-bottom:20px;padding-bottom:10px;">'
@@ -521,11 +446,11 @@ class KhalesAiReport(models.AbstractModel):
         return section, has_data
 
     # ============================================================
-    # تحليل Gemini
+    # تحليل Gemini المعزز لقراءة النوتات ومعرفة تفاصيل كل مشروع
     # ============================================================
     def _ai_analysis(self, name, days, kpis, domain_label, digest_text, flags):
         box = '<div style="background:#f4ecf7;border:1px solid #714B67;border-radius:8px;padding:12px 16px;margin-bottom:12px;">'
-        ttl = '<div style="font-weight:bold;color:#714B67;margin-bottom:6px;">🤖 تقرير الأداء الذكي (AI)</div>'
+        ttl = '<div style="font-weight:bold;color:#714B67;margin-bottom:6px;">🤖 تقرير الأداء الذكي المعتمد على التوثيق (AI)</div>'
 
         if not HAS_GENAI:
             return box + ttl + '<div style="color:#856404;">⚠️ مكتبة google-genai غير مثبّتة.</div></div>'
@@ -533,37 +458,37 @@ class KhalesAiReport(models.AbstractModel):
         key = ICP.get_param('gemini.api.key')
         model = ICP.get_param('gemini.model') or 'gemini-2.5-flash'
         if not key:
-            return box + ttl + '<div style="color:#856404;">⚠️ مفتاح gemini.api.key غير موجود.</div></div>'
+            return box + ttl + '<div style="color:#856404;">⚠️ مفتاح gemini.api.key غير موجود في سيستم Odoo.</div></div>'
 
+        # الـ Prompt الجديد يركز على قراءة نوتات الموظف ومعرفة تفاصيل الشغل لكل مشروع
         prompt = (
-            "أنت محلل أداء تنفيذي خبير في شركة هندسية بالإمارات.\n"
-            "اقرأ سجل نشاط الموظف '%s' خلال آخر %d يوم المستخرج من Odoo وولّد تقريراً إدارياً دقيقاً.\n\n"
-            "ركّز على نوتات الموظف (📝 نوت كتبها الموظف) والتايمشيت (⏱️) المربوطة بكل مشروع لمعرفة ما فعله بالتفصيل.\n\n"
-            "طبيعة عمل الموظف: %s\n"
-            "المؤشرات الرقمية: %s\n"
-            "ملاحظات النظام: %s\n\n"
-            "البيانات التفصيلية:\n"
+            "أنت محلل أداء تنفيذي خبير في شركة هندسية وتجارية بالإمارات.\n"
+            "مهمتك الأساسية هي قراءة سجل نشاط الموظف '%s' خلال آخر %d يوم المستخرج من Odoo وتوليد تقرير إداري دقيق.\n\n"
+            "المطلوب منك التركيز بشكل كامل على نوتات الموظف (📝 نوت كتبها الموظف) والتايمشيت (⏱️ تايمشيت) المربوطة بكل مشروع وتاسك لمعرفة وتلخيص ما فعله بالتفصيل.\n\n"
+            "طبيعة عمل الموظف الحالية: %s.\n"
+            "ملخص المؤشرات الرقمية: %s.\n"
+            "ملاحظات النظام التلقائية: %s.\n\n"
+            "البيانات التفصيلية الخام المسحوبة من السيستم لقراءتها وتحليلها:\n"
             "--------------------------------------------------\n"
             "%s\n"
             "--------------------------------------------------\n\n"
-            "اكتب التقرير بالعربي بـ HTML بسيط (<p><strong><ul><li><h4>):\n\n"
-            "<h4>1. تفصيل العمل حسب المشاريع:</h4>\n"
-            "لكل مشروع: اذكر اسمه، التاسكات، وشو سوى الموظف بالضبط بناءً على النوتات والتايمشيت.\n\n"
-            "<h4>2. جودة التوثيق:</h4>\n"
-            "هل النوتات واضحة وتفصيلية؟ قيّم (قوي/متوسط/ضعيف).\n\n"
-            "<h4>3. الخطوات القادمة:</h4>\n"
-            "بناءً على الأنشطة المجدولة والمشاريع المفتوحة.\n\n"
-            "<h4>4. توصيات للمدير:</h4>\n"
-            "3-5 نقاط عملية.\n\n"
-            "قاعدة: اعتمد فقط على البيانات الموجودة. لا تخترع معلومات.\n"
-            "ممنوع: لا تذكر غياب مسؤول أو ضرورة تعيين مسؤول (شركة فيها موظف واحد لكل دور)."
+            "قم بصياغة التقرير الإداري باللغة العربية بأسلوب احترافي جداً، واستخدم وسوم HTML بسيطة فقط للتنسيق (<p>, <strong>, <ul>, <li>, <h4>) بناءً على الهيكلية التالية:\n\n"
+            "<h4>1. تفصيل العمل والإنجازات حسب المشاريع:</h4>\n"
+            "قم بالمرور على كل مشروع موجود في البيانات بشكل مستقل، واذكر اسم المشروع، والتاسكات التابعة له، واشرح 'بالتفصيل وبناءً على النوتات المكتوبة من الموظف والتايمشيت' شو سوى الموظف في هذا المشروع بالضبط وما هي طبيعة الأعمال التي أنجزها. لا تدمج المشاريع.\n\n"
+            "<h4>2. تحليل نوتات الموظف وجودة التحديث:</h4>\n"
+            "حلل جودة النوتات والتعليقات التي يتركها الموظف على السيستم (هل هي واضحة وتفصيلية وتشرح سير العمل بشكل كافٍ للمدير، أم أنها مقتضبة؟) وقيم مستوى توثيقه لشغله (قوي / متوسط / ضعيف).\n\n"
+            "<h4>3. الخطوات القادمة والأعمال المعلقة:</h4>\n"
+            "بناءً على الأنشطة المجدولة أو طبيعة المشاريع المفتوحة، ما هي الخطوات القادمة المطلوبة من هذا الموظف في الأيام القادمة؟\n\n"
+            "<h4>4. توصيات ونقاط عملية للمدير:</h4>\n"
+            "اكتب من 3 إلى 5 نقاط أو توصيات ملموسة ومباشرة لمدير الشركة لتحسين إنتاجية هذا الموظف أو لمتابعة نقاط حرجة في مشاريع معينة بناءً على البيانات أعلاه.\n\n"
+            "ملاحظة هامة وقاعدة ذهبية: اعتمد فقط وفقط على البيانات والنوتات المرفقة أمامك في النص. إذا كانت النوتات غنية، لخص تفاصيلها بذكاء دون إهمال لأسماء المشاريع والتفاصيل الفنية."
             % (name, days, domain_label, kpis, ', '.join(flags) if flags else 'لا يوجد', digest_text)
         )
         try:
             client = genai.Client(api_key=key)
             resp = client.models.generate_content(
                 model=model, contents=prompt,
-                config=types.GenerateContentConfig(temperature=0.2))
+                config=types.GenerateContentConfig(temperature=0.2)) # تقليل الـ temperature لزيادة دقة الالتزام بالبيانات ومنع التخيل
             text = (getattr(resp, 'text', '') or '').strip()
             if not text:
                 for cand in (getattr(resp, 'candidates', None) or []):
@@ -574,10 +499,10 @@ class KhalesAiReport(models.AbstractModel):
                         text = '\n'.join(chunks).strip()
                         break
             if not text:
-                text = '<p style="color:#999;">فشل استرجاع التحليل من الـ AI.</p>'
+                text = '<p style="color:#999;">فشل النظام في استرجاع التحليل من الـ AI.</p>'
         except Exception as e:
-            _logger.exception('KH_REPORT: Gemini failed')
-            return box + ttl + '<div style="color:#922;">⚠️ فشل التحليل: %s</div></div>' % str(e)[:200]
+            _logger.exception('KH_REPORT: Gemini connection failed')
+            return box + ttl + '<div style="color:#922;">⚠️ فشل التحليل التلقائي: %s</div></div>' % str(e)[:200]
         return box + ttl + '<div style="font-size:13px;line-height:1.7;color:#333;">%s</div></div>' % text
 
     def _finalize(self, title, html):
