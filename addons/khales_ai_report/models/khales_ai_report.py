@@ -176,6 +176,7 @@ class KhalesAiReport(models.AbstractModel):
                     % self._fmt(loose))
                 digest.append('  وقت عام بدون تاسك: %.2f س' % loose)
 
+            # ---- أكتفيتيز مفتوحة على المشروع ----
             pacts = env['mail.activity'].sudo().search([
                 ('res_model', '=', 'project.project'), ('res_id', '=', pid), ('user_id', '=', uid)])
             pa_html = ''
@@ -186,13 +187,43 @@ class KhalesAiReport(models.AbstractModel):
                 if over:
                     flags.append('أكتفيتي متأخّرة على المشروع "%s"' % pname[:30])
                 summ = a.summary or (a.activity_type_id.name if a.activity_type_id else 'بدون عنوان')
-                pa_html += '<li><span style="%s">[%s]</span> %s (%s)</li>' % (clr, tag, summ, a.date_deadline or '-')
-                digest.append('  أكتفيتي على المشروع: %s (موعد %s)%s' % (summ, a.date_deadline or '-', ' [متأخرة]' if over else ''))
-            if not pa_html:
+                pa_html += ('<li style="padding:3px 0;"><span style="%s">[%s]</span> %s (موعد: %s)</li>'
+                            % (clr, tag, summ, a.date_deadline or '-'))
+                digest.append('  🔔 أكتفيتي مجدولة على المشروع: %s (موعد %s)%s'
+                              % (summ, a.date_deadline or '-', ' [متأخرة]' if over else ''))
+
+            # ---- Log Notes + إنجازات الأكتفيتيز على المشروع نفسه ----
+            proj_logs = env['mail.message'].sudo().search([
+                ('model', '=', 'project.project'),
+                ('res_id', '=', pid),
+                ('author_id', '=', partner_id),
+                ('date', '>=', date_from_str),
+                ('message_type', 'in', ['comment', 'email']),
+            ], order='date desc', limit=20)
+            proj_log_html = ''
+            for m in proj_logs:
+                body_txt = html2plaintext(m.body or '').strip()
+                subj_txt = (m.subject or '').strip()
+                content = body_txt or subj_txt
+                if not content:
+                    continue
+                msg_date = str(m.date)[:16]
+                proj_log_html += ('<li style="margin:4px 0;padding:5px 8px;background:#f0f4ff;'
+                                  'border-right:3px solid #3498DB;border-radius:4px;">'
+                                  '<span style="font-size:10px;color:#999;">%s</span><br>'
+                                  '<span style="font-size:12px;">%s</span></li>'
+                                  % (msg_date, self._clip(content, 400).replace('\n', '<br>')))
+                digest.append('  📝 log على المشروع (%s): %s' % (msg_date, self._clip(content, 400)))
+
+            if not pa_html and not proj_log_html:
                 pa_html = '<li style="color:#bbb;">لا يوجد</li>'
-            project_level_html = ('<div style="background:#eef2f7;border-radius:6px;padding:6px 10px;margin-bottom:8px;">'
-                '<div style="font-size:12px;color:#2C3E50;font-weight:bold;">🔔 أكتفيتيز على المشروع نفسه:</div>'
-                '<ul style="margin:3px 0;padding-right:18px;font-size:12px;">%s</ul></div>' % pa_html)
+
+            project_level_html = (
+                '<div style="background:#eef2f7;border-radius:6px;padding:8px 10px;margin-bottom:8px;">'
+                '<div style="font-size:12px;color:#2C3E50;font-weight:bold;margin-bottom:4px;">📋 نشاط على المشروع:</div>'
+                '<ul style="margin:3px 0;padding-right:18px;font-size:12px;">%s%s</ul></div>'
+                % (pa_html, proj_log_html)
+            )
 
             tasks_html = ''
             for t in proj_tasks:
