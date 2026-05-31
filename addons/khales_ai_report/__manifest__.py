@@ -6,5 +6,5 @@
     'category': 'Human Resources',
     'depends': ['project', 'hr_timesheet', 'mail'],
     'installable': True,
-    'application': False,
+    'application': True,
 }
