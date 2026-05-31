@@ -260,9 +260,22 @@ class KhalesAiReport(models.AbstractModel):
         # ========== مجال القانون (x_reports) ==========
         legal_html, legal_count = '', 0
         try:
-            cases = env['x_reports'].sudo().search(
-                ['|', ('x_studio_user_id', '=', uid), ('create_uid', '=', uid)],
-                order='write_date desc', limit=50)
+            # القضايا اللي الموظف كتب فيها رسالة خلال فترة التقرير
+            active_case_ids = set(env['mail.message'].sudo().search([
+                ('model', '=', 'x_reports'),
+                ('date', '>=', date_from_str),
+                ('author_id', '=', partner_id),
+            ]).mapped('res_id'))
+            # + القضايا اللي أنشأها خلال فترة التقرير
+            domain = ['|', ('x_studio_user_id', '=', uid), ('create_uid', '=', uid)]
+            if active_case_ids:
+                domain = ['&',
+                          '|', ('id', 'in', list(active_case_ids)),
+                               ('create_date', '>=', date_from_str),
+                          ] + domain
+            else:
+                domain = ['&', ('create_date', '>=', date_from_str)] + domain
+            cases = env['x_reports'].sudo().search(domain, order='write_date desc', limit=50)
             legal_count = len(cases)
             if cases:
                 digest.append('--- قضايا/عقود قانونية (%d) ---' % legal_count)
