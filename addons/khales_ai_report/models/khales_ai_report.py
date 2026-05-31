@@ -267,47 +267,52 @@ class KhalesAiReport(models.AbstractModel):
             if cases:
                 digest.append('--- قضايا/عقود قانونية (%d) ---' % legal_count)
                 cases_html = ''
+                # نحضّر قائمة كل حقول HTML في الموديل مرة واحدة (نفس نهج ai_override.py)
+                html_field_names = env['ir.model.fields'].sudo().search_read(
+                    [('model', '=', 'x_reports'), ('ttype', '=', 'html')],
+                    ['name']
+                )
+                html_field_names = [f['name'] for f in html_field_names]
+
                 for c in cases:
                     try:
-                        # ---- بيانات القضية الأساسية ----
-                        cname = c.x_name or 'بدون عنوان'
-                        stage = c.x_studio_stage_id.name if c.x_studio_stage_id else '-'
-                        ctype = c.x_studio_type or '-'
-                        cval_m = c.x_studio_value
-                        cval_c = c.x_studio_contract_value or ''
-                        cval = ('%s %s' % (cval_m, c.x_studio_currency_id.name if c.x_studio_currency_id else '')).strip() if cval_m else (cval_c or '-')
-                        cdate = str(c.x_studio_date) if c.x_studio_date else '-'
-                        cend  = str(c.x_studio_date_stop)[:10] if c.x_studio_date_stop else '-'
-                        resp  = c.x_studio_user_id.name if c.x_studio_user_id else 'غير محدد'
+                        # ---- _val() helper مثل ai_override.py تماماً ----
+                        def _val(field):
+                            try:
+                                v = c[field]
+                                if hasattr(v, 'name'):
+                                    return v.name or ''
+                                if hasattr(v, 'display_name'):
+                                    return v.display_name or ''
+                                return str(v) if v not in (False, None, 0, 0.0) else ''
+                            except Exception:
+                                return ''
+
+                        cname = _val('x_name') or 'بدون عنوان'
+                        stage = _val('x_studio_stage_id')
+                        ctype = _val('x_studio_type')
+                        cval  = _val('x_studio_value') or _val('x_studio_contract_value') or '-'
+                        cdate = _val('x_studio_date')
+                        cend  = _val('x_studio_date_stop') or '-'
+                        resp  = _val('x_studio_user_id') or 'غير محدد'
 
                         digest.append('\n=== قضية/عقد: %s ===' % cname)
                         digest.append('النوع: %s | المرحلة: %s | القيمة: %s | تاريخ: %s | تاريخ الانتهاء: %s | المسؤول: %s'
-                                      % (ctype, stage, cval, cdate, cend, resp))
+                                      % (ctype or '-', stage or '-', cval, cdate or '-', cend, resp))
 
-                        # ---- التفاصيل: نجمع كل حقول HTML/Text في السجل ----
-                        # x_studio_notes قد يكون فاضياً — Studio يولّد أسماء عشوائية مثل x_studio_html_field_xxx
+                        # ---- التفاصيل: كل حقول HTML (x_studio_notes + كل html field آخر) ----
+                        # ai_override.py يقرأ x_studio_notes فقط، لكن Studio قد يولّد اسم عشوائي
                         all_text_parts = []
-                        for fname in c._fields:
-                            if not fname.startswith('x_'):
-                                continue
-                            ftype = c._fields[fname].type
-                            if ftype not in ('html', 'text', 'char'):
-                                continue
+                        for fname in html_field_names:
                             try:
-                                val = c[fname]
-                                if not val or val is False:
-                                    continue
-                                txt = html2plaintext(val).strip() if ftype == 'html' else str(val).strip()
-                                # تجاهل القيم القصيرة جداً أو اللي هي اسم الموديل نفسه
-                                if len(txt) > 20 and fname not in ('x_name', 'x_studio_type',
-                                                                    'x_studio_partner_email',
-                                                                    'x_studio_partner_phone',
-                                                                    'x_studio_plot_number',
-                                                                    'x_studio_contract_value'):
-                                    all_text_parts.append(txt)
+                                raw_val = c[fname]
+                                if raw_val:
+                                    txt = html2plaintext(str(raw_val)).strip()
+                                    if txt and len(txt) > 15:
+                                        all_text_parts.append(txt)
                             except Exception:
                                 continue
-                        notes_raw = '\n'.join(all_text_parts).strip()
+                        notes_raw = '\n---\n'.join(all_text_parts).strip()
                         notes_display = self._clip(notes_raw, 1200)
                         notes_block = ''
                         if notes_display:
@@ -317,10 +322,10 @@ class KhalesAiReport(models.AbstractModel):
                                            + notes_display.replace('\n', '<br>') + '</div>')
                             digest.append('   📝 تفاصيل القضية:\n%s' % notes_raw)
 
-                        # ---- الشاتر: بحث مباشر بـ res_id (أضمن من c.message_ids) ----
+                        # ---- الشاتر: نفس نهج ai_override.py بالضبط ----
                         all_msgs = env['mail.message'].sudo().search([
-                            ('res_id', '=', c.id),
-                            ('model', '=', 'x_reports'),
+                            ('model',  '=',  'x_reports'),
+                            ('res_id', '=',  c.id),
                             ('message_type', 'in', ['comment', 'email', 'notification']),
                         ], order='date desc', limit=30)
 
