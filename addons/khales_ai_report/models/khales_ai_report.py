@@ -55,10 +55,10 @@ class KhalesAiReport(models.AbstractModel):
             return False
         section, _ = self._build_user_section(user, days)
         wrapper = ('<div dir="rtl" style="font-family:sans-serif;padding:10px;">'
-                   '<h2 style="color:#714B67;">📊 تقرير توثيق %s</h2>'
+                   '<h2 style="color:#714B67;">📊 تقرير مهام %s</h2>'
                    '<p style="color:#666;">آخر %d يوم</p>%s</div>'
                    % (user.name, days, section))
-        return self._finalize('📊 تقرير توثيق %s - %s' % (user.name, datetime.date.today()), wrapper)
+        return self._finalize('📊 تقرير مهام %s - %s' % (user.name, datetime.date.today()), wrapper)
 
     def generate_all(self, days=30):
         ICP = self.env['ir.config_parameter'].sudo()
