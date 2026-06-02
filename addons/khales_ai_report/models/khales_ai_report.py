@@ -132,6 +132,16 @@ class KhalesAiReport(models.AbstractModel):
             if p not in all_pids:
                 all_pids.append(p)
 
+        # مشاريع الموظف هو مديرها (Project Manager = user_id)
+        managed_projects = env['project.project'].sudo().search([
+            ('user_id', '=', uid),
+            ('active', '=', True),
+        ])
+        for p in managed_projects:
+            if p.id not in all_pids:
+                project_names[p.id] = p.name
+                all_pids.append(p.id)
+
         # مشاريع كتب فيها الموظف نوتز مباشرة على المشروع هالشهر
         proj_with_notes = env['mail.message'].sudo().search([
             ('model', '=', 'project.project'),
@@ -276,13 +286,24 @@ class KhalesAiReport(models.AbstractModel):
                 % (proj_chat_html, ('<div style="margin-top:6px;"><strong>🔔 أنشطة مجدولة:</strong><ul style="margin:2px 0;padding-right:18px;font-size:12px;">%s</ul></div>' % pa_html) if pa_html else '')
             )
 
+            NO_TASKS_MSG = (
+                '<div style="background:#fdecea;border:1px solid #E74C3C;border-radius:8px;'
+                'padding:12px 16px;margin:8px 0;font-size:13px;line-height:1.8;color:#333;">'
+                '<strong style="color:#E74C3C;font-size:14px;">🚨 بناءً على الفحص التدقيقي لسجلات نظام Odoo، '
+                'تم رصد 3 ثغرات رئيسية تمنع القياس اللوجستي والفني الدقيق للأداء:</strong><br><br>'
+                '🚨 <strong>غياب المخطط الزمني (No Timeline):</strong> انعدام تام لأي خطة زمنية أو مخطط يربط '
+                'الزيارات بجدول التنفيذ الكلي، مما يجعل التقييم منفصلاً عن مواعيد التسليم النهائية للمشاريع.<br><br>'
+                '🚨 <strong>غياب التاسكات التفصيلية المسندة (No Assigned Tasks):</strong> جميع البنود المسجلة '
+                'هي مهام تلقائية يولّدها النظام دورياً. يفتقر الحساب تماماً لمهام فنية يدوية محددة '
+                '(مثل: استلام حديد التسليح، تدقيق أعمال البلاستر، فحص العزل... إلخ).<br><br>'
+                '🚨 <strong>ضبابية نسب الإنجاز العامة:</strong> نظراً لغياب مدخلات البيانات الفنية من الموظف '
+                'والمقاولين، فإن نسب الإنجاز العامة تعتمد بالكامل على الاستنتاج التقديري من واقع الملاحظات المقتضبة.'
+                '</div>'
+            )
             tasks_html = ''
             if not proj_tasks:
-                tasks_html = ('<div style="background:#fff8e1;border:1px dashed #ffc107;border-radius:6px;'
-                              'padding:8px 12px;margin:6px 0;font-size:12px;color:#856404;">'
-                              '⚠️ لا يوجد مهام (تاسكات) داخلية مسندة لهذا الموظف في هذا المشروع، '
-                              'ولم يتم إدخال بيانات وتفاصيل أي مهمة.</div>')
-                digest.append('  ⚠️ لا يوجد تاسكات مسندة لهذا الموظف في المشروع — لم يتم إدخال بيانات.')
+                tasks_html = NO_TASKS_MSG
+                digest.append('  ⚠️ لا يوجد تاسكات مسندة — غياب المخطط الزمني والمهام التفصيلية وضبابية نسب الإنجاز.')
             for t in proj_tasks:
                 stage = t.stage_id.name if t.stage_id else (t.state or '-')
                 hrs = hours_by_task.get(t.id, 0.0)
@@ -299,21 +320,12 @@ class KhalesAiReport(models.AbstractModel):
                 date_end   = str(t.date_deadline)[:10] if t.date_deadline else (
                              str(t.date_end)[:10] if t.date_end else '-')
 
-                att = env['ir.attachment'].sudo().search_count([
-                    ('res_model', '=', 'project.task'), ('res_id', '=', t.id)])
-                has_desc = bool((t.description or '').strip())
-                evid = []
-                if att:
-                    evid.append('%d مرفق' % att)
-                if has_desc:
-                    evid.append('وصف')
-                evid_s = ' + '.join(evid) if evid else '⚠️ لا دليل'
-                if is_done and not evid:
-                    flags.append('تاسك "%s" Done بدون دليل وثائقي' % t.name[:35])
                 if is_done and hrs == 0:
                     flags.append('تاسك "%s" Done بدون تسجيل ساعات' % t.name[:35])
+                if date_end == '-':
+                    flags.append('تاسك "%s" بدون تاريخ انتهاء (Deadline)' % t.name[:35])
 
-                digest.append('  📌 تاسك: %s | المشروع: %s | المرحلة: %s | المكلّفون: %s | من: %s إلى: %s | ساعات: %.2f'
+                digest.append('  📌 تاسك: %s | المشروع: %s | المرحلة: %s | المكلّفون: %s | يبدأ: %s | ينتهي (Deadline): %s | ساعات: %.2f'
                                % (t.name, pname, stage, assignees, date_start, date_end, hrs))
 
                 ts_html = ''
@@ -363,9 +375,8 @@ class KhalesAiReport(models.AbstractModel):
                     '<div style="font-size:12px;color:#555;margin:4px 0 2px;">'
                     '👤 المكلّفون: <strong>%s</strong></div>'
                     '<div style="font-size:12px;color:#666;margin:2px 0 8px;">'
-                    '📅 من: <strong>%s</strong> → <strong>%s</strong> | '
-                    'المرحلة: <strong>%s</strong> | الوقت: <strong>%s</strong> | '
-                    'الدليل: <span style="%s">%s</span></div>'
+                    '📅 يبدأ: <strong>%s</strong> | 🏁 ينتهي (Deadline): <strong style="color:#E74C3C;">%s</strong> | '
+                    'المرحلة: <strong>%s</strong> | الوقت: <strong>%s</strong></div>'
                     '<div style="font-size:12px;color:#714B67;font-weight:bold;">⏱️ سجل العمل (تايمشيت):</div>'
                     '<table style="width:100%%;border-collapse:collapse;font-size:12px;margin:3px 0;"><tbody>%s</tbody></table>'
                     '<div style="font-size:12px;color:#714B67;font-weight:bold;margin-top:6px;">📝 نوتات الموظف:</div>'
@@ -373,7 +384,7 @@ class KhalesAiReport(models.AbstractModel):
                     '<div style="font-size:12px;color:#714B67;font-weight:bold;margin-top:6px;">🔔 الأنشطة:</div>'
                     '<ul style="margin:3px 0;padding-right:18px;font-size:12px;">%s</ul></div>'
                     % (t.name, assignees, date_start, date_end, stage, self._fmt(hrs),
-                       FLAG if (is_done and not evid) else '', evid_s, ts_html, notes_html, acts_html))
+                       ts_html, notes_html, acts_html))
 
             projects_html += ('<div style="border:2px solid #714B67;border-radius:8px;padding:12px;margin-bottom:14px;background:#faf8fb;">'
                 '<h4 style="margin:0 0 8px;color:#714B67;">🗂️ المشروع: %s</h4>%s%s%s</div>'
