@@ -277,12 +277,28 @@ class KhalesAiReport(models.AbstractModel):
             )
 
             tasks_html = ''
+            if not proj_tasks:
+                tasks_html = ('<div style="background:#fff8e1;border:1px dashed #ffc107;border-radius:6px;'
+                              'padding:8px 12px;margin:6px 0;font-size:12px;color:#856404;">'
+                              '⚠️ لا يوجد مهام (تاسكات) داخلية مسندة لهذا الموظف في هذا المشروع، '
+                              'ولم يتم إدخال بيانات وتفاصيل أي مهمة.</div>')
+                digest.append('  ⚠️ لا يوجد تاسكات مسندة لهذا الموظف في المشروع — لم يتم إدخال بيانات.')
             for t in proj_tasks:
                 stage = t.stage_id.name if t.stage_id else (t.state or '-')
                 hrs = hours_by_task.get(t.id, 0.0)
                 is_done = (t.state == '1_done') or (t.stage_id and 'done' in (t.stage_id.name or '').lower())
                 if is_done:
                     done_count += 1
+
+                # المكلّفون بالتاسك
+                assignees = ', '.join(t.user_ids.mapped('name')) if t.user_ids else '⚠️ غير محدد'
+
+                # التواريخ المخططة
+                date_start = str(t.planned_date_begin)[:10] if t.planned_date_begin else (
+                             str(t.planned_date_start)[:10] if t.planned_date_start else '-')
+                date_end   = str(t.date_deadline)[:10] if t.date_deadline else (
+                             str(t.date_end)[:10] if t.date_end else '-')
+
                 att = env['ir.attachment'].sudo().search_count([
                     ('res_model', '=', 'project.task'), ('res_id', '=', t.id)])
                 has_desc = bool((t.description or '').strip())
@@ -296,20 +312,20 @@ class KhalesAiReport(models.AbstractModel):
                     flags.append('تاسك "%s" Done بدون دليل وثائقي' % t.name[:35])
                 if is_done and hrs == 0:
                     flags.append('تاسك "%s" Done بدون تسجيل ساعات' % t.name[:35])
-                
-                # إرسال بيانات التاسك بالتفصيل للـ AI دايجست
-                digest.append('  📌 تاسك: %s | المرحلة: %s | إجمالي الساعات: %.2f' % (t.name, stage, hrs))
+
+                digest.append('  📌 تاسك: %s | المشروع: %s | المرحلة: %s | المكلّفون: %s | من: %s إلى: %s | ساعات: %.2f'
+                               % (t.name, pname, stage, assignees, date_start, date_end, hrs))
 
                 ts_html = ''
                 for ln in lines_by_task.get(t.id, []):
                     dd = (ln.name or '').strip() or '⚠️ بدون وصف'
                     ts_html += '<tr><td style="%s">%s</td><td style="%s">%s</td><td style="%s">%s</td></tr>' % (
                         TC, ln.date, TD, dd, TC, self._fmt(ln.unit_amount or 0.0))
-                    digest.append('      ⏱️ تايمشيت بتاريخ %s: %s (%s س)' % (ln.date, dd, ln.unit_amount or 0.0))
+                    digest.append('      ⏱️ تايمشيت %s: %s (%.2fس)' % (ln.date, dd, ln.unit_amount or 0.0))
                 if not ts_html:
                     ts_html = '<tr><td colspan="3" style="%s color:#999;">لا يوجد تايمشيت</td></tr>' % TC
 
-                # جلب نوتات الموظف (التعليقات اليدوية في الشاتير) وهي الأهم للتقرير التفصيلي
+                # نوتات الموظف على التاسك
                 tnotes = env['mail.message'].sudo().search([
                     ('model', '=', 'project.task'), ('res_id', '=', t.id),
                     ('author_id', '=', partner_id), ('message_type', '=', 'comment')],
@@ -319,8 +335,9 @@ class KhalesAiReport(models.AbstractModel):
                     txt = html2plaintext(m.body or '').strip()
                     if not txt:
                         continue
-                    notes_html += '<li style="color:#444;">%s <span style="font-size:10px;color:#999;">(%s)</span></li>' % (self._clip(txt, 300), str(m.date)[:16])
-                    # كتابة النوتة بالتفصيل في الـ Digest ليقرأها الجيمني ويعرف شو مسوي الموظف بالضبط
+                    notes_html += ('<li style="color:#444;">%s '
+                                   '<span style="font-size:10px;color:#999;">(%s)</span></li>'
+                                   % (self._clip(txt, 300), str(m.date)[:16]))
                     digest.append('      📝 نوت كتبها الموظف (%s): %s' % (str(m.date)[:16], txt))
                 if not notes_html:
                     notes_html = '<li style="color:#bbb;">لا يوجد نوتات مسجلة من الموظف</li>'
@@ -336,21 +353,26 @@ class KhalesAiReport(models.AbstractModel):
                         flags.append('أكتفيتي متأخّرة على تاسك "%s"' % t.name[:30])
                     summ = a.summary or (a.activity_type_id.name if a.activity_type_id else 'بدون عنوان')
                     acts_html += '<li><span style="%s">[%s]</span> %s (%s)</li>' % (clr, tag, summ, a.date_deadline or '-')
-                    digest.append('      🔔 أكتفيتي مجدولة: %s (موعد %s)%s' % (summ, a.date_deadline or '-', ' [متأخرة]' if over else ''))
+                    digest.append('      🔔 أكتفيتي: %s (موعد %s)%s' % (summ, a.date_deadline or '-', ' [متأخرة]' if over else ''))
                 if not acts_html:
                     acts_html = '<li style="color:#bbb;">لا يوجد</li>'
 
-                tasks_html += ('<div style="border:1px solid #ddd;border-radius:6px;padding:10px;margin:8px 0;background:#fff;">'
+                tasks_html += (
+                    '<div style="border:1px solid #ddd;border-radius:6px;padding:10px;margin:8px 0;background:#fff;">'
                     '<div style="font-weight:bold;color:#2C3E50;font-size:14px;">📌 %s</div>'
-                    '<div style="font-size:12px;color:#666;margin:4px 0 8px;">المرحلة: <strong>%s</strong> | '
-                    'الموعد: %s | الوقت: <strong>%s</strong> | الدليل: <span style="%s">%s</span></div>'
+                    '<div style="font-size:12px;color:#555;margin:4px 0 2px;">'
+                    '👤 المكلّفون: <strong>%s</strong></div>'
+                    '<div style="font-size:12px;color:#666;margin:2px 0 8px;">'
+                    '📅 من: <strong>%s</strong> → <strong>%s</strong> | '
+                    'المرحلة: <strong>%s</strong> | الوقت: <strong>%s</strong> | '
+                    'الدليل: <span style="%s">%s</span></div>'
                     '<div style="font-size:12px;color:#714B67;font-weight:bold;">⏱️ سجل العمل (تايمشيت):</div>'
                     '<table style="width:100%%;border-collapse:collapse;font-size:12px;margin:3px 0;"><tbody>%s</tbody></table>'
-                    '<div style="font-size:12px;color:#714B67;font-weight:bold;margin-top:6px;">📝 نوتات الموظف وتحديثاته:</div>'
+                    '<div style="font-size:12px;color:#714B67;font-weight:bold;margin-top:6px;">📝 نوتات الموظف:</div>'
                     '<ul style="margin:3px 0;padding-right:18px;font-size:12px;">%s</ul>'
-                    '<div style="font-size:12px;color:#714B67;font-weight:bold;margin-top:6px;">🔔 الأنشطة المتبقية:</div>'
+                    '<div style="font-size:12px;color:#714B67;font-weight:bold;margin-top:6px;">🔔 الأنشطة:</div>'
                     '<ul style="margin:3px 0;padding-right:18px;font-size:12px;">%s</ul></div>'
-                    % (t.name, stage, t.date_deadline or '-', self._fmt(hrs),
+                    % (t.name, assignees, date_start, date_end, stage, self._fmt(hrs),
                        FLAG if (is_done and not evid) else '', evid_s, ts_html, notes_html, acts_html))
 
             projects_html += ('<div style="border:2px solid #714B67;border-radius:8px;padding:12px;margin-bottom:14px;background:#faf8fb;">'
