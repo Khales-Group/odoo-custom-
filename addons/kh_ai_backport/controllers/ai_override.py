@@ -1277,17 +1277,10 @@ class AIControllerOverride(AIController):
                 src_msg = env['mail.message'].sudo().browse(int(mail_message_id))
                 if src_msg.exists() and src_msg.attachment_ids:
                     for att in src_msg.attachment_ids:
-                        datas = att.datas
-                        if not datas and att.raw:
-                            datas = base64.b64encode(att.raw)
-                        if datas:
-                            env['ir.attachment'].sudo().create({
-                                'name': att.name or 'scanned_document',
-                                'datas': datas,
-                                'mimetype': att.mimetype or 'application/octet-stream',
-                                'res_model': 'account.move',
-                                'res_id': new_move.id,
-                            })
+                        att.sudo().copy({
+                            'res_model': 'account.move',
+                            'res_id': new_move.id,
+                        })
             except Exception:
                 _logger.exception("KH_AI: failed to attach source document to invoice %s", new_move.id)
 
