@@ -1298,7 +1298,21 @@ class AIControllerOverride(AIController):
             else f"تم إنشاء {new_move.name}{company_label} — الإجمالي: {_fmt_money(new_move.amount_total, lang)}"
         )
         msg = args.get('message_to_user', default_msg)
-        self._post_message(f"{AGENT_PERSONA}: ✅ {msg}", mail_message_id)
+
+        open_label = "Open Invoice" if lang == 'en' else "افتح الفاتورة"
+        link = (
+            f'<br/><a href="/odoo/accounting/customer-invoices/{new_move.id}" target="_blank" '
+            f'style="display:inline-block;margin-top:8px;padding:6px 14px;background:#017E84;'
+            f'color:#fff;border-radius:4px;text-decoration:none;font-weight:bold">'
+            f'📄 {open_label}</a>'
+        ) if move_type == 'out_invoice' else (
+            f'<br/><a href="/odoo/accounting/vendor-bills/{new_move.id}" target="_blank" '
+            f'style="display:inline-block;margin-top:8px;padding:6px 14px;background:#017E84;'
+            f'color:#fff;border-radius:4px;text-decoration:none;font-weight:bold">'
+            f'📄 {open_label}</a>'
+        )
+
+        self._post_message(f"{AGENT_PERSONA}: ✅ {msg}{link}", mail_message_id)
 
         return {
             'type': 'ir.actions.act_window',
