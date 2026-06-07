@@ -336,7 +336,7 @@ When the user uploads an image or PDF of an invoice or bill (even without saying
 → AUTOMATICALLY call ai_create_invoice — do NOT ask for confirmation first.
 → Determine move_type: 'in_invoice' if it's a vendor bill/supplier invoice, 'out_invoice' if it's a sales invoice issued by us.
 → Extract: partner_name (vendor or customer), invoice_date (YYYY-MM-DD), all line items (description, quantity, unit price).
-→ company_name = the Khales Group subsidiary or company that RECEIVED the bill (for in_invoice) or ISSUED the invoice (for out_invoice). Look for it in the document header/footer/billing address.
+→ The company will be set automatically from the user's currently selected Odoo company.
 → The source file will be automatically attached to the created invoice.
 
 ### WRITE (explicit commands only):
@@ -490,16 +490,6 @@ def _build_tools() -> "types.Tool":
                 "partner_name": types.Schema(type=types.Type.STRING, description="Vendor name (for bill) or customer name (for invoice)"),
                 "partner_vat":  types.Schema(type=types.Type.STRING, description="UAE TRN (Tax Registration Number)"),
                 "invoice_date": types.Schema(type=types.Type.STRING, description="YYYY-MM-DD"),
-                "company_name": types.Schema(
-                    type=types.Type.STRING,
-                    description=(
-                        "The Odoo internal company that owns this document. "
-                        "For in_invoice (bill): the company that RECEIVED the bill. "
-                        "For out_invoice: the company that ISSUED the invoice. "
-                        "Extract from the document header/footer/billing address. "
-                        "E.g. 'Khales Group', 'Khales Real Estate', etc. Leave empty if not found."
-                    )
-                ),
                 "lines": types.Schema(
                     type=types.Type.ARRAY,
                     items=types.Schema(
@@ -1249,27 +1239,21 @@ class AIControllerOverride(AIController):
                 'account_id': account.id if account else False,
             }))
 
-        # Detect target company from company_name arg
-        company_name = (args.get('company_name') or '').strip()
-        target_company = None
-        if company_name:
-            companies = env['res.company'].sudo().search([])
-            cn_lower = company_name.lower()
-            for c in companies:
-                if c.name.lower() in cn_lower or cn_lower in c.name.lower():
-                    target_company = c
-                    break
+        # Use the company the user currently has selected in the Odoo UI
+        # allowed_company_ids[0] is always the active company from the company switcher
+        allowed_ids = request.env.context.get('allowed_company_ids') or []
+        if allowed_ids:
+            user_company = request.env['res.company'].sudo().browse(allowed_ids[0])
+        else:
+            user_company = env.company
 
-        create_vals = {
+        new_move = env['account.move'].sudo().create({
             'move_type':        move_type,
             'partner_id':       partner.id,
             'invoice_date':     invoice_date,
             'invoice_line_ids': invoice_lines,
-        }
-        if target_company:
-            create_vals['company_id'] = target_company.id
-
-        new_move = env['account.move'].sudo().create(create_vals)
+            'company_id':       user_company.id,
+        })
 
         # Copy attachment from source message to the new invoice
         if mail_message_id:
@@ -1284,11 +1268,10 @@ class AIControllerOverride(AIController):
             except Exception:
                 _logger.exception("KH_AI: failed to attach source document to invoice %s", new_move.id)
 
-        company_label = f" [{target_company.name}]" if target_company else ""
         default_msg = (
-            f"{move_type.replace('_', ' ').title()} created: {new_move.name}{company_label} — Total: {_fmt_money(new_move.amount_total, lang)}"
+            f"{move_type.replace('_', ' ').title()} created: {new_move.name} [{user_company.name}] — Total: {_fmt_money(new_move.amount_total, lang)}"
             if lang == 'en'
-            else f"تم إنشاء {new_move.name}{company_label} — الإجمالي: {_fmt_money(new_move.amount_total, lang)}"
+            else f"تم إنشاء {new_move.name} [{user_company.name}] — الإجمالي: {_fmt_money(new_move.amount_total, lang)}"
         )
         msg = args.get('message_to_user', default_msg)
 
