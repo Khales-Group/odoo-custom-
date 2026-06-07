@@ -331,9 +331,17 @@ CONTEXT RULE: The user often refers to a person/project mentioned EARLIER.
 Trigger words: تبعو, تبعها, عليه, عنه, هذا المشروع, it, this project, yes this is it.
 NEVER return empty project_name — scan history.
 
+### INVOICE / BILL SCANNING FROM ATTACHMENT:
+When the user uploads an image or PDF of an invoice or bill (even without saying anything):
+→ AUTOMATICALLY call ai_create_invoice — do NOT ask for confirmation first.
+→ Determine move_type: 'in_invoice' if it's a vendor bill/supplier invoice, 'out_invoice' if it's a sales invoice issued by us.
+→ Extract: partner_name (vendor or customer), invoice_date (YYYY-MM-DD), all line items (description, quantity, unit price).
+→ company_name = the Khales Group subsidiary or company that RECEIVED the bill (for in_invoice) or ISSUED the invoice (for out_invoice). Look for it in the document header/footer/billing address.
+→ The source file will be automatically attached to the created invoice.
+
 ### WRITE (explicit commands only):
 - ai_create_lead        → "أنشئ lead", "create lead"
-- ai_create_invoice     → "أنشئ فاتورة", "create invoice/bill"
+- ai_create_invoice     → "أنشئ فاتورة", "create invoice/bill", upload invoice/bill scan
 - ai_create_bank_stmt   → "أنشئ كشف بنكي", "bank statement"
 - ai_create_rfq         → "أنشئ RFQ", "اطلب من مورد", "طلب تسعير"
 - ai_update_records     → "set account X for all transactions of partner Y",
@@ -471,14 +479,27 @@ def _build_tools() -> "types.Tool":
 
     ai_create_invoice = types.FunctionDeclaration(
         name="ai_create_invoice",
-        description="Create customer invoice (out_invoice) or vendor bill (in_invoice). Amounts in AED.",
+        description=(
+            "Create customer invoice (out_invoice) or vendor bill (in_invoice). Amounts in AED. "
+            "Also triggered automatically when user uploads a scanned invoice/bill image or PDF."
+        ),
         parameters=types.Schema(
             type=types.Type.OBJECT,
             properties={
-                "move_type":       types.Schema(type=types.Type.STRING, description="'out_invoice' or 'in_invoice'"),
-                "partner_name":    types.Schema(type=types.Type.STRING),
-                "partner_vat":     types.Schema(type=types.Type.STRING, description="UAE TRN (Tax Registration Number)"),
-                "invoice_date":    types.Schema(type=types.Type.STRING, description="YYYY-MM-DD"),
+                "move_type":    types.Schema(type=types.Type.STRING, description="'out_invoice' or 'in_invoice'"),
+                "partner_name": types.Schema(type=types.Type.STRING, description="Vendor name (for bill) or customer name (for invoice)"),
+                "partner_vat":  types.Schema(type=types.Type.STRING, description="UAE TRN (Tax Registration Number)"),
+                "invoice_date": types.Schema(type=types.Type.STRING, description="YYYY-MM-DD"),
+                "company_name": types.Schema(
+                    type=types.Type.STRING,
+                    description=(
+                        "The Odoo internal company that owns this document. "
+                        "For in_invoice (bill): the company that RECEIVED the bill. "
+                        "For out_invoice: the company that ISSUED the invoice. "
+                        "Extract from the document header/footer/billing address. "
+                        "E.g. 'Khales Group', 'Khales Real Estate', etc. Leave empty if not found."
+                    )
+                ),
                 "lines": types.Schema(
                     type=types.Type.ARRAY,
                     items=types.Schema(
@@ -1228,16 +1249,54 @@ class AIControllerOverride(AIController):
                 'account_id': account.id if account else False,
             }))
 
-        new_move = env['account.move'].create({
+        # Detect target company from company_name arg
+        company_name = (args.get('company_name') or '').strip()
+        target_company = None
+        if company_name:
+            companies = env['res.company'].sudo().search([])
+            cn_lower = company_name.lower()
+            for c in companies:
+                if c.name.lower() in cn_lower or cn_lower in c.name.lower():
+                    target_company = c
+                    break
+
+        create_vals = {
             'move_type':        move_type,
             'partner_id':       partner.id,
             'invoice_date':     invoice_date,
             'invoice_line_ids': invoice_lines,
-        })
+        }
+        if target_company:
+            create_vals['company_id'] = target_company.id
 
-        default_msg = (f"{move_type.replace('_', ' ').title()} created: {new_move.name} — Total: {_fmt_money(new_move.amount_total, lang)}"
-                       if lang == 'en'
-                       else f"تم إنشاء {new_move.name} — الإجمالي: {_fmt_money(new_move.amount_total, lang)}")
+        new_move = env['account.move'].sudo().create(create_vals)
+
+        # Copy attachment from source message to the new invoice
+        if mail_message_id:
+            try:
+                src_msg = env['mail.message'].sudo().browse(int(mail_message_id))
+                if src_msg.exists() and src_msg.attachment_ids:
+                    for att in src_msg.attachment_ids:
+                        datas = att.datas
+                        if not datas and att.raw:
+                            datas = base64.b64encode(att.raw)
+                        if datas:
+                            env['ir.attachment'].sudo().create({
+                                'name': att.name or 'scanned_document',
+                                'datas': datas,
+                                'mimetype': att.mimetype or 'application/octet-stream',
+                                'res_model': 'account.move',
+                                'res_id': new_move.id,
+                            })
+            except Exception:
+                _logger.exception("KH_AI: failed to attach source document to invoice %s", new_move.id)
+
+        company_label = f" [{target_company.name}]" if target_company else ""
+        default_msg = (
+            f"{move_type.replace('_', ' ').title()} created: {new_move.name}{company_label} — Total: {_fmt_money(new_move.amount_total, lang)}"
+            if lang == 'en'
+            else f"تم إنشاء {new_move.name}{company_label} — الإجمالي: {_fmt_money(new_move.amount_total, lang)}"
+        )
         msg = args.get('message_to_user', default_msg)
         self._post_message(f"{AGENT_PERSONA}: ✅ {msg}", mail_message_id)
 
