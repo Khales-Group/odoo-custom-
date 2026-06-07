@@ -1207,35 +1207,33 @@ class AIControllerOverride(AIController):
         invoice_date = args.get('invoice_date') or fields.Date.today()
         lines_data   = args.get('lines', [])
 
-        # ── Resolve the company the user has selected in the switcher ──
-        # Must happen FIRST so account search and create all use the same company.
-        # We try every source in order of reliability:
-        #   1. HTTP header X-Company-Id (set by some Odoo frontends)
-        #   2. allowed_company_ids from the JSON-RPC context payload
-        #   3. allowed_company_ids from the session cookie
-        #   4. env.company fallback
-        user_company = None
-        try:
-            hdr = request.httprequest.headers.get('X-Company-Id')
-            if hdr and str(hdr).isdigit():
-                user_company = env['res.company'].sudo().browse(int(hdr))
-        except Exception:
-            pass
+        # ── Diagnose all company sources then pick the right one ──
+        ctx_ids   = list(request.env.context.get('allowed_company_ids') or [])
+        sess_ids  = list(request.session.get('allowed_company_ids') or [])
+        env_co    = env.company
+        env_cos   = env.companies
+        user_co   = env.user.company_id
 
-        if not user_company:
-            ctx_ids = request.env.context.get('allowed_company_ids') or []
-            if ctx_ids:
-                user_company = env['res.company'].sudo().browse(ctx_ids[0])
+        _logger.info(
+            "KH_AI COMPANY DEBUG | ctx=%s | session=%s | env.company=%s(%s) "
+            "| env.companies=%s | user.company_id=%s(%s)",
+            ctx_ids, sess_ids,
+            env_co.name, env_co.id,
+            [(c.name, c.id) for c in env_cos],
+            user_co.name, user_co.id,
+        )
 
-        if not user_company:
-            sess_ids = request.session.get('allowed_company_ids') or []
-            if sess_ids:
-                user_company = env['res.company'].sudo().browse(sess_ids[0])
-
-        if not user_company:
-            user_company = env.company
-
-        _logger.info("KH_AI create_invoice: resolved company=%s (id=%s)", user_company.name, user_company.id)
+        # Post debug info directly in chat so the user can see it
+        self._post_message(
+            f"🔍 DEBUG شركة:\n"
+            f"- ctx allowed_company_ids: {ctx_ids}\n"
+            f"- session allowed_company_ids: {sess_ids}\n"
+            f"- env.company: {env_co.name} (id={env_co.id})\n"
+            f"- env.companies: {[(c.name, c.id) for c in env_cos]}\n"
+            f"- user.company_id: {user_co.name} (id={user_co.id})",
+            mail_message_id
+        )
+        return {}  # TEMP: stop here so we can read the debug output
 
         # Find/create partner — auto-assign UAE country if new
         partner = env['res.partner'].search([('name', '=ilike', partner_name)], limit=1)
