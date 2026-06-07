@@ -1207,33 +1207,26 @@ class AIControllerOverride(AIController):
         invoice_date = args.get('invoice_date') or fields.Date.today()
         lines_data   = args.get('lines', [])
 
-        # ── Diagnose all company sources then pick the right one ──
-        ctx_ids   = list(request.env.context.get('allowed_company_ids') or [])
-        sess_ids  = list(request.session.get('allowed_company_ids') or [])
-        env_co    = env.company
-        env_cos   = env.companies
-        user_co   = env.user.company_id
+        # ── Resolve selected company from the 'cids' browser cookie ──
+        # In Odoo 17+, the company switcher stores selected company IDs
+        # in a 'cids' cookie (e.g. "3" or "3,1"). This is the only reliable
+        # source when the AI chat widget doesn't forward allowed_company_ids.
+        user_company = None
+        try:
+            cids_cookie = request.httprequest.cookies.get('cids', '')
+            cid_list = [int(c) for c in cids_cookie.split('-') if c.strip().isdigit()]
+            if not cid_list:
+                cid_list = [int(c) for c in cids_cookie.split(',') if c.strip().isdigit()]
+            if cid_list:
+                user_company = env['res.company'].sudo().browse(cid_list[0])
+                _logger.info("KH_AI: company from cids cookie=%s → %s", cids_cookie, user_company.name)
+        except Exception:
+            pass
 
-        _logger.info(
-            "KH_AI COMPANY DEBUG | ctx=%s | session=%s | env.company=%s(%s) "
-            "| env.companies=%s | user.company_id=%s(%s)",
-            ctx_ids, sess_ids,
-            env_co.name, env_co.id,
-            [(c.name, c.id) for c in env_cos],
-            user_co.name, user_co.id,
-        )
+        if not user_company:
+            user_company = env.company
 
-        # Post debug info directly in chat so the user can see it
-        self._post_message(
-            f"🔍 DEBUG شركة:\n"
-            f"- ctx allowed_company_ids: {ctx_ids}\n"
-            f"- session allowed_company_ids: {sess_ids}\n"
-            f"- env.company: {env_co.name} (id={env_co.id})\n"
-            f"- env.companies: {[(c.name, c.id) for c in env_cos]}\n"
-            f"- user.company_id: {user_co.name} (id={user_co.id})",
-            mail_message_id
-        )
-        return {}  # TEMP: stop here so we can read the debug output
+        _logger.info("KH_AI create_invoice: company=%s (id=%s)", user_company.name, user_company.id)
 
         # Find/create partner — auto-assign UAE country if new
         partner = env['res.partner'].search([('name', '=ilike', partner_name)], limit=1)
