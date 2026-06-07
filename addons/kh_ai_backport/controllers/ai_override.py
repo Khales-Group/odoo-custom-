@@ -1207,6 +1207,36 @@ class AIControllerOverride(AIController):
         invoice_date = args.get('invoice_date') or fields.Date.today()
         lines_data   = args.get('lines', [])
 
+        # ── Resolve the company the user has selected in the switcher ──
+        # Must happen FIRST so account search and create all use the same company.
+        # We try every source in order of reliability:
+        #   1. HTTP header X-Company-Id (set by some Odoo frontends)
+        #   2. allowed_company_ids from the JSON-RPC context payload
+        #   3. allowed_company_ids from the session cookie
+        #   4. env.company fallback
+        user_company = None
+        try:
+            hdr = request.httprequest.headers.get('X-Company-Id')
+            if hdr and str(hdr).isdigit():
+                user_company = env['res.company'].sudo().browse(int(hdr))
+        except Exception:
+            pass
+
+        if not user_company:
+            ctx_ids = request.env.context.get('allowed_company_ids') or []
+            if ctx_ids:
+                user_company = env['res.company'].sudo().browse(ctx_ids[0])
+
+        if not user_company:
+            sess_ids = request.session.get('allowed_company_ids') or []
+            if sess_ids:
+                user_company = env['res.company'].sudo().browse(sess_ids[0])
+
+        if not user_company:
+            user_company = env.company
+
+        _logger.info("KH_AI create_invoice: resolved company=%s (id=%s)", user_company.name, user_company.id)
+
         # Find/create partner — auto-assign UAE country if new
         partner = env['res.partner'].search([('name', '=ilike', partner_name)], limit=1)
         if not partner:
@@ -1218,9 +1248,10 @@ class AIControllerOverride(AIController):
         elif partner_vat and not partner.vat:
             partner.write({'vat': partner_vat})
 
+        # Account must belong to the resolved company
         acc_type = 'expense' if move_type == 'in_invoice' else 'income'
         account = env['account.account'].search(
-            [('account_type', '=', acc_type), ('company_ids', 'in', env.company.id)],
+            [('account_type', '=', acc_type), ('company_ids', 'in', user_company.id)],
             limit=1
         )
 
@@ -1239,16 +1270,7 @@ class AIControllerOverride(AIController):
                 'account_id': account.id if account else False,
             }))
 
-        # Use the company the user has selected in the Odoo company switcher.
-        # request.session['allowed_company_ids'] is written by Odoo when the user
-        # switches company — it is the authoritative source, not env.company.
-        session_company_ids = request.session.get('allowed_company_ids') or []
-        if session_company_ids:
-            user_company = request.env['res.company'].sudo().browse(session_company_ids[0])
-        else:
-            user_company = env.company
-
-        new_move = env['account.move'].sudo().create({
+        new_move = env['account.move'].sudo().with_company(user_company).create({
             'move_type':        move_type,
             'partner_id':       partner.id,
             'invoice_date':     invoice_date,
