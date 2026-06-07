@@ -1239,11 +1239,12 @@ class AIControllerOverride(AIController):
                 'account_id': account.id if account else False,
             }))
 
-        # Use the company the user currently has selected in the Odoo UI
-        # allowed_company_ids[0] is always the active company from the company switcher
-        allowed_ids = request.env.context.get('allowed_company_ids') or []
-        if allowed_ids:
-            user_company = request.env['res.company'].sudo().browse(allowed_ids[0])
+        # Use the company the user has selected in the Odoo company switcher.
+        # request.session['allowed_company_ids'] is written by Odoo when the user
+        # switches company — it is the authoritative source, not env.company.
+        session_company_ids = request.session.get('allowed_company_ids') or []
+        if session_company_ids:
+            user_company = request.env['res.company'].sudo().browse(session_company_ids[0])
         else:
             user_company = env.company
 
