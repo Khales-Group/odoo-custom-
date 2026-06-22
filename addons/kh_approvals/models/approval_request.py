@@ -9,6 +9,11 @@ except ImportError:
 
 _logger = logging.getLogger(__name__)
 
+# ── Majid (CEO) + his delegate: either one approving is enough ──
+MAJID_ID   = 369   # ماجد
+DELEGATE_ID = 409  # المفوّض
+KH_SUPER_APPROVERS = {MAJID_ID, DELEGATE_ID}
+
 
 # ============================================================================
 # Approval Request
@@ -192,12 +197,23 @@ class KhApprovalRequest(models.Model):
 
     @api.depends("approval_line_ids.state", "approval_line_ids.approver_id")
     def _compute_pending_line(self):
+        uid = self.env.user.id
         for rec in self:
-            line = rec.approval_line_ids.filtered(lambda l: l.state == "pending")[:1]
+            pending = rec.approval_line_ids.filtered(lambda l: l.state == "pending")
+            line = pending[:1]
             rec.pending_line_id = line.id if line else False
-            rec.is_current_user_approver = bool(
-                line and line.approver_id.id == rec.env.user.id
-            )
+
+            # Is this user one of the pending approvers directly?
+            is_approver = bool(pending.filtered(lambda l: l.approver_id.id == uid))
+
+            # Super-approver rule: if Majid OR delegate has a pending line,
+            # BOTH of them see the Approve button.
+            if not is_approver and uid in KH_SUPER_APPROVERS:
+                is_approver = bool(
+                    pending.filtered(lambda l: l.approver_id.id in KH_SUPER_APPROVERS)
+                )
+
+            rec.is_current_user_approver = is_approver
 
     # HTML snapshot builder (uses sudo so approvers always see the full sequence)
     def _compute_steps_overview_html(self):
@@ -500,12 +516,30 @@ class KhApprovalRequest(models.Model):
                     })
 
             if vals_list:
+                # Inject delegate line alongside Majid (OR logic pair)
+                delegate_additions = []
+                existing_approvers_by_seq = {}
+                for v in vals_list:
+                    existing_approvers_by_seq.setdefault(v['sequence'], set()).add(v['approver_id'])
+
+                for v in vals_list:
+                    if v['approver_id'] == MAJID_ID:
+                        seq = v['sequence']
+                        if DELEGATE_ID not in existing_approvers_by_seq.get(seq, set()):
+                            delegate_additions.append({
+                                **v,
+                                'approver_id': DELEGATE_ID,
+                                'name': 'مفوّض ماجد (409)',
+                            })
+                            existing_approvers_by_seq.setdefault(seq, set()).add(DELEGATE_ID)
+                vals_list.extend(delegate_additions)
+
                 # 2. Find the lowest sequence number in this new set
                 min_seq = min(v['sequence'] for v in vals_list)
                 for v in vals_list:
                     if v['sequence'] == min_seq:
-                        v['state'] = 'pending' # ONLY the first level is pending
-                
+                        v['state'] = 'pending'  # ONLY the first level is pending
+
                 self.env["kh.approval.line"].sudo().create(vals_list)
 
     # -------------------------------------------------------------------------
@@ -623,6 +657,24 @@ class KhApprovalRequest(models.Model):
             # 2. Approve the found line
             line.write({'state': 'approved'})
             rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid).sudo().action_feedback(feedback="Approved")
+
+            # 2b. Super-approver OR logic: if one of the pair approves,
+            #     auto-approve the other's line and close their activity.
+            if self.env.uid in KH_SUPER_APPROVERS:
+                partner_ids = KH_SUPER_APPROVERS - {self.env.uid}
+                peer_lines = Line.search([
+                    ('request_id', '=', rec.id),
+                    ('sequence', '=', line.sequence),
+                    ('approval_stage', '=', current_stage_filter),
+                    ('approver_id', 'in', list(partner_ids)),
+                    ('state', '=', 'pending'),
+                ])
+                if peer_lines:
+                    peer_lines.write({'state': 'approved', 'note': 'تمت الموافقة تلقائياً (نظام المفوّض)'})
+                    for peer_line in peer_lines:
+                        rec.sudo().activity_ids.filtered(
+                            lambda a: a.user_id.id == peer_line.approver_id.id
+                        ).with_context(activity_mark_as_done=True).sudo().action_done()
 
             # 3. Check for peers at the same sequence IN THIS STAGE
             same_level_pending = Line.search_count([
