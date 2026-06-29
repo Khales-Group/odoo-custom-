@@ -7,7 +7,7 @@
         "Send message" and "Log note" modes.
     -->
     <t t-inherit="mail.Composer" t-inherit-mode="extension">
-        <xpath expr="//button[contains(@class,'o_Composer_sendButton')]" position="before">
+        <xpath expr="//button[contains(@class,'o-mail-Composer-send')]" position="before">
             <div class="o_voice_note_toolbar d-inline-flex align-items-center gap-1 me-1">
 
                 <!-- record button -->
