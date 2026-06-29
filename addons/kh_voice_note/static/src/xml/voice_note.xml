@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <!--
+        Extends the Composer toolbar to add a mic button.
+        Targets the send/log button area so it stays visible in both
+        "Send message" and "Log note" modes.
+    -->
+    <t t-inherit="mail.Composer" t-inherit-mode="extension">
+        <xpath expr="//button[contains(@class,'o_Composer_sendButton')]" position="before">
+            <div class="o_voice_note_toolbar d-inline-flex align-items-center gap-1 me-1">
+
+                <!-- record button -->
+                <button t-if="!voiceState.recording and !voiceState.processing"
+                        t-on-click="onVoiceStart"
+                        class="o_voice_btn btn btn-sm btn-light"
+                        title="تسجيل صوتي (ع/EN)">
+                    <i class="fa fa-microphone"/>
+                </button>
+
+                <!-- stop button (recording in progress) -->
+                <button t-if="voiceState.recording"
+                        t-on-click="onVoiceStop"
+                        class="o_voice_btn o_voice_recording btn btn-sm btn-danger"
+                        title="إيقاف التسجيل">
+                    <i class="fa fa-stop"/>
+                </button>
+
+                <!-- spinner (transcribing) -->
+                <span t-if="voiceState.processing"
+                      class="o_voice_processing d-inline-flex align-items-center gap-1 text-muted small px-2">
+                    <i class="fa fa-spinner fa-spin"/>
+                    <span>جارٍ التحويل…</span>
+                </span>
+
+                <!-- error badge -->
+                <span t-if="voiceState.error"
+                      class="o_voice_error badge text-bg-danger small"
+                      t-esc="voiceState.error"/>
+
+            </div>
+        </xpath>
+    </t>
+
+</templates>
