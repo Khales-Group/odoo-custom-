@@ -78,38 +78,26 @@ patch(Composer.prototype, {
   },
 
   _insertText(text) {
-    const el = this.el;
-    if (!el) return;
-
-    // Simple textarea (log note plain mode)
-    const ta = el.querySelector("textarea");
-    if (ta) {
-      const pos =
-        ta.selectionStart != null ? ta.selectionStart : ta.value.length;
-      const before = ta.value.slice(0, pos);
-      const after = ta.value.slice(pos);
-      const sep = before && !/\s$/.test(before) ? " " : "";
-      ta.value = before + sep + text + after;
-      const newPos = pos + sep.length + text.length;
-      ta.setSelectionRange(newPos, newPos);
-      ta.dispatchEvent(new Event("input", { bubbles: true }));
-      ta.focus();
+    // Primary path: Odoo 19 WYSIWYG editor API (same as addEmoji / canned responses)
+    if (this.editor) {
+      this.editor.shared.dom.insert(text);
+      this.editor.shared.history.addStep();
       return;
     }
 
-    // Richtext / wysiwyg editor
-    const ed = el.querySelector("[contenteditable='true']");
-    if (ed) {
-      ed.focus();
-      const sel = window.getSelection();
-      if (sel && !sel.rangeCount) {
-        const range = document.createRange();
-        range.selectNodeContents(ed);
-        range.collapse(false);
-        sel.removeAllRanges();
-        sel.addRange(range);
-      }
-      document.execCommand("insertText", false, text);
-    }
+    // Fallback: plain textarea (non-WYSIWYG context)
+    const el = this.el;
+    if (!el) return;
+    const ta = el.querySelector("textarea");
+    if (!ta) return;
+    ta.focus();
+    const s = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+    const before = ta.value.slice(0, s);
+    const after = ta.value.slice(s);
+    const sep = before && !/\s$/.test(before) ? " " : "";
+    ta.value = before + sep + text + after;
+    ta.setSelectionRange(s + sep.length + text.length, s + sep.length + text.length);
+    ta.dispatchEvent(new Event("input", { bubbles: true }));
+    ta.focus();
   },
 });
