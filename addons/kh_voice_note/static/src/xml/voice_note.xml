@@ -38,9 +38,9 @@
                       class="o_voice_error badge text-bg-danger small"
                       t-esc="voiceState.error"/>
 
-                <!-- fallback chip: click to insert if auto-insert failed -->
+                <!-- fallback chip: mousedown.prevent keeps editor focus while inserting -->
                 <button t-if="voiceState.lastText and !voiceState.recording and !voiceState.processing"
-                        t-on-click="onInsertLastText"
+                        t-on-mousedown.prevent="onInsertLastText"
                         class="o_voice_chip btn btn-sm btn-outline-secondary"
                         title="اضغط للإدراج في النص">
                     <i class="fa fa-check-circle me-1"/>
