@@ -3,12 +3,11 @@
 import { Composer } from "@mail/core/common/composer";
 import { patch } from "@web/core/utils/patch";
 import { useState } from "@odoo/owl";
-import { useService } from "@web/core/utils/hooks";
+import { rpc } from "@web/core/network/rpc";
 
 patch(Composer.prototype, {
   setup() {
     super.setup();
-    this.rpc = useService("rpc");
     this.voiceState = useState({
       recording: false,
       processing: false,
@@ -61,7 +60,7 @@ patch(Composer.prototype, {
         reader.readAsDataURL(blob);
       });
 
-      const result = await this.rpc("/kh/voice/transcribe", {
+      const result = await rpc("/kh/voice/transcribe", {
         audio_data: base64,
         mime_type: mimeType,
       });
