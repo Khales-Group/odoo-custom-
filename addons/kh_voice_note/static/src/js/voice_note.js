@@ -12,6 +12,7 @@ patch(Composer.prototype, {
       recording: false,
       processing: false,
       error: "",
+      lastText: "", // last transcription — shown as clickable chip if auto-insert fails
     });
     this._mediaRecorder = null;
     this._audioChunks = [];
@@ -19,6 +20,7 @@ patch(Composer.prototype, {
 
   async onVoiceStart() {
     this.voiceState.error = "";
+    this.voiceState.lastText = "";
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       this._audioChunks = [];
@@ -50,6 +52,7 @@ patch(Composer.prototype, {
       this.voiceState.processing = true;
     }
   },
+
   async _processAudio(mimeType) {
     try {
       const blob = new Blob(this._audioChunks, { type: mimeType });
@@ -68,7 +71,10 @@ patch(Composer.prototype, {
       if (result.error) {
         this.voiceState.error = result.error;
       } else if (result.text) {
+        this.voiceState.lastText = result.text;
         this._insertText(result.text);
+      } else {
+        this.voiceState.error = "لم يُكتشف نص";
       }
     } catch {
       this.voiceState.error = "فشل التحويل، حاول مجدداً";
@@ -77,17 +83,67 @@ patch(Composer.prototype, {
     }
   },
 
+  onInsertLastText() {
+    if (this.voiceState.lastText) {
+      this._insertText(this.voiceState.lastText);
+    }
+  },
+
   _insertText(text) {
-    // Primary path: Odoo 19 WYSIWYG editor API (same as addEmoji / canned responses)
-    if (this.editor) {
+    // 1. Odoo 19 WYSIWYG editor API (same as addEmoji / canned responses)
+    if (this.editor?.shared?.dom?.insert) {
       this.editor.shared.dom.insert(text);
-      this.editor.shared.history.addStep();
+      this.editor.shared.history?.addStep?.();
       return;
     }
 
-    // Fallback: plain textarea (non-WYSIWYG context)
+    // 2. Focus the composer textarea ref if available and retry editor
+    if (this.ref?.el) {
+      this.ref.el.focus();
+      if (this.editor?.shared?.dom?.insert) {
+        this.editor.shared.dom.insert(text);
+        this.editor.shared.history?.addStep?.();
+        return;
+      }
+    }
+
+    // 3. DOM fallback — contenteditable (html_editor)
     const el = this.el;
     if (!el) return;
+
+    const ed =
+      el.querySelector(".odoo-editor-editable") ||
+      el.querySelector("[contenteditable='true']");
+    if (ed) {
+      ed.focus();
+      const sel = window.getSelection();
+      if (sel) {
+        if (!sel.rangeCount || !ed.contains(sel.getRangeAt(0).startContainer)) {
+          const r = document.createRange();
+          r.selectNodeContents(ed);
+          r.collapse(false);
+          sel.removeAllRanges();
+          sel.addRange(r);
+        }
+        if (!document.execCommand("insertText", false, text)) {
+          // manual DOM node insertion
+          const range = sel.getRangeAt(0);
+          range.deleteContents();
+          const node = document.createTextNode(text);
+          range.insertNode(node);
+          range.setStartAfter(node);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+          ed.dispatchEvent(
+            new InputEvent("input", { bubbles: true, data: text, inputType: "insertText" }),
+          );
+        }
+      }
+      return;
+    }
+
+    // 4. Plain textarea
     const ta = el.querySelector("textarea");
     if (!ta) return;
     ta.focus();

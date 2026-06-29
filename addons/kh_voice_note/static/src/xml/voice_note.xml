@@ -38,6 +38,15 @@
                       class="o_voice_error badge text-bg-danger small"
                       t-esc="voiceState.error"/>
 
+                <!-- fallback chip: click to insert if auto-insert failed -->
+                <button t-if="voiceState.lastText and !voiceState.recording and !voiceState.processing"
+                        t-on-click="onInsertLastText"
+                        class="o_voice_chip btn btn-sm btn-outline-secondary"
+                        title="اضغط للإدراج في النص">
+                    <i class="fa fa-check-circle me-1"/>
+                    <t t-esc="voiceState.lastText"/>
+                </button>
+
             </div>
         </xpath>
     </t>
