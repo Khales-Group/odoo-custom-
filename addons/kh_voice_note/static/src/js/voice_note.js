@@ -12,7 +12,7 @@ patch(Composer.prototype, {
       recording: false,
       processing: false,
       error: "",
-      lastText: "", // last transcription — shown as clickable chip if auto-insert fails
+      lastText: "",
     });
     this._mediaRecorder = null;
     this._audioChunks = [];
@@ -83,77 +83,32 @@ patch(Composer.prototype, {
     }
   },
 
-  onInsertLastText() {
+  // Called from chip button via t-on-mousedown.prevent
+  onInsertLastText(ev) {
+    ev.preventDefault(); // keep editor focus
     if (this.voiceState.lastText) {
       this._insertText(this.voiceState.lastText);
     }
   },
 
   _insertText(text) {
-    // 1. Odoo 19 WYSIWYG editor API (same as addEmoji / canned responses)
-    if (this.editor?.shared?.dom?.insert) {
+    // Mirror exactly how addEmoji() works in Composer (Odoo 19 source)
+    if (this.editor) {
+      // WYSIWYG html_editor path
       this.editor.shared.dom.insert(text);
-      this.editor.shared.history?.addStep?.();
-      return;
+      this.editor.shared.history.addStep();
+    } else {
+      // Plain-text path (same fallback as addEmoji)
+      const composerText = this.props.composer.composerText || "";
+      const start = this.props.composer.selection?.start ?? composerText.length;
+      const end = this.props.composer.selection?.end ?? composerText.length;
+      const before = composerText.slice(0, start);
+      const after = composerText.slice(end);
+      const sep = before && !/\s$/.test(before) ? " " : "";
+      this.props.composer.composerText = before + sep + text + after;
+      this.selection?.moveCursor?.((before + sep + text).length);
     }
-
-    // 2. Focus the composer textarea ref if available and retry editor
-    if (this.ref?.el) {
-      this.ref.el.focus();
-      if (this.editor?.shared?.dom?.insert) {
-        this.editor.shared.dom.insert(text);
-        this.editor.shared.history?.addStep?.();
-        return;
-      }
-    }
-
-    // 3. DOM fallback — contenteditable (html_editor)
-    const el = this.el;
-    if (!el) return;
-
-    const ed =
-      el.querySelector(".odoo-editor-editable") ||
-      el.querySelector("[contenteditable='true']");
-    if (ed) {
-      ed.focus();
-      const sel = window.getSelection();
-      if (sel) {
-        if (!sel.rangeCount || !ed.contains(sel.getRangeAt(0).startContainer)) {
-          const r = document.createRange();
-          r.selectNodeContents(ed);
-          r.collapse(false);
-          sel.removeAllRanges();
-          sel.addRange(r);
-        }
-        if (!document.execCommand("insertText", false, text)) {
-          // manual DOM node insertion
-          const range = sel.getRangeAt(0);
-          range.deleteContents();
-          const node = document.createTextNode(text);
-          range.insertNode(node);
-          range.setStartAfter(node);
-          range.collapse(true);
-          sel.removeAllRanges();
-          sel.addRange(range);
-          ed.dispatchEvent(
-            new InputEvent("input", { bubbles: true, data: text, inputType: "insertText" }),
-          );
-        }
-      }
-      return;
-    }
-
-    // 4. Plain textarea
-    const ta = el.querySelector("textarea");
-    if (!ta) return;
-    ta.focus();
-    const s = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
-    const before = ta.value.slice(0, s);
-    const after = ta.value.slice(s);
-    const sep = before && !/\s$/.test(before) ? " " : "";
-    ta.value = before + sep + text + after;
-    ta.setSelectionRange(s + sep.length + text.length, s + sep.length + text.length);
-    ta.dispatchEvent(new Event("input", { bubbles: true }));
-    ta.focus();
+    // Re-focus the composer — addEmoji does this too, critical!
+    this.props.composer.autofocus++;
   },
 });
