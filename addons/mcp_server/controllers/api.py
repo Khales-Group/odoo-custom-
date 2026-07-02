@@ -280,6 +280,70 @@ class MCPObjectController(http.Controller):
                 return params[5]
         return None
 
+    def _preprocess_activity_create(
+        self, params: list, model_name: str, model_method: str, env
+    ) -> list:
+        """
+        Odoo 17+ changed mail.activity so that res_model is a related Char field
+        derived from res_model_id (Many2one to ir.model, required=True).
+        When creating via XML-RPC the caller usually passes res_model as a string;
+        this helper looks up the ir.model record and injects res_model_id so that
+        the ORM constraint on res_id does not fire.
+        """
+        if model_name != "mail.activity" or model_method not in ("create", "write"):
+            return params
+
+        # params layout: [db, uid, pwd, model, method, args_list, kwargs_dict?]
+        if len(params) < 6 or not isinstance(params[5], (list, tuple)):
+            return params
+
+        args = list(params[5])
+        changed = False
+
+        def _inject(vals):
+            nonlocal changed
+            if not isinstance(vals, dict):
+                return vals
+            # Only inject when res_model is present but res_model_id is missing
+            res_model_str = vals.get("res_model")
+            if not res_model_str or "res_model_id" in vals:
+                return vals
+            try:
+                ir_model = (
+                    env["ir.model"]
+                    .sudo()
+                    .search([("model", "=", res_model_str)], limit=1)
+                )
+                if ir_model:
+                    vals = dict(vals)
+                    vals["res_model_id"] = ir_model.id
+                    changed = True
+                    _logger.debug(
+                        "MCP: injected res_model_id=%s for mail.activity "
+                        "res_model='%s'",
+                        ir_model.id,
+                        res_model_str,
+                    )
+            except Exception as exc:
+                _logger.warning("MCP: could not resolve res_model_id: %s", exc)
+            return vals
+
+        # create: args[0] is a list-of-dicts or a single dict
+        if model_method == "create":
+            if args and isinstance(args[0], (list, tuple)):
+                args[0] = [_inject(v) for v in args[0]]
+            elif args and isinstance(args[0], dict):
+                args[0] = _inject(args[0])
+        # write: args[1] is the vals dict
+        elif model_method == "write" and len(args) >= 2:
+            args[1] = _inject(args[1])
+
+        if changed:
+            params = list(params)
+            params[5] = args
+
+        return params
+
     def _mcp_object_dispatch(self, xmlrpc_method: str, params: list):
         """
         Dispatch XML-RPC object calls with MCP access control.
@@ -342,6 +406,13 @@ class MCPObjectController(http.Controller):
             f"MCP XML-RPC: Access GRANTED for {model_name}.{model_method} "
             f"(User ID: {user_id if user_id else 'N/A'})"
         )
+
+        # Fix: mail.activity in Odoo 17+ requires res_model_id (Many2one to ir.model).
+        # res_model is a related/computed field — setting it alone via XML-RPC is not
+        # enough; the ORM constraint checks res_id but it evaluates to False when
+        # res_model_id is missing. Auto-inject res_model_id when creating activities.
+        params = list(params)
+        params = self._preprocess_activity_create(params, model_name, model_method, env_for_check)
 
         try:
             result = model_service_root.dispatch(xmlrpc_method, params)
