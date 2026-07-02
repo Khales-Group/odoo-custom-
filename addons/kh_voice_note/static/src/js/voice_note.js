@@ -4,7 +4,6 @@ import { Composer } from "@mail/core/common/composer";
 import { patch } from "@web/core/utils/patch";
 import { useState } from "@odoo/owl";
 import { rpc } from "@web/core/network/rpc";
-
 patch(Composer.prototype, {
   setup() {
     super.setup();
