@@ -78,6 +78,28 @@ class KhApprovalRequest(models.Model):
         readonly=True,
     )
 
+    bill_ids = fields.Many2many(
+        "account.move",
+        "kh_approval_request_bill_rel",
+        "request_id",
+        "bill_id",
+        string="Bills",
+        domain="[('move_type', '=', 'in_invoice'), ('company_id', '=', company_id)]",
+        copy=False,
+    )
+    bills_count = fields.Integer(compute="_compute_bills_count", string="Bills")
+
+    bank_statement_line_ids = fields.Many2many(
+        "account.bank.statement.line",
+        "kh_approval_request_bsl_rel",
+        "request_id",
+        "statement_line_id",
+        string="Bank Statement Lines",
+        domain="[('company_id', '=', company_id)]",
+        copy=False,
+    )
+    bank_lines_count = fields.Integer(compute="_compute_bills_count", string="Bank Lines")
+
     approval_type = fields.Selection(
         [
             ("standard", "Standard"),
@@ -194,6 +216,12 @@ class KhApprovalRequest(models.Model):
     def _compute_is_petty_cash(self):
         for rec in self:
             rec.is_petty_cash = rec.rule_id.name == 'Petty Cash'
+
+    @api.depends('bill_ids', 'bank_statement_line_ids')
+    def _compute_bills_count(self):
+        for rec in self:
+            rec.bills_count = len(rec.bill_ids)
+            rec.bank_lines_count = len(rec.bank_statement_line_ids)
 
     @api.depends("approval_line_ids.state", "approval_line_ids.approver_id")
     def _compute_pending_line(self):
@@ -871,6 +899,32 @@ class KhApprovalRequest(models.Model):
             )
 
         return True
+
+    def action_view_bills(self):
+        """Open the linked vendor bills."""
+        self.ensure_one()
+        return {
+            'name': _('Bills'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'account.move',
+            'view_mode': 'list,form',
+            'domain': [('id', 'in', self.bill_ids.ids)],
+            'context': {
+                'default_move_type': 'in_invoice',
+                'search_default_draft': 0,
+            },
+        }
+
+    def action_view_bank_lines(self):
+        """Open the linked bank statement lines."""
+        self.ensure_one()
+        return {
+            'name': _('Bank Statement Lines'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'account.bank.statement.line',
+            'view_mode': 'list,form',
+            'domain': [('id', 'in', self.bank_statement_line_ids.ids)],
+        }
 
     def action_start_payment_cycle(self):
         """ 
