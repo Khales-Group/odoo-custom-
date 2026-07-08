@@ -116,7 +116,6 @@
 
           <sheet>
             <field name="is_current_user_approver" invisible="1"/>
-            <field name="bills_count" invisible="1"/>
             <group>
               <group string="📝 Request Details">
                 <field name="title" string="📌 Title"/>
@@ -187,8 +186,10 @@
       <field name="inherit_id" ref="kh_approvals.view_kh_approval_request_form_base"/>
       <field name="arch" type="xml">
 
-        <!-- Smart button: bills count — must be the first element inside <sheet> -->
+        <!-- Smart buttons — bills + bank statement lines -->
         <xpath expr="//sheet/field[@name='is_current_user_approver']" position="before">
+          <field name="bills_count" invisible="1"/>
+          <field name="bank_lines_count" invisible="1"/>
           <div class="oe_button_box" name="button_box">
             <button name="action_view_bills"
                     type="object"
@@ -197,16 +198,24 @@
                     invisible="bills_count == 0">
               <field name="bills_count" widget="statinfo" string="Bills"/>
             </button>
+            <button name="action_view_bank_lines"
+                    type="object"
+                    class="oe_stat_button"
+                    icon="fa-university"
+                    invisible="bank_lines_count == 0">
+              <field name="bank_lines_count" widget="statinfo" string="Bank Lines"/>
+            </button>
           </div>
         </xpath>
 
-        <!-- Bills tab in notebook -->
+        <!-- Bills + Bank Statement tabs -->
         <xpath expr="//notebook" position="inside">
+
           <page string="🧾 Bills" name="bills_tab"
                 groups="account.group_account_invoice,kh_approvals.group_kh_approvals_accountant,kh_approvals.group_kh_approvals_manager">
             <field name="bill_ids" nolabel="1"
-                   domain="[('move_type', '=', 'in_invoice')]"
-                   context="{'default_move_type': 'in_invoice'}">
+                   domain="[('move_type', '=', 'in_invoice'), ('company_id', '=', company_id)]"
+                   context="{'default_move_type': 'in_invoice', 'default_company_id': company_id}">
               <list>
                 <field name="name" string="Bill Ref"/>
                 <field name="partner_id" string="Vendor"/>
@@ -220,11 +229,28 @@
                        decoration-danger="payment_state == 'not_paid'"/>
                 <field name="state" widget="badge"
                        decoration-muted="state == 'draft'"
-                       decoration-info="state == 'posted'"
-                       decoration-success="state == 'posted' and payment_state == 'paid'"/>
+                       decoration-info="state == 'posted'"/>
               </list>
             </field>
           </page>
+
+          <page string="🏦 Bank Statement" name="bank_statement_tab"
+                groups="account.group_account_invoice,kh_approvals.group_kh_approvals_accountant,kh_approvals.group_kh_approvals_manager">
+            <field name="bank_statement_line_ids" nolabel="1"
+                   domain="[('company_id', '=', company_id)]"
+                   context="{'default_company_id': company_id}">
+              <list>
+                <field name="date" string="Date"/>
+                <field name="payment_ref" string="Reference"/>
+                <field name="partner_name" string="Partner"/>
+                <field name="amount" string="Amount"/>
+                <field name="currency_id" groups="base.group_multi_currency"/>
+                <field name="journal_id" string="Journal"/>
+                <field name="is_reconciled" widget="boolean_toggle" string="Reconciled" readonly="1"/>
+              </list>
+            </field>
+          </page>
+
         </xpath>
 
       </field>
