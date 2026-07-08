@@ -212,7 +212,7 @@
         <xpath expr="//notebook" position="inside">
 
           <page string="🧾 Bills" name="bills_tab"
-                groups="account.group_account_invoice,kh_approvals.group_kh_approvals_accountant,kh_approvals.group_kh_approvals_manager">
+                groups="kh_approvals.group_kh_approvals_accountant">
             <field name="bill_ids" nolabel="1"
                    domain="[('move_type', '=', 'in_invoice'), ('company_id', '=', company_id)]"
                    context="{'default_move_type': 'in_invoice', 'default_company_id': company_id}">
@@ -235,7 +235,7 @@
           </page>
 
           <page string="🏦 Bank Statement" name="bank_statement_tab"
-                groups="account.group_account_invoice,kh_approvals.group_kh_approvals_accountant,kh_approvals.group_kh_approvals_manager">
+                groups="kh_approvals.group_kh_approvals_accountant">
             <field name="bank_statement_line_ids" nolabel="1"
                    domain="[('company_id', '=', company_id)]"
                    context="{'default_company_id': company_id}">
