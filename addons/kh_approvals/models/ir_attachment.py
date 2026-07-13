@@ -6,8 +6,8 @@ from odoo.tools.misc import format_datetime
 class IrAttachment(models.Model):
     _inherit = 'ir.attachment'
 
-    def _to_store(self, store, /, *, fields=None):
-        super()._to_store(store, fields=fields)
+    def _to_store(self, store, fields=None, **kwargs):
+        super()._to_store(store, fields, **kwargs)
         for attachment in self:
             att = attachment.sudo()
             upload_date = ""
