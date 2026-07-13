@@ -2,14 +2,17 @@
 <templates xml:space="preserve">
 
     <!--
-        Extend the AttachmentCard component (not AttachmentList) so the uploader
-        strip is injected inside each individual card, not outside the loop.
+        Extend AttachmentCard to show uploader info at the bottom of every card.
+
+        We target the OUTER o-mail-AttachmentCard div (always present) instead of
+        o-mail-AttachmentCard-info, because that inner div is hidden via t-if when
+        the card displays a preview thumbnail (PDFs, images, etc.).
     -->
     <t t-inherit="mail.AttachmentCard" t-inherit-mode="extension">
-        <xpath expr="//div[hasclass('o-mail-AttachmentCard-info')]" position="after">
+        <xpath expr="//div[hasclass('o-mail-AttachmentCard')]" position="inside">
             <div t-if="attachment.upload_user_name"
-                 class="d-flex align-items-center gap-1 px-2 bg-200"
-                 style="font-size: 9px; line-height: 1.6; border-top: 1px solid rgba(0,0,0,.06);">
+                 class="d-flex align-items-center gap-1 px-2 bg-200 w-100"
+                 style="font-size: 9px; line-height: 1.6; border-top: 1px solid rgba(0,0,0,.06); flex-shrink: 0;">
                 <i class="fa fa-user-o text-muted" style="font-size: 8px; flex-shrink: 0;"/>
                 <span class="text-muted text-truncate flex-grow-1">
                     <t t-esc="attachment.upload_user_name"/>
