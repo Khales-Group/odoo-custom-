@@ -28,6 +28,11 @@
         'data/sequence.xml',
         'data/email_categories.xml',
     ],
+    'assets': {
+        'web.assets_backend': [
+            'kh_approvals/static/src/xml/attachment_uploader_info.xml',
+        ],
+    },
     'installable': True,
     'application': True,
     'license': 'LGPL-3',

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <!--
+        Extend the Odoo 19 AttachmentList template to show who uploaded
+        each non-image attachment and when.
+        The info bar (o-mail-AttachmentCard-info) already has icon + filename.
+        We append a second thin strip below it with uploader name + date.
+    -->
+    <t t-inherit="mail.AttachmentList" t-inherit-mode="extension">
+        <xpath expr="//div[hasclass('o-mail-AttachmentCard-info')]" position="after">
+            <div t-if="attachment.upload_user_name"
+                 class="d-flex align-items-center gap-1 px-2 bg-200"
+                 style="font-size: 9px; line-height: 1.6; border-top: 1px solid rgba(0,0,0,.06);">
+                <i class="fa fa-user-o text-muted" style="font-size: 8px; flex-shrink: 0;"/>
+                <span class="text-muted text-truncate flex-grow-1">
+                    <t t-esc="attachment.upload_user_name"/>
+                </span>
+                <span t-if="attachment.upload_date"
+                      class="text-muted text-nowrap ms-1">
+                    <t t-esc="attachment.upload_date"/>
+                </span>
+            </div>
+        </xpath>
+    </t>
+
+</templates>
