@@ -2,13 +2,13 @@
 <templates xml:space="preserve">
 
     <!--
-        Extend AttachmentCard to show uploader info at the bottom of every card.
-
-        We target the OUTER o-mail-AttachmentCard div (always present) instead of
-        o-mail-AttachmentCard-info, because that inner div is hidden via t-if when
-        the card displays a preview thumbnail (PDFs, images, etc.).
+        Inherit mail.AttachmentList (confirmed to exist).
+        Target o-mail-AttachmentCard (outer div, unconditional) so the strip
+        appears on ALL card types — thumbnail previews AND icon-only cards.
+        Previously we targeted o-mail-AttachmentCard-info which has a t-if and
+        disappears for viewable files (PDFs, images with thumbnails).
     -->
-    <t t-inherit="mail.AttachmentCard" t-inherit-mode="extension">
+    <t t-inherit="mail.AttachmentList" t-inherit-mode="extension">
         <xpath expr="//div[hasclass('o-mail-AttachmentCard')]" position="inside">
             <div t-if="attachment.upload_user_name"
                  class="d-flex align-items-center gap-1 px-2 bg-200 w-100"
