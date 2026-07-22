@@ -1,3 +1,11 @@
+$mcp-accent: #cc785c;
+$mcp-accent-dark: #b5654b;
+$mcp-bg: #faf9f6;
+$mcp-text: #2d2a26;
+$mcp-muted: #8a8478;
+$mcp-border: #eae7e0;
+$mcp-user-bubble: #f0ede6;
+
 .o_mcp_chat_systray {
     position: relative;
     display: flex;
@@ -7,6 +15,27 @@
         color: inherit;
         padding: 0 8px;
         font-size: 16px;
+        display: flex;
+        align-items: center;
+    }
+}
+
+.o_mcp_logo_dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: $mcp-accent;
+    font-size: 18px;
+    line-height: 1;
+
+    &_sm {
+        font-size: 15px;
+        margin-inline-end: 6px;
+    }
+
+    &_lg {
+        font-size: 34px;
+        margin-bottom: 10px;
     }
 }
 
@@ -14,95 +43,132 @@
     position: fixed;
     bottom: 16px;
     right: 16px;
-    width: 360px;
-    height: 480px;
+    width: 380px;
+    height: 560px;
     max-height: calc(100vh - 32px);
-    background: #fff;
-    color: #1a1a1a;
-    border-radius: 12px;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+    background: $mcp-bg;
+    color: $mcp-text;
+    border-radius: 16px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.22);
     display: flex;
     flex-direction: column;
     z-index: 1060;
     overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 .o_mcp_chat_header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px;
-    background: #017e84;
-    color: #fff;
-    font-weight: 600;
+    padding: 12px 14px;
+    background: $mcp-bg;
+    color: $mcp-text;
+    border-bottom: 1px solid $mcp-border;
+
+    .o_mcp_chat_title {
+        display: flex;
+        align-items: center;
+        font-weight: 600;
+        font-size: 14.5px;
+    }
 
     .o_mcp_chat_header_actions {
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: 2px;
     }
 
     .o_mcp_chat_clear {
-        color: #fff;
-        opacity: 0.85;
-        padding: 0 4px;
+        color: $mcp-text;
+        opacity: 0.6;
+        padding: 0 6px;
 
         &:hover {
             opacity: 1;
         }
-    }
-
-    .o_mcp_chat_close {
-        filter: invert(1) grayscale(100%) brightness(200%);
     }
 }
 
 .o_mcp_chat_body {
     flex: 1 1 auto;
     overflow-y: auto;
-    padding: 12px;
+    padding: 14px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
 }
 
 .o_mcp_chat_empty {
     margin: auto;
     text-align: center;
-    color: #8a8a8a;
-    font-size: 13px;
-    padding: 0 16px;
+    color: $mcp-muted;
+    font-size: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.o_mcp_chat_row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+
+    &_user {
+        justify-content: flex-end;
+    }
+}
+
+.o_mcp_chat_avatar {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+
+    &_assistant {
+        background: rgba($mcp-accent, 0.12);
+        color: $mcp-accent;
+    }
+
+    &_user {
+        background: $mcp-accent;
+        color: #fff;
+    }
 }
 
 .o_mcp_chat_bubble {
-    max-width: 85%;
+    max-width: 78%;
     padding: 8px 12px;
-    border-radius: 14px;
     font-size: 13.5px;
-    line-height: 1.4;
+    line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-word;
 
     &_user {
-        align-self: flex-end;
-        background: #017e84;
-        color: #fff;
-        border-bottom-right-radius: 4px;
+        background: $mcp-user-bubble;
+        color: $mcp-text;
+        border-radius: 14px;
+        border-top-right-radius: 4px;
     }
 
     &_assistant {
-        align-self: flex-start;
-        background: #f1f1f3;
-        color: #1a1a1a;
-        border-bottom-left-radius: 4px;
+        background: transparent;
+        color: $mcp-text;
+        padding-left: 0;
+        padding-top: 2px;
     }
 
     &_tool {
-        align-self: center;
+        align-self: flex-start;
         background: transparent;
-        color: #9a9a9a;
+        color: $mcp-muted;
         font-size: 11.5px;
-        padding: 2px 8px;
+        padding: 0 0 0 32px;
     }
 }
 
@@ -110,12 +176,13 @@
     display: flex;
     gap: 4px;
     align-items: center;
+    padding-top: 6px;
 
     .o_mcp_dot {
         width: 6px;
         height: 6px;
         border-radius: 50%;
-        background: #9a9a9a;
+        background: $mcp-muted;
         animation: o_mcp_blink 1.2s infinite ease-in-out;
 
         &:nth-child(2) { animation-delay: 0.2s; }
@@ -128,32 +195,92 @@
     40% { opacity: 1; }
 }
 
-.o_mcp_chat_footer {
+.o_mcp_chat_attachment_chip {
     display: flex;
-    gap: 8px;
-    padding: 10px;
-    border-top: 1px solid #eee;
+    align-items: center;
+    gap: 6px;
+    margin: 0 14px;
+    padding: 4px 10px;
+    background: $mcp-user-bubble;
+    border-radius: 10px;
+    font-size: 12px;
+    color: $mcp-text;
+    max-width: calc(100% - 28px);
 
-    input {
-        flex: 1 1 auto;
-        border: 1px solid #ddd;
-        border-radius: 20px;
-        padding: 6px 14px;
-        font-size: 13.5px;
-
-        &:focus {
-            outline: none;
-            border-color: #017e84;
-        }
+    span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
-    button {
+    .btn-close {
+        margin-inline-start: auto;
+        width: 10px;
+        height: 10px;
+        padding: 0;
+    }
+}
+
+.o_mcp_chat_footer {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    padding: 10px 12px 12px;
+    border-top: 1px solid $mcp-border;
+    background: $mcp-bg;
+
+    .o_mcp_chat_file_input {
+        display: none;
+    }
+
+    .o_mcp_chat_attach,
+    .o_mcp_chat_send {
+        flex: 0 0 auto;
         border-radius: 50%;
-        width: 34px;
-        height: 34px;
+        width: 32px;
+        height: 32px;
         display: flex;
         align-items: center;
         justify-content: center;
         padding: 0;
+        border: none;
+        color: $mcp-muted;
+
+        &:hover {
+            background: $mcp-user-bubble;
+        }
+    }
+
+    .o_mcp_chat_send {
+        background: $mcp-accent;
+        color: #fff;
+
+        &:hover {
+            background: $mcp-accent-dark;
+        }
+
+        &:disabled {
+            background: $mcp-user-bubble;
+            color: $mcp-muted;
+        }
+    }
+
+    textarea {
+        flex: 1 1 auto;
+        resize: none;
+        border: 1px solid $mcp-border;
+        border-radius: 18px;
+        padding: 7px 14px;
+        font-size: 13.5px;
+        font-family: inherit;
+        max-height: 120px;
+        line-height: 1.4;
+        background: #fff;
+        color: $mcp-text;
+
+        &:focus {
+            outline: none;
+            border-color: $mcp-accent;
+        }
     }
 }

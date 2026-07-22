@@ -27,6 +27,10 @@ MAX_TOOL_ITERATIONS = 8
 MAX_TOKENS = 4096
 MAX_HISTORY_MESSAGES = 100
 
+SUPPORTED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+MAX_ATTACHMENT_MB = 8
+MAX_ATTACHMENT_B64_CHARS = MAX_ATTACHMENT_MB * 1024 * 1024 * 4 // 3
+
 SYSTEM_PROMPT = (
     "You are an AI assistant embedded inside this company's Odoo system. "
     "You can look up, create, update, and delete Odoo records ONLY through "
@@ -62,6 +66,46 @@ def _persist(env, user, role, content):
     )
 
 
+def _build_user_content(message, attachment):
+    """Return (content, error). `content` is either a plain string (no
+    attachment) or a list of Claude content blocks (attachment + text)."""
+    if not attachment:
+        return message, None
+
+    filename = attachment.get("filename") or "file"
+    mimetype = (attachment.get("mimetype") or "").lower()
+    data = attachment.get("data") or ""
+    # tolerate a full data: URL if the client forgot to strip the prefix
+    if data.startswith("data:") and "," in data:
+        data = data.split(",", 1)[1]
+
+    if len(data) > MAX_ATTACHMENT_B64_CHARS:
+        return None, f"'{filename}' is too large (max {MAX_ATTACHMENT_MB} MB)."
+
+    if mimetype in SUPPORTED_IMAGE_TYPES:
+        block = {
+            "type": "image",
+            "source": {"type": "base64", "media_type": mimetype, "data": data},
+        }
+    elif mimetype == "application/pdf":
+        block = {
+            "type": "document",
+            "source": {
+                "type": "base64",
+                "media_type": "application/pdf",
+                "data": data,
+            },
+        }
+    else:
+        return None, (
+            f"Unsupported file type for '{filename}' ({mimetype or 'unknown'}). "
+            "Only images (PNG/JPEG/GIF/WEBP) and PDF are supported."
+        )
+
+    text = message or f"(Attached file: {filename})"
+    return [block, {"type": "text", "text": text}], None
+
+
 def _rows_to_display(rows):
     """Rebuild display bubbles (role/text) from persisted rows, matching the
     live turn's shape: one bubble per assistant text block, one small 'tool'
@@ -73,6 +117,18 @@ def _rows_to_display(rows):
         if row.role == "user":
             if isinstance(content, str):
                 messages.append({"role": "user", "text": content})
+            elif isinstance(content, list) and any(
+                isinstance(b, dict) and b.get("type") in ("image", "document")
+                for b in content
+            ):
+                text = "\n".join(
+                    b["text"]
+                    for b in content
+                    if isinstance(b, dict) and b.get("type") == "text"
+                )
+                messages.append(
+                    {"role": "user", "text": (text + "\n📎 attachment").strip()}
+                )
         elif row.role == "assistant":
             for block in content:
                 if block.get("type") == "text" and block.get("text", "").strip():
@@ -104,7 +160,7 @@ class McpChatController(http.Controller):
         return {"ok": True}
 
     @http.route("/mcp/chat/send", type="json", auth="user")
-    def send(self, message=None, **kwargs):
+    def send(self, message=None, attachment=None, **kwargs):
         env = request.env
         user = env.user
 
@@ -142,7 +198,7 @@ class McpChatController(http.Controller):
                 "error": "The 'anthropic' Python package is not installed on the server."
             }
 
-        if not message:
+        if not message and not attachment:
             return {"error": "message is required."}
 
         client, model = _get_client_and_model()
@@ -152,9 +208,13 @@ class McpChatController(http.Controller):
                 "Set it under Settings > MCP Server."
             }
 
+        user_content, attachment_error = _build_user_content(message or "", attachment)
+        if attachment_error:
+            return {"error": attachment_error}
+
         history = _load_history(env, user)
-        history.append({"role": "user", "content": message})
-        _persist(env, user, "user", message)
+        history.append({"role": "user", "content": user_content})
+        _persist(env, user, "user", user_content)
 
         tools = build_tool_definitions(env)
         tool_activity = []
