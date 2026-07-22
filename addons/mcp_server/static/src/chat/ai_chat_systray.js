@@ -2,7 +2,7 @@
 
 import { registry } from "@web/core/registry";
 import { rpc } from "@web/core/network/rpc";
-import { useService } from "@web/core/utils/hooks";
+import { user } from "@web/core/user";
 import { Component, useState, useRef, onWillStart, onPatched } from "@odoo/owl";
 
 export class AiChatSystray extends Component {
@@ -10,7 +10,6 @@ export class AiChatSystray extends Component {
     static props = {};
 
     setup() {
-        this.user = useService("user");
         this.state = useState({
             open: false,
             messages: [],
@@ -21,9 +20,13 @@ export class AiChatSystray extends Component {
         this.bodyRef = useRef("body");
 
         onWillStart(async () => {
-            this.state.hasAccess = await this.user.hasGroup(
-                "mcp_server.group_mcp_user"
-            );
+            try {
+                this.state.hasAccess = await user.hasGroup(
+                    "mcp_server.group_mcp_user"
+                );
+            } catch (error) {
+                this.state.hasAccess = false;
+            }
             if (this.state.hasAccess) {
                 await this.loadHistory();
             }
