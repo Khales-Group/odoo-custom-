@@ -54,6 +54,27 @@ class ResConfigSettings(models.TransientModel):
         config_parameter="mcp_server.log_retention_days",
         default=30,
     )
+    mcp_chat_enabled = fields.Boolean(
+        string="Enable In-System AI Chat",
+        help="Adds an AI chat assistant inside Odoo (systray icon) powered by the "
+        "Claude API. It uses the same MCP Enabled Models permissions to decide "
+        "what it can read, create, update or delete.",
+        config_parameter="mcp_server.chat_enabled",
+        default=False,
+    )
+    mcp_anthropic_api_key = fields.Char(
+        string="Anthropic API Key",
+        help="Your Claude (Anthropic) API key, used by the in-system AI chat. "
+        "Kept server-side only, never exposed to the browser.",
+        config_parameter="mcp_server.anthropic_api_key",
+    )
+    mcp_anthropic_model = fields.Char(
+        string="Claude Model",
+        help="Model ID used for the in-system AI chat, e.g. claude-opus-4-8, "
+        "claude-sonnet-5, claude-haiku-4-5.",
+        config_parameter="mcp_server.anthropic_model",
+        default="claude-opus-4-8",
+    )
 
     @api.model
     def get_values(self):
@@ -75,6 +96,12 @@ class ResConfigSettings(models.TransientModel):
             mcp_log_retention_days=int(
                 params.get_param("mcp_server.log_retention_days", "30")
             ),
+            mcp_chat_enabled=params.get_param("mcp_server.chat_enabled", "False")
+            == "True",
+            mcp_anthropic_api_key=params.get_param("mcp_server.anthropic_api_key", ""),
+            mcp_anthropic_model=params.get_param(
+                "mcp_server.anthropic_model", "claude-opus-4-8"
+            ),
         )
         return res
 
@@ -91,6 +118,13 @@ class ResConfigSettings(models.TransientModel):
         )
         params.set_param(
             "mcp_server.log_retention_days", str(self.mcp_log_retention_days)
+        )
+        params.set_param("mcp_server.chat_enabled", str(self.mcp_chat_enabled))
+        params.set_param(
+            "mcp_server.anthropic_api_key", self.mcp_anthropic_api_key or ""
+        )
+        params.set_param(
+            "mcp_server.anthropic_model", self.mcp_anthropic_model or "claude-opus-4-8"
         )
 
         return result

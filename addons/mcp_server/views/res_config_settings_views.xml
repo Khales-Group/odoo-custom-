@@ -121,6 +121,46 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="row mt16 o_settings_container"
+                        invisible="not mcp_enabled">
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane">
+                                <field name="mcp_chat_enabled" />
+                            </div>
+                            <div class="o_setting_right_pane">
+                                <label for="mcp_chat_enabled" />
+                                <a title="Adds an AI chat assistant inside Odoo (systray icon) powered by the Claude API. It uses the MCP Enabled Models permissions above to decide what it can read, create, update or delete."
+                                   class="o_doc_link me-2">
+                                    <i class="fa fa-question-circle"></i>
+                                </a>
+                                <div class="text-muted">
+                                    Add an in-system AI chat assistant (Claude)
+                                </div>
+
+                                <div class="content-group mt16" invisible="not mcp_chat_enabled">
+                                    <div class="row">
+                                        <div class="col-12">
+                                            <label for="mcp_anthropic_api_key" class="o_light_label"/>
+                                            <div class="text-muted">
+                                                Your Anthropic (Claude) API key
+                                            </div>
+                                            <field name="mcp_anthropic_api_key" password="True" class="oe_inline" style="width: 320px;"/>
+                                        </div>
+                                    </div>
+                                    <div class="row mt16">
+                                        <div class="col-12">
+                                            <label for="mcp_anthropic_model" class="o_light_label"/>
+                                            <div class="text-muted">
+                                                Model ID, e.g. claude-opus-4-8, claude-sonnet-5
+                                            </div>
+                                            <field name="mcp_anthropic_model" class="oe_inline" style="width: 320px;"/>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </xpath>
         </field>

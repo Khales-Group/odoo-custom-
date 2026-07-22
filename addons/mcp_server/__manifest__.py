@@ -44,7 +44,14 @@ Requirements: Odoo 19.0 and mcp-server-odoo client package
         "static/description/banner.gif",
         "static/description/icon.png",
     ],
-    "external_dependencies": {"python": ["defusedxml"]},
+    "assets": {
+        "web.assets_backend": [
+            "mcp_server/static/src/chat/ai_chat.scss",
+            "mcp_server/static/src/chat/ai_chat_systray.js",
+            "mcp_server/static/src/chat/ai_chat_systray.xml",
+        ],
+    },
+    "external_dependencies": {"python": ["defusedxml", "anthropic"]},
     "installable": True,
     "application": False,
     "auto_install": False,

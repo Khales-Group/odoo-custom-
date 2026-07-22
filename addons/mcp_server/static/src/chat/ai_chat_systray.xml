@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="mcp_server.AiChatSystray">
+        <div class="o_mcp_chat_systray">
+            <button class="o_mcp_chat_toggle btn" t-on-click="toggle" title="AI Assistant">
+                <i class="fa fa-magic"/>
+            </button>
+            <div t-if="state.open" class="o_mcp_chat_window">
+                <div class="o_mcp_chat_header">
+                    <span><i class="fa fa-magic me-2"/>AI Assistant</span>
+                    <button class="o_mcp_chat_close btn-close" t-on-click="toggle" aria-label="Close"/>
+                </div>
+                <div class="o_mcp_chat_body" t-ref="body">
+                    <div t-if="!state.messages.length" class="o_mcp_chat_empty">
+                        Ask me to find, create, or update anything you have access to.
+                    </div>
+                    <t t-foreach="state.messages" t-as="msg" t-key="msg_index">
+                        <div t-attf-class="o_mcp_chat_bubble o_mcp_chat_bubble_{{msg.role}}">
+                            <span t-esc="msg.text"/>
+                        </div>
+                    </t>
+                    <div t-if="state.loading" class="o_mcp_chat_bubble o_mcp_chat_bubble_assistant o_mcp_chat_typing">
+                        <span class="o_mcp_dot"/><span class="o_mcp_dot"/><span class="o_mcp_dot"/>
+                    </div>
+                </div>
+                <form class="o_mcp_chat_footer" t-on-submit.prevent="onSubmit">
+                    <input type="text" t-model="state.input" placeholder="Ask anything…" t-att-disabled="state.loading"/>
+                    <button type="submit" class="btn btn-primary" t-att-disabled="state.loading">
+                        <i class="fa fa-paper-plane"/>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </t>
+</templates>
