@@ -4,7 +4,7 @@ import { registry } from "@web/core/registry";
 import { rpc } from "@web/core/network/rpc";
 import { user } from "@web/core/user";
 import { markdownToHtml } from "./markdown";
-import { Component, useState, useRef, onWillStart, onPatched } from "@odoo/owl";
+import { Component, useState, useRef, onWillStart, onPatched, markup } from "@odoo/owl";
 
 const MAX_FILE_MB = 8;
 const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
@@ -137,7 +137,7 @@ export class AiChatPage extends Component {
     }
 
     renderMarkdown(text) {
-        return markdownToHtml(text || "");
+        return markup(markdownToHtml(text || ""));
     }
 
     resizeTextarea() {
