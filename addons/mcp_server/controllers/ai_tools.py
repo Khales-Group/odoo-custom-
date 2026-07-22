@@ -20,6 +20,29 @@ _logger = logging.getLogger(__name__)
 MAX_LIMIT = 200
 DEFAULT_LIMIT = 20
 
+# Hard safety net: these models are never reachable from the AI chat, no
+# matter what an administrator enables under Settings > MCP Server >
+# Enabled Models. A checkbox is one click away from being toggled by
+# mistake (or too broadly) during testing; this list requires an actual
+# code change to lift, which is a much higher bar for exposing payroll,
+# banking, or full accounting-ledger data through natural language.
+HARD_BLOCKED_MODEL_PREFIXES = (
+    "account.",  # invoices, payments, bank statements, journals, ledgers
+    "hr.payslip",
+    "hr.contract",
+    "hr.version",  # Odoo 17+ renamed hr.contract fields onto hr.version
+    "hr.salary",
+)
+HARD_BLOCKED_MODELS = {
+    "res.partner.bank",  # partner bank account numbers/IBANs
+}
+
+
+def is_hard_blocked_model(model_name):
+    if model_name in HARD_BLOCKED_MODELS:
+        return True
+    return model_name.startswith(HARD_BLOCKED_MODEL_PREFIXES)
+
 
 class ToolError(Exception):
     """Raised for tool-input problems that should be reported back to Claude
@@ -190,11 +213,24 @@ def build_tool_definitions(env):
 
 def _require_model_operation(env, model_name, operation):
     model_name = utils.sanitize_model_name(model_name)
+    if is_hard_blocked_model(model_name):
+        raise ToolError(
+            f"Model '{model_name}' is permanently blocked from the AI chat "
+            "(accounting, payroll, or banking data). This cannot be enabled "
+            "from Settings - it requires a code change."
+        )
     if not utils.check_model_operation_allowed(env, model_name, operation):
         raise ToolError(
             f"Operation '{operation}' on model '{model_name}' is not allowed. "
             "Ask an administrator to enable it under Settings > MCP Server > "
             "Enabled Models."
+        )
+    if not _user_can(env, model_name, operation):
+        raise ToolError(
+            f"You personally don't have '{operation}' permission on "
+            f"'{model_name}' in Odoo - this is your own access level, not a "
+            "chat restriction. Ask your Odoo administrator to grant it if "
+            "you need it."
         )
     return model_name
 
@@ -211,10 +247,37 @@ def _parse_domain(domain_str):
     return domain
 
 
+def _user_can(env, model_name, operation):
+    """Does the CALLING user's own Odoo access rights (not the system-wide
+    MCP switch) allow this operation? Uses has_access(), which accounts for
+    both model-level access rights and record rules. Fails closed: any
+    error is treated as "no access", never "yes"."""
+    try:
+        return bool(env[model_name].has_access(operation))
+    except Exception:  # noqa: BLE001 - unknown model/operation -> treat as blocked
+        return False
+
+
 def _tool_list_enabled_models(env, user, tool_input):
-    models = utils.get_enabled_models(env)
-    for m in models:
-        m["operations"] = utils.get_model_allowed_operations(env, m["model"])
+    """List what THIS user can actually do, not just what's switched on
+    system-wide: a model only shows up here if it is both (a) enabled under
+    Settings > MCP Server > Enabled Models AND (b) actually readable by the
+    calling user's own Odoo permissions - same access they'd have anywhere
+    else in Odoo, not broadened by the AI chat."""
+    models = []
+    for m in utils.get_enabled_models(env):
+        model_name = m["model"]
+        if is_hard_blocked_model(model_name):
+            continue
+        system_ops = utils.get_model_allowed_operations(env, model_name)
+        user_ops = {
+            op: allowed and _user_can(env, model_name, op)
+            for op, allowed in system_ops.items()
+        }
+        if any(user_ops.values()):
+            models.append(
+                {"model": model_name, "name": m["name"], "operations": user_ops}
+            )
     return {"models": models}
 
 
