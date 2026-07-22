@@ -35,6 +35,26 @@
     background: #017e84;
     color: #fff;
     font-weight: 600;
+
+    .o_mcp_chat_header_actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .o_mcp_chat_clear {
+        color: #fff;
+        opacity: 0.85;
+        padding: 0 4px;
+
+        &:hover {
+            opacity: 1;
+        }
+    }
+
+    .o_mcp_chat_close {
+        filter: invert(1) grayscale(100%) brightness(200%);
+    }
 }
 
 .o_mcp_chat_body {

@@ -36,6 +36,7 @@ Requirements: Odoo 19.0 and mcp-server-odoo client package
         "wizard/mcp_model_selection_wizard_views.xml",
         "views/mcp_enabled_models_views.xml",
         "views/mcp_log_views.xml",
+        "views/mcp_chat_message_views.xml",
         "views/res_config_settings_views.xml",
         "views/mcp_menu.xml",
     ],

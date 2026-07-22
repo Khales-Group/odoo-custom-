@@ -2,22 +2,42 @@
 
 import { registry } from "@web/core/registry";
 import { rpc } from "@web/core/network/rpc";
-import { Component, useState, useRef, onPatched } from "@odoo/owl";
+import { useService } from "@web/core/utils/hooks";
+import { Component, useState, useRef, onWillStart, onPatched } from "@odoo/owl";
 
 export class AiChatSystray extends Component {
     static template = "mcp_server.AiChatSystray";
     static props = {};
 
     setup() {
+        this.user = useService("user");
         this.state = useState({
             open: false,
             messages: [],
             input: "",
             loading: false,
+            hasAccess: false,
         });
-        this.apiHistory = [];
         this.bodyRef = useRef("body");
+
+        onWillStart(async () => {
+            this.state.hasAccess = await this.user.hasGroup(
+                "mcp_server.group_mcp_user"
+            );
+            if (this.state.hasAccess) {
+                await this.loadHistory();
+            }
+        });
         onPatched(() => this.scrollToBottom());
+    }
+
+    async loadHistory() {
+        try {
+            const result = await rpc("/mcp/chat/history", {});
+            this.state.messages = (result && result.messages) || [];
+        } catch (error) {
+            // history is best-effort; a fresh chat still works if this fails
+        }
     }
 
     scrollToBottom() {
@@ -30,6 +50,15 @@ export class AiChatSystray extends Component {
         this.state.open = !this.state.open;
     }
 
+    async onClear() {
+        this.state.messages = [];
+        try {
+            await rpc("/mcp/chat/clear", {});
+        } catch (error) {
+            // ignore - worst case old history reappears on next reload
+        }
+    }
+
     async onSubmit() {
         const text = this.state.input.trim();
         if (!text || this.state.loading) {
@@ -40,15 +69,11 @@ export class AiChatSystray extends Component {
         this.state.loading = true;
 
         try {
-            const result = await rpc("/mcp/chat/send", {
-                message: text,
-                messages: this.apiHistory,
-            });
+            const result = await rpc("/mcp/chat/send", { message: text });
 
             if (result && result.error) {
                 this.state.messages.push({ role: "assistant", text: `⚠️ ${result.error}` });
             } else if (result) {
-                this.apiHistory = result.messages || [];
                 for (const call of result.tool_calls || []) {
                     this.state.messages.push({
                         role: "tool",

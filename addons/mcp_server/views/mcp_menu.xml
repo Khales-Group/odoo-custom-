@@ -21,4 +21,12 @@
         action="action_mcp_logs"
         sequence="20"
         groups="mcp_server.group_mcp_admin"/>
+
+    <menuitem
+        id="menu_mcp_chat_messages"
+        name="AI Chat History"
+        parent="mcp_menu_technical"
+        action="action_mcp_chat_messages"
+        sequence="30"
+        groups="mcp_server.group_mcp_admin"/>
 </odoo>

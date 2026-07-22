@@ -1,4 +1,8 @@
-"""In-system AI chat controller (Claude), backed by the MCP tool layer."""
+"""In-system AI chat controller (Claude), backed by the MCP tool layer.
+
+Conversation history is persisted per-user in `mcp.chat.message` so the chat
+survives page reloads, instead of only living in the browser's memory.
+"""
 
 import json
 import logging
@@ -21,6 +25,7 @@ except ImportError:
 
 MAX_TOOL_ITERATIONS = 8
 MAX_TOKENS = 4096
+MAX_HISTORY_MESSAGES = 100
 
 SYSTEM_PROMPT = (
     "You are an AI assistant embedded inside this company's Odoo system. "
@@ -43,11 +48,63 @@ def _get_client_and_model():
     return anthropic.Anthropic(api_key=api_key), model
 
 
+def _load_history(env, user):
+    rows = env["mcp.chat.message"].search(
+        [("user_id", "=", user.id)], order="id desc", limit=MAX_HISTORY_MESSAGES
+    )
+    rows = rows[::-1]
+    return [{"role": r.role, "content": json.loads(r.content)} for r in rows]
+
+
+def _persist(env, user, role, content):
+    env["mcp.chat.message"].create(
+        {"user_id": user.id, "role": role, "content": json.dumps(content)}
+    )
+
+
+def _rows_to_display(rows):
+    """Rebuild display bubbles (role/text) from persisted rows, matching the
+    live turn's shape: one bubble per assistant text block, one small 'tool'
+    bubble per tool call. Raw tool_result payloads are internal and skipped.
+    """
+    messages = []
+    for row in rows:
+        content = json.loads(row.content)
+        if row.role == "user":
+            if isinstance(content, str):
+                messages.append({"role": "user", "text": content})
+        elif row.role == "assistant":
+            for block in content:
+                if block.get("type") == "text" and block.get("text", "").strip():
+                    messages.append({"role": "assistant", "text": block["text"]})
+                elif block.get("type") == "tool_use":
+                    messages.append(
+                        {"role": "tool", "text": f"🔧 {block.get('name')}"}
+                    )
+    return messages
+
+
 class McpChatController(http.Controller):
     _name = "mcp.chat.controller"
 
+    @http.route("/mcp/chat/history", type="json", auth="user")
+    def get_history(self, **kwargs):
+        env = request.env
+        rows = env["mcp.chat.message"].search(
+            [("user_id", "=", env.user.id)],
+            order="id asc",
+            limit=MAX_HISTORY_MESSAGES,
+        )
+        return {"messages": _rows_to_display(rows)}
+
+    @http.route("/mcp/chat/clear", type="json", auth="user")
+    def clear(self, **kwargs):
+        env = request.env
+        env["mcp.chat.message"].search([("user_id", "=", env.user.id)]).unlink()
+        return {"ok": True}
+
     @http.route("/mcp/chat/send", type="json", auth="user")
-    def send(self, message=None, messages=None, **kwargs):
+    def send(self, message=None, **kwargs):
         env = request.env
         user = env.user
 
@@ -60,8 +117,10 @@ class McpChatController(http.Controller):
             .get_param("mcp_server.enable_rate_limiting", "True")
             == "True"
         )
-        if rate_limiting_enabled and get_request_limit() and not check_rate_limit(
-            user.id
+        if (
+            rate_limiting_enabled
+            and get_request_limit()
+            and not check_rate_limit(user.id)
         ):
             env["mcp.log"].sudo().log_rate_limit_exceeded(
                 user_id=user.id, endpoint=request.httprequest.path
@@ -93,8 +152,9 @@ class McpChatController(http.Controller):
                 "Set it under Settings > MCP Server."
             }
 
-        history = list(messages or [])
+        history = _load_history(env, user)
         history.append({"role": "user", "content": message})
+        _persist(env, user, "user", message)
 
         tools = build_tool_definitions(env)
         tool_activity = []
@@ -110,12 +170,9 @@ class McpChatController(http.Controller):
                     messages=history,
                 )
 
-                history.append(
-                    {
-                        "role": "assistant",
-                        "content": _serialize_content(response.content),
-                    }
-                )
+                assistant_content = _serialize_content(response.content)
+                history.append({"role": "assistant", "content": assistant_content})
+                _persist(env, user, "assistant", assistant_content)
 
                 if response.stop_reason != "tool_use":
                     break
@@ -134,11 +191,12 @@ class McpChatController(http.Controller):
                         {
                             "type": "tool_result",
                             "tool_use_id": block.id,
-                            "content": _json_safe(result),
+                            "content": json.dumps(_json_safe(result)),
                             "is_error": is_error,
                         }
                     )
                 history.append({"role": "user", "content": tool_results})
+                _persist(env, user, "user", tool_results)
             else:
                 _logger.warning(
                     "AI chat: hit MAX_TOOL_ITERATIONS for user %s", user.id
@@ -158,7 +216,6 @@ class McpChatController(http.Controller):
 
         return {
             "reply": reply_text,
-            "messages": history,
             "tool_calls": tool_activity,
         }
 

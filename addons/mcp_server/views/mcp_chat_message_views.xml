@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="mcp_chat_message_view_list" model="ir.ui.view">
+        <field name="name">mcp.chat.message.list</field>
+        <field name="model">mcp.chat.message</field>
+        <field name="arch" type="xml">
+            <list create="false" edit="false">
+                <field name="create_date"/>
+                <field name="user_id"/>
+                <field name="role"/>
+                <field name="content"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="mcp_chat_message_view_search" model="ir.ui.view">
+        <field name="name">mcp.chat.message.search</field>
+        <field name="model">mcp.chat.message</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="user_id"/>
+                <field name="content"/>
+                <filter string="Today" name="today" domain="[('create_date', '&gt;=', datetime.datetime.now().strftime('%Y-%m-%d'))]"/>
+                <group>
+                    <filter string="User" name="group_user" context="{'group_by': 'user_id'}"/>
+                    <filter string="Date" name="group_date" context="{'group_by': 'create_date:day'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_mcp_chat_messages" model="ir.actions.act_window">
+        <field name="name">AI Chat History</field>
+        <field name="res_model">mcp.chat.message</field>
+        <field name="view_mode">list</field>
+        <field name="context">{'create': False, 'edit': False}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No AI chat messages found
+            </p>
+            <p>
+                Conversations with the in-system AI assistant will appear here
+                once the chat is enabled and used.
+            </p>
+        </field>
+    </record>
+</odoo>

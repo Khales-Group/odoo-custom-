@@ -1,14 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <templates xml:space="preserve">
     <t t-name="mcp_server.AiChatSystray">
-        <div class="o_mcp_chat_systray">
+        <div t-if="state.hasAccess" class="o_mcp_chat_systray">
             <button class="o_mcp_chat_toggle btn" t-on-click="toggle" title="AI Assistant">
                 <i class="fa fa-magic"/>
             </button>
             <div t-if="state.open" class="o_mcp_chat_window">
                 <div class="o_mcp_chat_header">
                     <span><i class="fa fa-magic me-2"/>AI Assistant</span>
-                    <button class="o_mcp_chat_close btn-close" t-on-click="toggle" aria-label="Close"/>
+                    <div class="o_mcp_chat_header_actions">
+                        <button class="o_mcp_chat_clear btn btn-link btn-sm" t-on-click="onClear" title="Clear conversation">
+                            <i class="fa fa-trash"/>
+                        </button>
+                        <button class="o_mcp_chat_close btn-close" t-on-click="toggle" aria-label="Close"/>
+                    </div>
                 </div>
                 <div class="o_mcp_chat_body" t-ref="body">
                     <div t-if="!state.messages.length" class="o_mcp_chat_empty">
