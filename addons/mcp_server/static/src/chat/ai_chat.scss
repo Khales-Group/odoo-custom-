@@ -1,10 +1,15 @@
 $mcp-accent: #cc785c;
 $mcp-accent-dark: #b5654b;
 $mcp-bg: #faf9f6;
+$mcp-sidebar-bg: #f4f1ea;
 $mcp-text: #2d2a26;
 $mcp-muted: #8a8478;
 $mcp-border: #eae7e0;
 $mcp-user-bubble: #f0ede6;
+
+// ---------------------------------------------------------------------------
+// Systray icon
+// ---------------------------------------------------------------------------
 
 .o_mcp_chat_systray {
     position: relative;
@@ -39,50 +44,91 @@ $mcp-user-bubble: #f0ede6;
     }
 }
 
-.o_mcp_chat_window {
-    position: fixed;
-    bottom: 16px;
-    right: 16px;
-    width: 380px;
-    height: 560px;
-    max-height: calc(100vh - 32px);
+// ---------------------------------------------------------------------------
+// Full-page layout (sidebar + main chat)
+// ---------------------------------------------------------------------------
+
+.o_mcp_page {
+    display: flex;
+    height: 100%;
+    width: 100%;
     background: $mcp-bg;
     color: $mcp-text;
-    border-radius: 16px;
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.22);
-    display: flex;
-    flex-direction: column;
-    z-index: 1060;
-    overflow: hidden;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-.o_mcp_chat_header {
+.o_mcp_sidebar {
+    flex: 0 0 260px;
+    background: $mcp-sidebar-bg;
+    border-right: 1px solid $mcp-border;
+    display: flex;
+    flex-direction: column;
+    padding: 14px 10px;
+    overflow-y: auto;
+}
+
+.o_mcp_new_chat {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 12px 14px;
-    background: $mcp-bg;
+    justify-content: center;
+    background: #fff;
+    border: 1px solid $mcp-border;
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-size: 13.5px;
+    font-weight: 600;
     color: $mcp-text;
-    border-bottom: 1px solid $mcp-border;
+    margin-bottom: 12px;
 
-    .o_mcp_chat_title {
-        display: flex;
-        align-items: center;
+    &:hover {
+        border-color: $mcp-accent;
+        color: $mcp-accent;
+    }
+}
+
+.o_mcp_conversation_list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow-y: auto;
+}
+
+.o_mcp_conversation_item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: $mcp-text;
+
+    &:hover {
+        background: rgba(0, 0, 0, 0.04);
+    }
+
+    &.o_mcp_conversation_active {
+        background: $mcp-user-bubble;
         font-weight: 600;
-        font-size: 14.5px;
     }
 
-    .o_mcp_chat_header_actions {
-        display: flex;
-        align-items: center;
-        gap: 2px;
+    .o_mcp_conversation_name {
+        flex: 1 1 auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
-    .o_mcp_chat_clear {
-        color: $mcp-text;
+    .o_mcp_conversation_delete {
+        flex: 0 0 auto;
+        width: 10px;
+        height: 10px;
+        padding: 0;
+        opacity: 0;
+    }
+
+    &:hover .o_mcp_conversation_delete {
         opacity: 0.6;
-        padding: 0 6px;
 
         &:hover {
             opacity: 1;
@@ -90,20 +136,43 @@ $mcp-user-bubble: #f0ede6;
     }
 }
 
-.o_mcp_chat_body {
+.o_mcp_main {
     flex: 1 1 auto;
-    overflow-y: auto;
-    padding: 14px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    min-width: 0;
 }
+
+.o_mcp_main_header {
+    display: flex;
+    align-items: center;
+    padding: 14px 20px;
+    font-weight: 600;
+    font-size: 15px;
+    border-bottom: 1px solid $mcp-border;
+}
+
+.o_mcp_main_body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-width: 760px;
+    width: 100%;
+    margin: 0 auto;
+}
+
+// ---------------------------------------------------------------------------
+// Shared: message bubbles, avatars, typing indicator, attachment chip, input
+// ---------------------------------------------------------------------------
 
 .o_mcp_chat_empty {
     margin: auto;
     text-align: center;
     color: $mcp-muted;
-    font-size: 14px;
+    font-size: 15px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -112,7 +181,7 @@ $mcp-user-bubble: #f0ede6;
 .o_mcp_chat_row {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
+    gap: 10px;
 
     &_user {
         justify-content: flex-end;
@@ -121,13 +190,13 @@ $mcp-user-bubble: #f0ede6;
 
 .o_mcp_chat_avatar {
     flex: 0 0 auto;
-    width: 24px;
-    height: 24px;
+    width: 26px;
+    height: 26px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
 
     &_assistant {
@@ -143,16 +212,16 @@ $mcp-user-bubble: #f0ede6;
 
 .o_mcp_chat_bubble {
     max-width: 78%;
-    padding: 8px 12px;
-    font-size: 13.5px;
-    line-height: 1.5;
+    padding: 8px 14px;
+    font-size: 14px;
+    line-height: 1.55;
     white-space: pre-wrap;
     word-break: break-word;
 
     &_user {
         background: $mcp-user-bubble;
         color: $mcp-text;
-        border-radius: 14px;
+        border-radius: 16px;
         border-top-right-radius: 4px;
     }
 
@@ -167,8 +236,8 @@ $mcp-user-bubble: #f0ede6;
         align-self: flex-start;
         background: transparent;
         color: $mcp-muted;
-        font-size: 11.5px;
-        padding: 0 0 0 32px;
+        font-size: 12px;
+        padding: 0 0 0 36px;
     }
 }
 
@@ -199,13 +268,14 @@ $mcp-user-bubble: #f0ede6;
     display: flex;
     align-items: center;
     gap: 6px;
-    margin: 0 14px;
+    margin: 0 auto;
     padding: 4px 10px;
     background: $mcp-user-bubble;
     border-radius: 10px;
     font-size: 12px;
     color: $mcp-text;
-    max-width: calc(100% - 28px);
+    max-width: 760px;
+    width: calc(100% - 48px);
 
     span {
         overflow: hidden;
@@ -225,9 +295,10 @@ $mcp-user-bubble: #f0ede6;
     display: flex;
     align-items: flex-end;
     gap: 6px;
-    padding: 10px 12px 12px;
-    border-top: 1px solid $mcp-border;
-    background: $mcp-bg;
+    padding: 12px 24px 18px;
+    max-width: 760px;
+    width: calc(100% - 48px);
+    margin: 0 auto;
 
     .o_mcp_chat_file_input {
         display: none;
@@ -237,8 +308,8 @@ $mcp-user-bubble: #f0ede6;
     .o_mcp_chat_send {
         flex: 0 0 auto;
         border-radius: 50%;
-        width: 32px;
-        height: 32px;
+        width: 34px;
+        height: 34px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -269,11 +340,11 @@ $mcp-user-bubble: #f0ede6;
         flex: 1 1 auto;
         resize: none;
         border: 1px solid $mcp-border;
-        border-radius: 18px;
-        padding: 7px 14px;
-        font-size: 13.5px;
+        border-radius: 20px;
+        padding: 8px 16px;
+        font-size: 14px;
         font-family: inherit;
-        max-height: 120px;
+        max-height: 160px;
         line-height: 1.4;
         background: #fff;
         color: $mcp-text;

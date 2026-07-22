@@ -2,74 +2,9 @@
 <templates xml:space="preserve">
     <t t-name="mcp_server.AiChatSystray">
         <div t-if="state.hasAccess" class="o_mcp_chat_systray">
-            <button class="o_mcp_chat_toggle btn" t-on-click="toggle" title="Claude">
+            <button class="o_mcp_chat_toggle btn" t-on-click="openChat" title="Claude">
                 <span class="o_mcp_logo_dot">✳</span>
             </button>
-            <div t-if="state.open" class="o_mcp_chat_window">
-                <div class="o_mcp_chat_header">
-                    <span class="o_mcp_chat_title">
-                        <span class="o_mcp_logo_dot o_mcp_logo_dot_sm">✳</span>
-                        Claude
-                    </span>
-                    <div class="o_mcp_chat_header_actions">
-                        <button class="o_mcp_chat_clear btn btn-link btn-sm" t-on-click="onClear" title="New chat">
-                            <i class="fa fa-plus"/>
-                        </button>
-                        <button class="o_mcp_chat_close btn-close" t-on-click="toggle" aria-label="Close"/>
-                    </div>
-                </div>
-                <div class="o_mcp_chat_body" t-ref="body">
-                    <div t-if="!state.messages.length" class="o_mcp_chat_empty">
-                        <span class="o_mcp_logo_dot o_mcp_logo_dot_lg">✳</span>
-                        <div>How can I help you today?</div>
-                    </div>
-                    <t t-foreach="state.messages" t-as="msg" t-key="msg_index">
-                        <div t-attf-class="o_mcp_chat_row o_mcp_chat_row_{{msg.role}}">
-                            <div t-if="msg.role === 'assistant'" class="o_mcp_chat_avatar o_mcp_chat_avatar_assistant">✳</div>
-                            <div t-attf-class="o_mcp_chat_bubble o_mcp_chat_bubble_{{msg.role}}">
-                                <span t-esc="msg.text"/>
-                            </div>
-                            <div t-if="msg.role === 'user'" class="o_mcp_chat_avatar o_mcp_chat_avatar_user">
-                                <t t-esc="userInitial"/>
-                            </div>
-                        </div>
-                    </t>
-                    <div t-if="state.loading" class="o_mcp_chat_row o_mcp_chat_row_assistant">
-                        <div class="o_mcp_chat_avatar o_mcp_chat_avatar_assistant">✳</div>
-                        <div class="o_mcp_chat_bubble o_mcp_chat_bubble_assistant o_mcp_chat_typing">
-                            <span class="o_mcp_dot"/><span class="o_mcp_dot"/><span class="o_mcp_dot"/>
-                        </div>
-                    </div>
-                </div>
-                <div t-if="state.attachment" class="o_mcp_chat_attachment_chip">
-                    <i class="fa fa-paperclip"/>
-                    <span t-esc="state.attachment.filename"/>
-                    <button type="button" class="btn-close" t-on-click="removeAttachment" aria-label="Remove"/>
-                </div>
-                <form class="o_mcp_chat_footer" t-on-submit.prevent="onSubmit">
-                    <input
-                        type="file"
-                        t-ref="fileInput"
-                        class="o_mcp_chat_file_input"
-                        accept="image/png,image/jpeg,image/gif,image/webp,application/pdf"
-                        t-on-change="onFileChange"
-                    />
-                    <button type="button" class="o_mcp_chat_attach btn" t-on-click="onAttachClick" title="Attach a file">
-                        <i class="fa fa-paperclip"/>
-                    </button>
-                    <textarea
-                        t-ref="textarea"
-                        t-model="state.input"
-                        rows="1"
-                        placeholder="Message Claude…"
-                        t-on-keydown="onKeydown"
-                        t-att-disabled="state.loading"
-                    />
-                    <button type="submit" class="o_mcp_chat_send btn" t-att-disabled="state.loading">
-                        <i class="fa fa-arrow-up"/>
-                    </button>
-                </form>
-            </div>
         </div>
     </t>
 </templates>

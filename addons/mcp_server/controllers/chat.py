@@ -1,13 +1,14 @@
 """In-system AI chat controller (Claude), backed by the MCP tool layer.
 
-Conversation history is persisted per-user in `mcp.chat.message` so the chat
-survives page reloads, instead of only living in the browser's memory.
+Conversations are persisted per-user (`mcp.chat.conversation` +
+`mcp.chat.message`) so the chat survives page reloads and users can keep
+several separate threads, like Claude.ai's chat history sidebar.
 """
 
 import json
 import logging
 
-from odoo import http
+from odoo import fields, http
 from odoo.http import request
 
 from . import utils
@@ -26,6 +27,7 @@ except ImportError:
 MAX_TOOL_ITERATIONS = 8
 MAX_TOKENS = 4096
 MAX_HISTORY_MESSAGES = 100
+CONVERSATION_NAME_LENGTH = 50
 
 SUPPORTED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 MAX_ATTACHMENT_MB = 8
@@ -52,18 +54,38 @@ def _get_client_and_model():
     return anthropic.Anthropic(api_key=api_key), model
 
 
-def _load_history(env, user):
+def _get_or_create_conversation(env, user, conversation_id, title_hint=""):
+    Conversation = env["mcp.chat.conversation"]
+    if conversation_id:
+        conv = Conversation.search(
+            [("id", "=", conversation_id), ("user_id", "=", user.id)], limit=1
+        )
+        if conv:
+            return conv
+    name = (title_hint or "New chat").strip()[:CONVERSATION_NAME_LENGTH] or "New chat"
+    return Conversation.create({"user_id": user.id, "name": name})
+
+
+def _load_history(env, conversation_id):
     rows = env["mcp.chat.message"].search(
-        [("user_id", "=", user.id)], order="id desc", limit=MAX_HISTORY_MESSAGES
+        [("conversation_id", "=", conversation_id)],
+        order="id desc",
+        limit=MAX_HISTORY_MESSAGES,
     )
     rows = rows[::-1]
     return [{"role": r.role, "content": json.loads(r.content)} for r in rows]
 
 
-def _persist(env, user, role, content):
+def _persist(env, user, conversation, role, content):
     env["mcp.chat.message"].create(
-        {"user_id": user.id, "role": role, "content": json.dumps(content)}
+        {
+            "user_id": user.id,
+            "conversation_id": conversation.id,
+            "role": role,
+            "content": json.dumps(content),
+        }
     )
+    conversation.last_message_date = fields.Datetime.now()
 
 
 def _build_user_content(message, attachment):
@@ -143,24 +165,49 @@ def _rows_to_display(rows):
 class McpChatController(http.Controller):
     _name = "mcp.chat.controller"
 
-    @http.route("/mcp/chat/history", type="json", auth="user")
-    def get_history(self, **kwargs):
+    @http.route("/mcp/chat/conversations", type="json", auth="user")
+    def list_conversations(self, **kwargs):
         env = request.env
+        conversations = env["mcp.chat.conversation"].search(
+            [("user_id", "=", env.user.id)]
+        )
+        return {
+            "conversations": [
+                {
+                    "id": c.id,
+                    "name": c.name,
+                    "last_message_date": str(c.last_message_date or ""),
+                }
+                for c in conversations
+            ]
+        }
+
+    @http.route("/mcp/chat/conversation/delete", type="json", auth="user")
+    def delete_conversation(self, conversation_id=None, **kwargs):
+        env = request.env
+        if conversation_id:
+            env["mcp.chat.conversation"].search(
+                [("id", "=", conversation_id), ("user_id", "=", env.user.id)]
+            ).unlink()
+        return {"ok": True}
+
+    @http.route("/mcp/chat/history", type="json", auth="user")
+    def get_history(self, conversation_id=None, **kwargs):
+        env = request.env
+        if not conversation_id:
+            return {"messages": []}
         rows = env["mcp.chat.message"].search(
-            [("user_id", "=", env.user.id)],
+            [
+                ("conversation_id", "=", conversation_id),
+                ("user_id", "=", env.user.id),
+            ],
             order="id asc",
             limit=MAX_HISTORY_MESSAGES,
         )
         return {"messages": _rows_to_display(rows)}
 
-    @http.route("/mcp/chat/clear", type="json", auth="user")
-    def clear(self, **kwargs):
-        env = request.env
-        env["mcp.chat.message"].search([("user_id", "=", env.user.id)]).unlink()
-        return {"ok": True}
-
     @http.route("/mcp/chat/send", type="json", auth="user")
-    def send(self, message=None, attachment=None, **kwargs):
+    def send(self, message=None, attachment=None, conversation_id=None, **kwargs):
         env = request.env
         user = env.user
 
@@ -212,9 +259,14 @@ class McpChatController(http.Controller):
         if attachment_error:
             return {"error": attachment_error}
 
-        history = _load_history(env, user)
+        title_hint = message or (attachment or {}).get("filename") or ""
+        conversation = _get_or_create_conversation(
+            env, user, conversation_id, title_hint
+        )
+
+        history = _load_history(env, conversation.id)
         history.append({"role": "user", "content": user_content})
-        _persist(env, user, "user", user_content)
+        _persist(env, user, conversation, "user", user_content)
 
         tools = build_tool_definitions(env)
         tool_activity = []
@@ -232,7 +284,7 @@ class McpChatController(http.Controller):
 
                 assistant_content = _serialize_content(response.content)
                 history.append({"role": "assistant", "content": assistant_content})
-                _persist(env, user, "assistant", assistant_content)
+                _persist(env, user, conversation, "assistant", assistant_content)
 
                 if response.stop_reason != "tool_use":
                     break
@@ -256,7 +308,7 @@ class McpChatController(http.Controller):
                         }
                     )
                 history.append({"role": "user", "content": tool_results})
-                _persist(env, user, "user", tool_results)
+                _persist(env, user, conversation, "user", tool_results)
             else:
                 _logger.warning(
                     "AI chat: hit MAX_TOOL_ITERATIONS for user %s", user.id
@@ -277,6 +329,7 @@ class McpChatController(http.Controller):
         return {
             "reply": reply_text,
             "tool_calls": tool_activity,
+            "conversation_id": conversation.id,
         }
 
 

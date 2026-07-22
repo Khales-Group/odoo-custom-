@@ -13,6 +13,9 @@ class McpChatMessage(models.Model):
     user_id = fields.Many2one(
         "res.users", required=True, index=True, ondelete="cascade"
     )
+    conversation_id = fields.Many2one(
+        "mcp.chat.conversation", index=True, ondelete="cascade"
+    )
     role = fields.Selection(
         [("user", "User"), ("assistant", "Assistant")], required=True
     )

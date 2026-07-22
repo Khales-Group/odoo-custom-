@@ -11,3 +11,5 @@ access_mcp_log_admin,mcp.log admin,model_mcp_log,mcp_server.group_mcp_admin,1,1,
 access_mcp_log_user,mcp.log user,model_mcp_log,mcp_server.group_mcp_user,1,0,0,0
 access_mcp_chat_message_admin,mcp.chat.message admin,model_mcp_chat_message,mcp_server.group_mcp_admin,1,1,1,1
 access_mcp_chat_message_user,mcp.chat.message user,model_mcp_chat_message,mcp_server.group_mcp_user,1,0,1,1
+access_mcp_chat_conversation_admin,mcp.chat.conversation admin,model_mcp_chat_conversation,mcp_server.group_mcp_admin,1,1,1,1
+access_mcp_chat_conversation_user,mcp.chat.conversation user,model_mcp_chat_conversation,mcp_server.group_mcp_user,1,1,1,1

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="action_mcp_ai_chat" model="ir.actions.client">
+        <field name="name">Claude</field>
+        <field name="tag">mcp_server.ai_chat_action</field>
+    </record>
+
+    <menuitem
+        id="menu_mcp_ai_chat_root"
+        name="Claude"
+        sequence="5"
+        action="action_mcp_ai_chat"
+        web_icon="mcp_server,static/description/icon.png"
+        groups="mcp_server.group_mcp_user"/>
+</odoo>
