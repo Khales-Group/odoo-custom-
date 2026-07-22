@@ -36,7 +36,8 @@
                         <div t-attf-class="o_mcp_chat_row o_mcp_chat_row_{{msg.role}}">
                             <div t-if="msg.role === 'assistant'" class="o_mcp_chat_avatar o_mcp_chat_avatar_assistant">✳</div>
                             <div t-attf-class="o_mcp_chat_bubble o_mcp_chat_bubble_{{msg.role}}">
-                                <span t-esc="msg.text"/>
+                                <span t-if="msg.role !== 'assistant'" t-esc="msg.text"/>
+                                <t t-if="msg.role === 'assistant'" t-out="renderMarkdown(msg.text)"/>
                             </div>
                             <div t-if="msg.role === 'user'" class="o_mcp_chat_avatar o_mcp_chat_avatar_user">
                                 <t t-esc="userInitial"/>
@@ -50,14 +51,19 @@
                         </div>
                     </div>
                 </div>
-                <div t-if="state.attachment" class="o_mcp_chat_attachment_chip">
-                    <i class="fa fa-paperclip"/>
-                    <span t-esc="state.attachment.filename"/>
-                    <button type="button" class="btn-close" t-on-click="removeAttachment" aria-label="Remove"/>
+                <div t-if="state.attachments.length" class="o_mcp_chat_attachment_list">
+                    <t t-foreach="state.attachments" t-as="att" t-key="att_index">
+                        <div class="o_mcp_chat_attachment_chip">
+                            <i class="fa fa-paperclip"/>
+                            <span t-esc="att.filename"/>
+                            <button type="button" class="btn-close" t-on-click="() => this.removeAttachment(att_index)" aria-label="Remove"/>
+                        </div>
+                    </t>
                 </div>
                 <form class="o_mcp_chat_footer" t-on-submit.prevent="onSubmit">
                     <input
                         type="file"
+                        multiple="multiple"
                         t-ref="fileInput"
                         class="o_mcp_chat_file_input"
                         accept="image/png,image/jpeg,image/gif,image/webp,application/pdf"

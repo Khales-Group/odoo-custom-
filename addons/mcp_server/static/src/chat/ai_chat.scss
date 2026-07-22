@@ -226,10 +226,12 @@ $mcp-user-bubble: #f0ede6;
     }
 
     &_assistant {
+        max-width: 100%;
         background: transparent;
         color: $mcp-text;
         padding-left: 0;
         padding-top: 2px;
+        white-space: normal;
     }
 
     &_tool {
@@ -238,6 +240,73 @@ $mcp-user-bubble: #f0ede6;
         color: $mcp-muted;
         font-size: 12px;
         padding: 0 0 0 36px;
+    }
+
+    // markdown elements rendered inside assistant bubbles
+    .o_mcp_md_p {
+        margin: 0 0 10px;
+
+        &:last-child {
+            margin-bottom: 0;
+        }
+    }
+
+    .o_mcp_md_heading {
+        margin: 14px 0 8px;
+        font-weight: 700;
+        line-height: 1.3;
+
+        &:first-child {
+            margin-top: 0;
+        }
+    }
+
+    h3.o_mcp_md_heading { font-size: 17px; }
+    h4.o_mcp_md_heading { font-size: 15.5px; }
+    h5.o_mcp_md_heading { font-size: 14.5px; }
+    h6.o_mcp_md_heading { font-size: 14px; }
+
+    .o_mcp_md_list {
+        margin: 0 0 10px;
+        padding-inline-start: 22px;
+
+        li {
+            margin-bottom: 3px;
+        }
+    }
+
+    hr {
+        border: none;
+        border-top: 1px solid $mcp-border;
+        margin: 12px 0;
+    }
+
+    code {
+        background: $mcp-user-bubble;
+        border-radius: 4px;
+        padding: 1px 5px;
+        font-size: 0.92em;
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .o_mcp_md_table {
+        display: block;
+        overflow-x: auto;
+        border-collapse: collapse;
+        width: 100%;
+        margin: 0 0 12px;
+        font-size: 13px;
+
+        th, td {
+            border: 1px solid $mcp-border;
+            padding: 6px 10px;
+            text-align: start;
+        }
+
+        th {
+            background: $mcp-user-bubble;
+            font-weight: 600;
+        }
     }
 }
 
@@ -264,18 +333,25 @@ $mcp-user-bubble: #f0ede6;
     40% { opacity: 1; }
 }
 
+.o_mcp_chat_attachment_list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-width: 760px;
+    width: calc(100% - 48px);
+    margin: 0 auto;
+}
+
 .o_mcp_chat_attachment_chip {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin: 0 auto;
     padding: 4px 10px;
     background: $mcp-user-bubble;
     border-radius: 10px;
     font-size: 12px;
     color: $mcp-text;
-    max-width: 760px;
-    width: calc(100% - 48px);
+    max-width: 220px;
 
     span {
         overflow: hidden;

@@ -49,6 +49,7 @@ Requirements: Odoo 19.0 and mcp-server-odoo client package
     "assets": {
         "web.assets_backend": [
             "mcp_server/static/src/chat/ai_chat.scss",
+            "mcp_server/static/src/chat/markdown.js",
             "mcp_server/static/src/chat/ai_chat_systray.js",
             "mcp_server/static/src/chat/ai_chat_systray.xml",
             "mcp_server/static/src/chat/ai_chat_page.js",

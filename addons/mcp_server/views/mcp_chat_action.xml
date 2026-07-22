@@ -10,6 +10,6 @@
         name="Claude"
         sequence="5"
         action="action_mcp_ai_chat"
-        web_icon="mcp_server,static/description/icon.png"
+        web_icon="mcp_server,static/src/img/claude_icon.png"
         groups="mcp_server.group_mcp_user"/>
 </odoo>

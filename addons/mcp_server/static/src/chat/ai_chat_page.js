@@ -3,10 +3,12 @@
 import { registry } from "@web/core/registry";
 import { rpc } from "@web/core/network/rpc";
 import { user } from "@web/core/user";
+import { markdownToHtml } from "./markdown";
 import { Component, useState, useRef, onWillStart, onPatched } from "@odoo/owl";
 
 const MAX_FILE_MB = 8;
 const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
+const MAX_ATTACHMENTS = 5;
 
 function readFileAsDataURL(file) {
     return new Promise((resolve, reject) => {
@@ -29,7 +31,7 @@ export class AiChatPage extends Component {
             messages: [],
             input: "",
             loading: false,
-            attachment: null,
+            attachments: [],
         });
         this.bodyRef = useRef("body");
         this.fileInputRef = useRef("fileInput");
@@ -57,7 +59,7 @@ export class AiChatPage extends Component {
         }
         this.state.conversationId = id;
         this.state.messages = [];
-        this.state.attachment = null;
+        this.state.attachments = [];
         try {
             const result = await rpc("/mcp/chat/history", { conversation_id: id });
             this.state.messages = (result && result.messages) || [];
@@ -69,7 +71,7 @@ export class AiChatPage extends Component {
     onNewChat() {
         this.state.conversationId = null;
         this.state.messages = [];
-        this.state.attachment = null;
+        this.state.attachments = [];
     }
 
     async onDeleteConversation(id, ev) {
@@ -92,38 +94,50 @@ export class AiChatPage extends Component {
     }
 
     async onFileChange(ev) {
-        const file = ev.target.files && ev.target.files[0];
-        if (!file) {
+        const files = Array.from(ev.target.files || []);
+        if (!files.length) {
             return;
         }
-        if (file.size > MAX_FILE_BYTES) {
-            this.state.messages.push({
-                role: "assistant",
-                text: `⚠️ "${file.name}" is too large (max ${MAX_FILE_MB} MB).`,
-            });
-            ev.target.value = "";
-            return;
+
+        for (const file of files) {
+            if (this.state.attachments.length >= MAX_ATTACHMENTS) {
+                this.state.messages.push({
+                    role: "assistant",
+                    text: `⚠️ You can attach up to ${MAX_ATTACHMENTS} files per message.`,
+                });
+                break;
+            }
+            if (file.size > MAX_FILE_BYTES) {
+                this.state.messages.push({
+                    role: "assistant",
+                    text: `⚠️ "${file.name}" is too large (max ${MAX_FILE_MB} MB).`,
+                });
+                continue;
+            }
+            try {
+                const dataUrl = await readFileAsDataURL(file);
+                const base64 = String(dataUrl).split(",")[1] || "";
+                this.state.attachments.push({
+                    filename: file.name,
+                    mimetype: file.type,
+                    data: base64,
+                });
+            } catch (error) {
+                this.state.messages.push({
+                    role: "assistant",
+                    text: `⚠️ Could not read "${file.name}".`,
+                });
+            }
         }
-        try {
-            const dataUrl = await readFileAsDataURL(file);
-            const base64 = String(dataUrl).split(",")[1] || "";
-            this.state.attachment = {
-                filename: file.name,
-                mimetype: file.type,
-                data: base64,
-            };
-        } catch (error) {
-            this.state.messages.push({
-                role: "assistant",
-                text: `⚠️ Could not read "${file.name}".`,
-            });
-        } finally {
-            ev.target.value = "";
-        }
+        ev.target.value = "";
     }
 
-    removeAttachment() {
-        this.state.attachment = null;
+    removeAttachment(index) {
+        this.state.attachments.splice(index, 1);
+    }
+
+    renderMarkdown(text) {
+        return markdownToHtml(text || "");
     }
 
     resizeTextarea() {
@@ -150,26 +164,25 @@ export class AiChatPage extends Component {
 
     async onSubmit() {
         const text = this.state.input.trim();
-        const attachment = this.state.attachment;
-        if ((!text && !attachment) || this.state.loading) {
+        const attachments = this.state.attachments;
+        if ((!text && !attachments.length) || this.state.loading) {
             return;
         }
 
         let displayText = text;
-        if (attachment) {
-            displayText = text
-                ? `${text}\n📎 ${attachment.filename}`
-                : `📎 ${attachment.filename}`;
+        if (attachments.length) {
+            const names = attachments.map((a) => `📎 ${a.filename}`).join("\n");
+            displayText = text ? `${text}\n${names}` : names;
         }
         this.state.messages.push({ role: "user", text: displayText });
         this.state.input = "";
-        this.state.attachment = null;
+        this.state.attachments = [];
         this.state.loading = true;
 
         try {
             const result = await rpc("/mcp/chat/send", {
                 message: text,
-                attachment,
+                attachments,
                 conversation_id: this.state.conversationId,
             });
 
