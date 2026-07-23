@@ -48,8 +48,12 @@ SYSTEM_PROMPT = (
     "through a tool call. If a tool call fails or is denied, tell the user "
     "plainly what happened (e.g. permission not enabled) rather than making "
     "up a result. Call list_enabled_models if you are not sure what data you "
-    "can access. Reply in the same language the user's latest message is "
-    "written in (Arabic or English). Be concise and to the point."
+    "can access. When looking up a customer/contact by name, use "
+    "find_customer rather than a plain search_records call on res.partner - "
+    "a name given in Arabic may only be on file in English (or vice versa), "
+    "and find_customer knows how to cross-reference that. Reply in the same "
+    "language the user's latest message is written in (Arabic or English). "
+    "Be concise and to the point."
 )
 
 

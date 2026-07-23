@@ -354,6 +354,175 @@ def _tool_unlink_record(env, user, tool_input):
     return {"deleted_ids": ids}
 
 
+# ---------------------------------------------------------------------------
+# Custom tool: project status report
+# ---------------------------------------------------------------------------
+
+_CLOSED_STAGE_MARKERS = {"done", "approved", "closed", "cancelled", "canceled"}
+
+
+@register_tool(
+    "project_status_report",
+    (
+        "Build a status report for a project: finds the project by name, "
+        "lists its open tasks (excluding tasks whose stage looks like "
+        "Done/Approved/Cancelled), and reads recent chatter/log messages "
+        "for context. Use this for any 'what's the status of project X' / "
+        "'project situation' request instead of searching multiple models "
+        "manually - it is more complete and consistent."
+    ),
+    {
+        "type": "object",
+        "properties": {
+            "project_keyword": {
+                "type": "string",
+                "description": "Part of the project's name to search for.",
+            },
+            "chatter_limit": {
+                "type": "integer",
+                "description": "Max chatter messages to include (default 20, max 50).",
+            },
+        },
+        "required": ["project_keyword"],
+    },
+)
+def _tool_project_status_report(env, user, tool_input):
+    from odoo.tools import html2plaintext
+
+    keyword = (tool_input.get("project_keyword") or "").strip()
+    if not keyword:
+        raise ToolError("project_keyword is required.")
+
+    _require_model_operation(env, "project.project", "read")
+    projects = env["project.project"].search_read(
+        [("name", "ilike", keyword)], fields=["name"], limit=10
+    )
+    if not projects:
+        return {"error": f"No project found matching '{keyword}'."}
+    if len(projects) > 1:
+        return {
+            "ambiguous": True,
+            "candidates": [p["name"] for p in projects],
+            "message": "Multiple projects match - ask the user which one.",
+        }
+
+    project_id = projects[0]["id"]
+    project_name = projects[0]["name"]
+
+    _require_model_operation(env, "project.task", "read")
+    tasks = env["project.task"].search_read(
+        [("project_id", "=", project_id)],
+        fields=["name", "stage_id", "user_ids", "date_deadline", "priority"],
+        limit=200,
+    )
+    open_tasks = [
+        t
+        for t in tasks
+        if not (
+            t.get("stage_id")
+            and str(t["stage_id"][1]).strip().lower() in _CLOSED_STAGE_MARKERS
+        )
+    ]
+
+    chatter = []
+    try:
+        _require_model_operation(env, "mail.message", "read")
+        limit = min(int(tool_input.get("chatter_limit") or 20), 50)
+        messages = env["mail.message"].search_read(
+            [("model", "=", "project.project"), ("res_id", "=", project_id)],
+            fields=["author_id", "date", "body"],
+            order="date desc",
+            limit=limit,
+        )
+        for m in messages:
+            text = html2plaintext(m.get("body") or "").strip()
+            if text:
+                chatter.append(
+                    {
+                        "author": m["author_id"][1] if m.get("author_id") else "",
+                        "date": str(m.get("date") or ""),
+                        "text": text[:1000],
+                    }
+                )
+    except ToolError:
+        pass  # mail.message not enabled - report on tasks only
+
+    return {
+        "project": project_name,
+        "total_task_count": len(tasks),
+        "open_task_count": len(open_tasks),
+        "open_tasks": open_tasks,
+        "chatter": chatter,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Custom tool: find a customer even when the name was typed in a different
+# language/script than how it's stored (e.g. Arabic vs. the English name on
+# file), by cross-referencing records that store the name bilingually.
+# ---------------------------------------------------------------------------
+
+
+@register_tool(
+    "find_customer",
+    (
+        "Find a customer/contact by name. Always use this tool (instead of "
+        "search_records) when looking up a customer/contact by name - it "
+        "automatically falls back to cross-referencing linked project "
+        "names if a direct match isn't found, which matters because a "
+        "customer's name may be on file in a different language/script "
+        "than how someone asks for it (e.g. only in English, while a "
+        "project referencing them is named bilingually)."
+    ),
+    {
+        "type": "object",
+        "properties": {
+            "name_keyword": {
+                "type": "string",
+                "description": "The name (or part of it) to search for, in any language.",
+            },
+        },
+        "required": ["name_keyword"],
+    },
+)
+def _tool_find_customer(env, user, tool_input):
+    keyword = (tool_input.get("name_keyword") or "").strip()
+    if not keyword:
+        raise ToolError("name_keyword is required.")
+
+    _require_model_operation(env, "res.partner", "read")
+    partners = env["res.partner"].search_read(
+        [("name", "ilike", keyword)], fields=["name", "email", "phone"], limit=10
+    )
+    if partners:
+        return {"found_via": "res.partner", "customers": partners}
+
+    # Fallback: project names at this company are sometimes bilingual
+    # (e.g. "Project: 00033 - Ahmed Aldhaheri | احمد الظاهري"),
+    # so a name that doesn't match res.partner directly may still be
+    # resolvable through a linked project.
+    try:
+        _require_model_operation(env, "project.project", "read")
+    except ToolError:
+        return {"error": f"No customer found matching '{keyword}'."}
+
+    projects = env["project.project"].search_read(
+        [("name", "ilike", keyword), ("partner_id", "!=", False)],
+        fields=["name", "partner_id"],
+        limit=5,
+    )
+    if not projects:
+        return {"error": f"No customer found matching '{keyword}', even after checking linked projects."}
+
+    partner_ids = list({p["partner_id"][0] for p in projects if p.get("partner_id")})
+    customers = env["res.partner"].browse(partner_ids).read(["name", "email", "phone"])
+    return {
+        "found_via": "project.project (bilingual name match)",
+        "matched_project": projects[0]["name"],
+        "customers": customers,
+    }
+
+
 _GENERIC_HANDLERS = {
     "list_enabled_models": _tool_list_enabled_models,
     "search_records": _tool_search_records,
