@@ -32,6 +32,9 @@ HARD_BLOCKED_MODEL_PREFIXES = (
     "hr.contract",
     "hr.version",  # Odoo 17+ renamed hr.contract fields onto hr.version
     "hr.salary",
+    "sale.",  # sale orders/quotations - customer pricing
+    "purchase.",  # purchase orders/RFQs - vendor cost/pricing
+    "pos.",  # point of sale orders/payments
 )
 HARD_BLOCKED_MODELS = {
     "res.partner.bank",  # partner bank account numbers/IBANs
@@ -294,11 +297,38 @@ def _tool_search_records(env, user, tool_input):
     return {"count": len(records), "records": records}
 
 
+def _ensure_calendar_attendee(values, user):
+    """Guarantee the requesting user is an attendee on any calendar.event
+    created via the AI chat, so it actually shows up on their calendar -
+    regardless of whether the model remembered to add it. Enforced here in
+    code, not just asked for in the prompt."""
+    values = dict(values)
+    partner_id = user.partner_id.id
+    partner_ids = values.get("partner_ids")
+
+    if not partner_ids:
+        values["partner_ids"] = [(6, 0, [partner_id])]
+    elif isinstance(partner_ids, list) and isinstance(partner_ids[0], (list, tuple)):
+        # already in Many2many command format - just add a link command
+        values["partner_ids"] = list(partner_ids) + [(4, partner_id, 0)]
+    elif isinstance(partner_ids, list):
+        # a plain list of partner IDs
+        ids = {int(i) for i in partner_ids}
+        ids.add(partner_id)
+        values["partner_ids"] = [(6, 0, list(ids))]
+    else:
+        values["partner_ids"] = [(6, 0, [partner_id])]
+
+    return values
+
+
 def _tool_create_record(env, user, tool_input):
     model_name = _require_model_operation(env, tool_input.get("model"), "create")
     values = tool_input.get("values") or {}
     if not isinstance(values, dict):
         raise ToolError("values must be a JSON object.")
+    if model_name == "calendar.event":
+        values = _ensure_calendar_attendee(values, user)
     record = env[model_name].create(values)
     return {"id": record.id, "display_name": record.display_name}
 
