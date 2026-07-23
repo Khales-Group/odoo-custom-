@@ -2,7 +2,8 @@
 <templates xml:space="preserve">
     <t t-name="mcp_server.AiChatPage">
         <div class="o_mcp_page">
-            <div class="o_mcp_sidebar">
+            <div t-if="state.sidebarOpen" class="o_mcp_sidebar_backdrop" t-on-click="toggleSidebar"/>
+            <div t-attf-class="o_mcp_sidebar {{state.sidebarOpen ? 'o_mcp_sidebar_open' : ''}}">
                 <button class="o_mcp_new_chat btn" t-on-click="onNewChat">
                     <i class="fa fa-plus me-2"/>New chat
                 </button>
@@ -24,6 +25,9 @@
             </div>
             <div class="o_mcp_main">
                 <div class="o_mcp_main_header">
+                    <button class="o_mcp_sidebar_toggle btn" t-on-click="toggleSidebar" title="Chats" aria-label="Toggle chat list">
+                        <i class="fa fa-bars"/>
+                    </button>
                     <span class="o_mcp_logo_dot o_mcp_logo_dot_sm">✳</span>
                     Claude
                 </div>

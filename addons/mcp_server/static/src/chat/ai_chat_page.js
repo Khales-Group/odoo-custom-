@@ -32,6 +32,7 @@ export class AiChatPage extends Component {
             input: "",
             loading: false,
             attachments: [],
+            sidebarOpen: false,
         });
         this.bodyRef = useRef("body");
         this.fileInputRef = useRef("fileInput");
@@ -54,6 +55,7 @@ export class AiChatPage extends Component {
     }
 
     async selectConversation(id) {
+        this.state.sidebarOpen = false;
         if (this.state.conversationId === id) {
             return;
         }
@@ -72,6 +74,11 @@ export class AiChatPage extends Component {
         this.state.conversationId = null;
         this.state.messages = [];
         this.state.attachments = [];
+        this.state.sidebarOpen = false;
+    }
+
+    toggleSidebar() {
+        this.state.sidebarOpen = !this.state.sidebarOpen;
     }
 
     async onDeleteConversation(id, ev) {
