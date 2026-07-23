@@ -5,8 +5,12 @@ Conversations are persisted per-user (`mcp.chat.conversation` +
 several separate threads, like Claude.ai's chat history sidebar.
 """
 
+import base64
 import json
 import logging
+import os
+import tempfile
+from urllib.parse import quote
 
 from odoo import fields, http
 from odoo.http import request
@@ -25,9 +29,21 @@ except ImportError:
     HAS_ANTHROPIC = False
 
 MAX_TOOL_ITERATIONS = 8
-MAX_TOKENS = 4096
+MAX_TOKENS = 8192
 MAX_HISTORY_MESSAGES = 100
 CONVERSATION_NAME_LENGTH = 50
+
+# File generation: lets Claude write/run code in an Anthropic-hosted sandbox
+# to produce real PDF/Word/Excel/PowerPoint files (the same "Agent Skills"
+# capability behind Claude.ai's document creation), not just formatted text.
+FILE_GENERATION_BETAS = ["code-execution-2025-08-25", "skills-2025-10-02"]
+FILE_GENERATION_TOOLS = [{"type": "code_execution_20260521", "name": "code_execution"}]
+FILE_GENERATION_SKILLS = [
+    {"type": "anthropic", "skill_id": "pdf"},
+    {"type": "anthropic", "skill_id": "docx"},
+    {"type": "anthropic", "skill_id": "xlsx"},
+    {"type": "anthropic", "skill_id": "pptx"},
+]
 
 SUPPORTED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 MAX_ATTACHMENT_MB = 8
@@ -51,9 +67,13 @@ SYSTEM_PROMPT = (
     "can access. When looking up a customer/contact by name, use "
     "find_customer rather than a plain search_records call on res.partner - "
     "a name given in Arabic may only be on file in English (or vice versa), "
-    "and find_customer knows how to cross-reference that. Reply in the same "
-    "language the user's latest message is written in (Arabic or English). "
-    "Be concise and to the point."
+    "and find_customer knows how to cross-reference that. You CAN generate "
+    "real PDF, Word, Excel, and PowerPoint files using the code execution "
+    "tool - when asked for a report/document/export, actually create the "
+    "file rather than saying you can't; a download link is added for the "
+    "user automatically once the file is ready. Reply in the same language "
+    "the user's latest message is written in (Arabic or English). Be "
+    "concise and to the point."
 )
 
 
@@ -335,24 +355,34 @@ class McpChatController(http.Controller):
         history.append({"role": "user", "content": user_content})
         _persist(env, user, conversation, "user", user_content)
 
-        tools = build_tool_definitions(env)
+        tools = build_tool_definitions(env) + FILE_GENERATION_TOOLS
         tool_activity = []
+        generated_files = []
         response = None
 
         try:
             for _ in range(MAX_TOOL_ITERATIONS):
-                response = client.messages.create(
+                response = client.beta.messages.create(
                     model=model,
                     max_tokens=MAX_TOKENS,
                     system=SYSTEM_PROMPT,
                     tools=tools,
                     messages=history,
+                    betas=FILE_GENERATION_BETAS,
+                    container={"skills": FILE_GENERATION_SKILLS},
                 )
+
+                generated_files += _extract_generated_files(client, response)
 
                 assistant_content = _serialize_content(response.content)
                 history.append({"role": "assistant", "content": assistant_content})
                 _persist(env, user, conversation, "assistant", assistant_content)
 
+                if response.stop_reason == "pause_turn":
+                    # server-side tool loop (code execution) hit its
+                    # internal iteration cap - resend as-is to resume,
+                    # no extra user message needed.
+                    continue
                 if response.stop_reason != "tool_use":
                     break
 
@@ -393,6 +423,18 @@ class McpChatController(http.Controller):
                 "Please try rephrasing your request."
             )
 
+        if generated_files:
+            links = []
+            for file_info in generated_files:
+                try:
+                    links.append(_save_attachment_and_get_link(env, file_info))
+                except Exception:
+                    _logger.exception(
+                        "AI chat: failed to save generated file as an attachment"
+                    )
+            if links:
+                reply_text += "\n\n" + "\n".join(links)
+
         if is_new_conversation:
             title = _generate_conversation_title(client, message, reply_text)
             if title:
@@ -420,9 +462,72 @@ def _serialize_content(content_blocks):
                     "input": block.input,
                 }
             )
-        # thinking / other block types are intentionally dropped from history
+        elif block.type == "thinking":
+            continue  # never replay reasoning
+        else:
+            # Server-tool blocks (code execution, etc.) - keep them so
+            # Claude retains context on the next request in this same turn.
+            try:
+                blocks.append(block.model_dump(mode="json"))
+            except Exception:  # noqa: BLE001 - unknown/unserializable block
+                continue
     return blocks
 
 
 def _json_safe(value):
     return json.loads(json.dumps(value, default=str))
+
+
+def _extract_generated_files(client, response):
+    """Download any files Claude created via code execution in this
+    response. Best-effort: a download failure just means no link for that
+    file, never a broken chat turn."""
+    files = []
+    for block in getattr(response, "content", []):
+        if block.type != "bash_code_execution_tool_result":
+            continue
+        result = getattr(block, "content", None)
+        if result is None or getattr(result, "type", None) != "bash_code_execution_result":
+            continue
+        for item in getattr(result, "content", None) or []:
+            if getattr(item, "type", None) != "bash_code_execution_output":
+                continue
+            file_id = getattr(item, "file_id", None)
+            if not file_id:
+                continue
+            try:
+                metadata = client.beta.files.retrieve_metadata(file_id)
+                downloaded = client.beta.files.download(file_id)
+                tmp_path = tempfile.mktemp()
+                try:
+                    downloaded.write_to_file(tmp_path)
+                    with open(tmp_path, "rb") as f:
+                        data = f.read()
+                finally:
+                    if os.path.exists(tmp_path):
+                        os.unlink(tmp_path)
+                files.append(
+                    {
+                        "filename": metadata.filename,
+                        "mimetype": getattr(metadata, "mime_type", None)
+                        or "application/octet-stream",
+                        "data": data,
+                    }
+                )
+            except Exception:
+                _logger.exception(
+                    "AI chat: failed to download generated file %s", file_id
+                )
+    return files
+
+
+def _save_attachment_and_get_link(env, file_info):
+    attachment = env["ir.attachment"].create(
+        {
+            "name": file_info["filename"],
+            "datas": base64.b64encode(file_info["data"]),
+            "mimetype": file_info["mimetype"],
+        }
+    )
+    url = f"/web/content/{attachment.id}?download=true&filename={quote(file_info['filename'])}"
+    return f"[{file_info['filename']}]({url})"
