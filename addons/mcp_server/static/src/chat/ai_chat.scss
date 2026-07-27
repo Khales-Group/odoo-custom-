@@ -198,7 +198,19 @@ $mcp-user-bubble: #f0ede6;
 
     &_user {
         justify-content: flex-end;
+
+        .o_mcp_chat_col {
+            align-items: flex-end;
+        }
     }
+}
+
+.o_mcp_chat_col {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 78%;
+    min-width: 0;
 }
 
 .o_mcp_chat_avatar {
@@ -224,7 +236,7 @@ $mcp-user-bubble: #f0ede6;
 }
 
 .o_mcp_chat_bubble {
-    max-width: 78%;
+    max-width: 100%;
     padding: 8px 14px;
     font-size: 14px;
     line-height: 1.55;
@@ -380,6 +392,53 @@ $mcp-user-bubble: #f0ede6;
     }
 }
 
+.o_mcp_file_card_list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.o_mcp_file_card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: #fff;
+    border: 1px solid $mcp-border;
+    border-radius: 10px;
+    text-decoration: none;
+    color: $mcp-text;
+    max-width: 320px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+    &:hover {
+        border-color: $mcp-accent;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        color: $mcp-text;
+    }
+
+    .o_mcp_file_card_icon {
+        flex: 0 0 auto;
+        font-size: 20px;
+        color: $mcp-accent;
+    }
+
+    .o_mcp_file_card_name {
+        flex: 1 1 auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    .o_mcp_file_card_download {
+        flex: 0 0 auto;
+        color: $mcp-muted;
+        font-size: 13px;
+    }
+}
+
 .o_mcp_chat_footer {
     display: flex;
     align-items: flex-end;
@@ -496,7 +555,7 @@ $mcp-user-bubble: #f0ede6;
         padding: 8px 12px 14px;
     }
 
-    .o_mcp_chat_bubble {
+    .o_mcp_chat_col {
         max-width: 88%;
     }
 }

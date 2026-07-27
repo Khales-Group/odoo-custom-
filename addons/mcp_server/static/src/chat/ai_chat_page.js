@@ -19,6 +19,21 @@ function readFileAsDataURL(file) {
     });
 }
 
+const FILE_ICONS = {
+    pdf: "fa-file-pdf-o",
+    doc: "fa-file-word-o",
+    docx: "fa-file-word-o",
+    xls: "fa-file-excel-o",
+    xlsx: "fa-file-excel-o",
+    ppt: "fa-file-powerpoint-o",
+    pptx: "fa-file-powerpoint-o",
+};
+
+function fileIconClass(filename) {
+    const ext = String(filename || "").split(".").pop().toLowerCase();
+    return FILE_ICONS[ext] || "fa-file-o";
+}
+
 export class AiChatPage extends Component {
     static template = "mcp_server.AiChatPage";
     static props = ["*"];
@@ -147,6 +162,10 @@ export class AiChatPage extends Component {
         return markup(markdownToHtml(text || ""));
     }
 
+    getFileIcon(filename) {
+        return fileIconClass(filename);
+    }
+
     resizeTextarea() {
         const el = this.textareaRef.el;
         if (!el) {
@@ -203,7 +222,11 @@ export class AiChatPage extends Component {
                         text: `🔧 ${call.name}${call.is_error ? " — denied/failed" : ""}`,
                     });
                 }
-                this.state.messages.push({ role: "assistant", text: result.reply });
+                this.state.messages.push({
+                    role: "assistant",
+                    text: result.reply,
+                    files: result.files || [],
+                });
                 await this.loadConversations();
             }
         } catch (error) {

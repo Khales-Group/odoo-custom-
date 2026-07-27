@@ -10,6 +10,7 @@ register a custom tool with @register_tool below.
 
 import json
 import logging
+import re
 
 from odoo.exceptions import AccessError, UserError, ValidationError
 
@@ -261,6 +262,46 @@ def _user_can(env, model_name, operation):
         return False
 
 
+def _split_search_words(keyword):
+    words = [w for w in re.split(r"\s+", (keyword or "").strip()) if len(w) > 1]
+    return words or ([keyword.strip()] if keyword and keyword.strip() else [])
+
+
+def _name_match_score(name, words):
+    name_lower = (name or "").lower()
+    return sum(1 for w in words if w.lower() in name_lower)
+
+
+def _fuzzy_name_search(env, model_name, keyword, fields, extra_domain=None, limit=10):
+    """Search `model_name` by name, tolerant of extra middle words and
+    partial/misspelled matches - e.g. "Tamim Alkindi" finding "Tameim Majed
+    Salem Saif Alkindi" (an extra middle name, and no full-phrase match).
+    Splits the keyword into words, matches records containing ANY of them
+    (not requiring the whole phrase as one contiguous substring), then
+    ranks by how many words actually matched so the best guess comes
+    first instead of being missed entirely."""
+    words = _split_search_words(keyword)
+    if not words:
+        return []
+
+    if len(words) == 1:
+        name_domain = [("name", "ilike", words[0])]
+    else:
+        name_domain = ["|"] * (len(words) - 1) + [
+            ("name", "ilike", w) for w in words
+        ]
+    domain = (extra_domain or []) + name_domain
+
+    fields = list(dict.fromkeys(list(fields) + ["name"]))
+    records = env[model_name].search_read(
+        domain, fields=fields, limit=max(limit * 3, 30)
+    )
+    for r in records:
+        r["_match_score"] = _name_match_score(r.get("name"), words)
+    records.sort(key=lambda r: r["_match_score"], reverse=True)
+    return records[:limit]
+
+
 def _tool_list_enabled_models(env, user, tool_input):
     """List what THIS user can actually do, not just what's switched on
     system-wide: a model only shows up here if it is both (a) enabled under
@@ -394,16 +435,19 @@ def _tool_project_status_report(env, user, tool_input):
         raise ToolError("project_keyword is required.")
 
     _require_model_operation(env, "project.project", "read")
-    projects = env["project.project"].search_read(
-        [("name", "ilike", keyword)], fields=["name"], limit=10
-    )
+    projects = _fuzzy_name_search(env, "project.project", keyword, ["name"], limit=10)
     if not projects:
         return {"error": f"No project found matching '{keyword}'."}
-    if len(projects) > 1:
+
+    top_score = projects[0]["_match_score"]
+    tied = [p for p in projects if p["_match_score"] == top_score]
+    for p in projects:
+        p.pop("_match_score", None)
+    if len(tied) > 1:
         return {
             "ambiguous": True,
-            "candidates": [p["name"] for p in projects],
-            "message": "Multiple projects match - ask the user which one.",
+            "candidates": [p["name"] for p in tied],
+            "message": "Multiple projects match equally well - ask the user which one.",
         }
 
     project_id = projects[0]["id"]
@@ -491,24 +535,29 @@ def _tool_find_customer(env, user, tool_input):
         raise ToolError("name_keyword is required.")
 
     _require_model_operation(env, "res.partner", "read")
-    partners = env["res.partner"].search_read(
-        [("name", "ilike", keyword)], fields=["name", "email", "phone"], limit=10
+    partners = _fuzzy_name_search(
+        env, "res.partner", keyword, ["name", "email", "phone"], limit=10
     )
+    for p in partners:
+        p.pop("_match_score", None)
     if partners:
         return {"found_via": "res.partner", "customers": partners}
 
-    # Fallback: project names at this company are sometimes bilingual
-    # (e.g. "Project: 00033 - Ahmed Aldhaheri | احمد الظاهري"),
-    # so a name that doesn't match res.partner directly may still be
-    # resolvable through a linked project.
+    # Fallback: project names at this company are sometimes bilingual, or
+    # carry extra middle names, e.g. "TAMEIM MAJED SALEM SAIF ALKINDI" for
+    # someone searched as "Tamim Alkindi" - a name that doesn't match
+    # res.partner directly may still be resolvable through a linked project.
     try:
         _require_model_operation(env, "project.project", "read")
     except ToolError:
         return {"error": f"No customer found matching '{keyword}'."}
 
-    projects = env["project.project"].search_read(
-        [("name", "ilike", keyword), ("partner_id", "!=", False)],
-        fields=["name", "partner_id"],
+    projects = _fuzzy_name_search(
+        env,
+        "project.project",
+        keyword,
+        ["name", "partner_id"],
+        extra_domain=[("partner_id", "!=", False)],
         limit=5,
     )
     if not projects:
@@ -517,7 +566,7 @@ def _tool_find_customer(env, user, tool_input):
     partner_ids = list({p["partner_id"][0] for p in projects if p.get("partner_id")})
     customers = env["res.partner"].browse(partner_ids).read(["name", "email", "phone"])
     return {
-        "found_via": "project.project (bilingual name match)",
+        "found_via": "project.project (name match)",
         "matched_project": projects[0]["name"],
         "customers": customers,
     }

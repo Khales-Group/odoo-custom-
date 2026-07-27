@@ -39,9 +39,20 @@
                     <t t-foreach="state.messages" t-as="msg" t-key="msg_index">
                         <div t-attf-class="o_mcp_chat_row o_mcp_chat_row_{{msg.role}}">
                             <div t-if="msg.role === 'assistant'" class="o_mcp_chat_avatar o_mcp_chat_avatar_assistant">✳</div>
-                            <div t-attf-class="o_mcp_chat_bubble o_mcp_chat_bubble_{{msg.role}}">
-                                <span t-if="msg.role !== 'assistant'" t-esc="msg.text"/>
-                                <t t-if="msg.role === 'assistant'" t-out="renderMarkdown(msg.text)"/>
+                            <div class="o_mcp_chat_col">
+                                <div t-if="msg.text" t-attf-class="o_mcp_chat_bubble o_mcp_chat_bubble_{{msg.role}}">
+                                    <span t-if="msg.role !== 'assistant'" t-esc="msg.text"/>
+                                    <t t-if="msg.role === 'assistant'" t-out="renderMarkdown(msg.text)"/>
+                                </div>
+                                <div t-if="msg.files and msg.files.length" class="o_mcp_file_card_list">
+                                    <t t-foreach="msg.files" t-as="file" t-key="file_index">
+                                        <a class="o_mcp_file_card" t-att-href="file.url" target="_blank">
+                                            <i t-attf-class="fa {{getFileIcon(file.filename)}} o_mcp_file_card_icon"/>
+                                            <span class="o_mcp_file_card_name" t-esc="file.filename"/>
+                                            <i class="fa fa-download o_mcp_file_card_download"/>
+                                        </a>
+                                    </t>
+                                </div>
                             </div>
                             <div t-if="msg.role === 'user'" class="o_mcp_chat_avatar o_mcp_chat_avatar_user">
                                 <t t-esc="userInitial"/>

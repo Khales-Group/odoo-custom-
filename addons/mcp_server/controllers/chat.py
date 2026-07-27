@@ -138,7 +138,7 @@ def _load_history(env, conversation_id):
 
 
 def _persist(env, user, conversation, role, content):
-    env["mcp.chat.message"].create(
+    message = env["mcp.chat.message"].create(
         {
             "user_id": user.id,
             "conversation_id": conversation.id,
@@ -147,6 +147,7 @@ def _persist(env, user, conversation, role, content):
         }
     )
     conversation.last_message_date = fields.Datetime.now()
+    return message
 
 
 def _build_user_content(message, attachments):
@@ -205,11 +206,28 @@ def _build_user_content(message, attachments):
     return blocks, None
 
 
+def _attachment_link(attachment):
+    return {
+        "filename": attachment.name,
+        "url": f"/web/content/{attachment.id}?download=true&filename={quote(attachment.name or 'file')}",
+    }
+
+
 def _rows_to_display(rows):
-    """Rebuild display bubbles (role/text) from persisted rows, matching the
-    live turn's shape: one bubble per assistant text block, one small 'tool'
-    bubble per tool call. Raw tool_result payloads are internal and skipped.
+    """Rebuild display bubbles (role/text/files) from persisted rows,
+    matching the live turn's shape: one bubble per assistant text block
+    (generated-file attachments riding on the last one), one small 'tool'
+    bubble per tool call. Raw tool_result payloads are internal and
+    skipped.
     """
+    files_by_message = {}
+    if rows:
+        attachments = rows.env["ir.attachment"].search(
+            [("res_model", "=", "mcp.chat.message"), ("res_id", "in", rows.ids)]
+        )
+        for att in attachments:
+            files_by_message.setdefault(att.res_id, []).append(_attachment_link(att))
+
     messages = []
     for row in rows:
         content = json.loads(row.content)
@@ -237,13 +255,29 @@ def _rows_to_display(rows):
                         {"role": "user", "text": (text + "\n" + label).strip()}
                     )
         elif row.role == "assistant":
-            for block in content:
-                if block.get("type") == "text" and block.get("text", "").strip():
-                    messages.append({"role": "assistant", "text": block["text"]})
-                elif block.get("type") == "tool_use":
+            row_files = files_by_message.get(row.id, [])
+            text_blocks = [
+                b
+                for b in content
+                if b.get("type") == "text" and b.get("text", "").strip()
+            ]
+            for b in content:
+                if b.get("type") == "tool_use":
                     messages.append(
-                        {"role": "tool", "text": f"🔧 {block.get('name')}"}
+                        {"role": "tool", "text": f"🔧 {b.get('name')}"}
                     )
+            if text_blocks:
+                for i, b in enumerate(text_blocks):
+                    is_last = i == len(text_blocks) - 1
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "text": b["text"],
+                            "files": row_files if is_last else [],
+                        }
+                    )
+            elif row_files:
+                messages.append({"role": "assistant", "text": "", "files": row_files})
     return messages
 
 
@@ -357,7 +391,7 @@ class McpChatController(http.Controller):
 
         tools = build_tool_definitions(env) + FILE_GENERATION_TOOLS
         tool_activity = []
-        generated_files = []
+        response_files = []
         response = None
 
         try:
@@ -372,11 +406,23 @@ class McpChatController(http.Controller):
                     container={"skills": FILE_GENERATION_SKILLS},
                 )
 
-                generated_files += _extract_generated_files(client, response)
+                iteration_files = _extract_generated_files(client, response)
 
                 assistant_content = _serialize_content(response.content)
                 history.append({"role": "assistant", "content": assistant_content})
-                _persist(env, user, conversation, "assistant", assistant_content)
+                assistant_message = _persist(
+                    env, user, conversation, "assistant", assistant_content
+                )
+
+                for file_info in iteration_files:
+                    try:
+                        response_files.append(
+                            _save_attachment(env, file_info, assistant_message)
+                        )
+                    except Exception:
+                        _logger.exception(
+                            "AI chat: failed to save generated file as an attachment"
+                        )
 
                 if response.stop_reason == "pause_turn":
                     # server-side tool loop (code execution) hit its
@@ -423,18 +469,6 @@ class McpChatController(http.Controller):
                 "Please try rephrasing your request."
             )
 
-        if generated_files:
-            links = []
-            for file_info in generated_files:
-                try:
-                    links.append(_save_attachment_and_get_link(env, file_info))
-                except Exception:
-                    _logger.exception(
-                        "AI chat: failed to save generated file as an attachment"
-                    )
-            if links:
-                reply_text += "\n\n" + "\n".join(links)
-
         if is_new_conversation:
             title = _generate_conversation_title(client, message, reply_text)
             if title:
@@ -444,6 +478,7 @@ class McpChatController(http.Controller):
             "reply": reply_text,
             "tool_calls": tool_activity,
             "conversation_id": conversation.id,
+            "files": response_files,
         }
 
 
@@ -521,13 +556,26 @@ def _extract_generated_files(client, response):
     return files
 
 
-def _save_attachment_and_get_link(env, file_info):
-    attachment = env["ir.attachment"].create(
+def _save_attachment(env, file_info, message):
+    """Save a generated file as an Odoo attachment linked to the specific
+    chat message that produced it, so it shows up as a file card in that
+    same turn now AND still appears there on a later page reload.
+
+    Uses sudo() only for this create - mcp.chat.message intentionally has
+    no write access for regular users (messages are an immutable log), and
+    generated-file attachments are system output, not user-authored data.
+    Read-time access is still correctly scoped: ir.attachment resolves
+    access for a res_model/res_id-linked record through that record's own
+    rules, and `rule_mcp_chat_message_user` restricts messages (and so
+    their attachments) to their owning user.
+    """
+    attachment = env["ir.attachment"].sudo().create(
         {
             "name": file_info["filename"],
             "datas": base64.b64encode(file_info["data"]),
             "mimetype": file_info["mimetype"],
+            "res_model": "mcp.chat.message",
+            "res_id": message.id,
         }
     )
-    url = f"/web/content/{attachment.id}?download=true&filename={quote(file_info['filename'])}"
-    return f"[{file_info['filename']}]({url})"
+    return _attachment_link(attachment)
