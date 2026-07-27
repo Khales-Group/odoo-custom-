@@ -840,19 +840,47 @@ class KhApprovalRequest(models.Model):
 
     def _reject_with_reason(self, reason):
         """ Perform rejection with logged reason. """
+        Line = self.env['kh.approval.line'].sudo()
+
         for rec in self.sudo():
+            current_stage_filter = rec.approval_stage or 'procurement'
+
             # 1. Log feedback on activity (Close To-Do)
             rec.activity_ids.filtered(lambda a: a.user_id.id == self.env.uid).sudo().action_feedback(
                 feedback=_("Rejected. Reason: %s") % reason
             )
-            
+
             # 2. Update Request State
             rec.write({'state': 'rejected'})
-            
+
             # 3. Update Approval Line State
-            rec.approval_line_ids.filtered(
+            my_pending_lines = rec.approval_line_ids.filtered(
                 lambda l: l.state == 'pending' and l.approver_id.id == self.env.uid
-            ).write({'state': 'rejected', 'note': reason})
+            )
+            my_pending_lines.write({'state': 'rejected', 'note': reason})
+
+            # 3b. Super-approver OR logic: if one of the pair (Majid/Delegate)
+            # rejects, auto-reject the other's line and close their activity
+            # too - the request is already Rejected, so their pending
+            # "approve me" To-Do would otherwise be left stale/misleading.
+            if my_pending_lines and self.env.uid in KH_SUPER_APPROVERS:
+                peer_ids = KH_SUPER_APPROVERS - {self.env.uid}
+                peer_lines = Line.search([
+                    ('request_id', '=', rec.id),
+                    ('sequence', '=', my_pending_lines[:1].sequence),
+                    ('approval_stage', '=', current_stage_filter),
+                    ('approver_id', 'in', list(peer_ids)),
+                    ('state', '=', 'pending'),
+                ])
+                if peer_lines:
+                    peer_lines.write({
+                        'state': 'rejected',
+                        'note': _("تم الرفض تلقائياً (نظام المفوّض): %s") % reason,
+                    })
+                    for peer_line in peer_lines:
+                        rec.activity_ids.filtered(
+                            lambda a: a.user_id.id == peer_line.approver_id.id
+                        ).with_context(activity_mark_as_done=True).sudo().action_done()
 
             # 4. Log in Chatter
             rec.message_post(
