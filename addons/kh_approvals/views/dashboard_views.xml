@@ -1,28 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <record id="view_kh_ai_project_dashboard_search" model="ir.ui.view">
-        <field name="name">project.project.search.kh.ai.dashboard</field>
-        <field name="model">project.project</field>
-        <field name="arch" type="xml">
-            <search string="AI Project Dashboard">
-                <field name="name"/>
-                <field name="user_id"/>
-                <field name="stage_id"/>
-                <filter string="فيها تاسكات متأخرة" name="filter_overdue_tasks"
-                        domain="[('x_ai_overdue_tasks_count', '&gt;', 0)]"/>
-                <filter string="فيها أكتفيتيز متأخرة" name="filter_overdue_activities"
-                        domain="[('x_ai_overdue_activities_count', '&gt;', 0)]"/>
-                <filter string="لم تُراجَع بعد" name="filter_never_reviewed"
-                        domain="[('x_ai_last_review_date', '=', False)]"/>
-                <group expand="0" string="تجميع">
-                    <filter string="مدير المشروع" name="group_pm" context="{'group_by': 'user_id'}"/>
-                    <filter string="المرحلة" name="group_stage" context="{'group_by': 'stage_id'}"/>
-                </group>
-            </search>
-        </field>
-    </record>
-
     <record id="view_kh_ai_project_dashboard_list" model="ir.ui.view">
         <field name="name">project.project.list.kh.ai.dashboard</field>
         <field name="model">project.project</field>
@@ -43,24 +21,24 @@
     </record>
 
     <record id="action_kh_ai_project_dashboard" model="ir.actions.act_window">
-        <field name="name">🤖 AI Project Dashboard</field>
+        <field name="name">AI Project Manager</field>
         <field name="res_model">project.project</field>
         <field name="view_mode">list,form</field>
-        <field name="search_view_id" ref="view_kh_ai_project_dashboard_search"/>
         <field name="domain">[('active', '=', True)]</field>
-        <field name="views">
-            [(ref('view_kh_ai_project_dashboard_list'), 'list'),
-             (ref('project.edit_project'), 'form')]
-        </field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_kh_ai_project_dashboard_list')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('project.edit_project')})]"/>
         <field name="help" type="html">
             <p>لا يوجد مشاريع نشطة.</p>
         </field>
     </record>
 
-    <menuitem id="menu_kh_ai_project_dashboard"
-              parent="project.menu_project_management"
+    <!-- تطبيق مستقل بأيقونته الخاصة بشاشة الـ Apps (نعيد استخدام أيقونة الموديول
+         الموجودة أصلاً بدل ما ننشئ ملف صورة جديد) -->
+    <menuitem id="menu_kh_ai_project_dashboard_root"
+              name="AI Project Manager"
               action="action_kh_ai_project_dashboard"
-              name="🤖 AI Project Dashboard"
-              sequence="1"/>
+              sequence="70"
+              web_icon="kh_approvals,static/description/icon.png"/>
 
 </odoo>
