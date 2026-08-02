@@ -51,7 +51,7 @@
                                 <div class="text-muted" style="font-size:11px;margin-top:6px;" t-if="record.x_ai_next_steps_preview.value">
                                     💡 <field name="x_ai_next_steps_preview"/>
                                 </div>
-                                <div class="text-muted" style="font-size:10px;margin-top:4px;" t-if="not record.x_ai_last_review_date.value">
+                                <div class="text-muted" style="font-size:10px;margin-top:4px;" t-if="!record.x_ai_last_review_date.value">
                                     ⚠️ لم تُراجَع بعد
                                 </div>
                             </div>
