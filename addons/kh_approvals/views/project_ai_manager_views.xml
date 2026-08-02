@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_project_khales_ai_manager_form" model="ir.ui.view">
+        <field name="name">project.project.form.khales.ai.manager</field>
+        <field name="model">project.project</field>
+        <field name="inherit_id" ref="project.edit_project"/>
+        <field name="arch" type="xml">
+
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button class="oe_stat_button" icon="fa-bolt" type="object" name="action_run_ai_review">
+                    <div class="o_stat_info">
+                        <span class="o_stat_text">مراجعة AI</span>
+                        <field name="x_ai_overdue_tasks_count" widget="statinfo" string="متأخرة"/>
+                    </div>
+                </button>
+            </xpath>
+
+            <xpath expr="//notebook" position="inside">
+                <page string="AI Project Manager" name="kh_ai_project_manager">
+                    <group>
+                        <group string="آخر مراجعة">
+                            <field name="x_ai_last_review_date" readonly="1"/>
+                            <field name="x_ai_work_done" readonly="1"/>
+                            <field name="x_ai_contract_value" readonly="1"/>
+                        </group>
+                        <group string="أرقام محسوبة">
+                            <field name="x_ai_open_tasks_count" readonly="1"/>
+                            <field name="x_ai_overdue_tasks_count" readonly="1"/>
+                            <field name="x_ai_overdue_activities_count" readonly="1"/>
+                        </group>
+                    </group>
+                    <group string="تقييم الحالة">
+                        <field name="x_ai_status_summary" readonly="1" nolabel="1"/>
+                    </group>
+                    <group string="الخطوات التالية المقترحة">
+                        <field name="x_ai_next_steps" readonly="1" nolabel="1"/>
+                    </group>
+                </page>
+            </xpath>
+
+        </field>
+    </record>
+</odoo>

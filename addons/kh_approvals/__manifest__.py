@@ -7,6 +7,9 @@
     'category': 'Uncategorized',
     'version': '19.0.1.0.0',
     'depends': ['base', 'mail', 'hr', 'project', 'purchase', 'hr_payroll', 'account'],
+    'external_dependencies': {
+        'python': ['anthropic'],
+    },
     'data': [
         'security/kh_approvals_security.xml',
         'security/ir.model.access.csv',
@@ -19,6 +22,7 @@
         'views/approval_reject_wizard.xml',  # <--- Add this line
         'views/project_email_views.xml',
         'views/project_views.xml',
+        'views/project_ai_manager_views.xml',
         'views/mail_activity_views.xml',
         'views/dashboard_views.xml',
         'views/hr_employee_views_extension.xml',
