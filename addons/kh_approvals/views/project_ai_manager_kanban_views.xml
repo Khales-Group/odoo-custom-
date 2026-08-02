@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_kh_ai_project_dashboard_kanban" model="ir.ui.view">
+        <field name="name">project.project.kanban.kh.ai.dashboard</field>
+        <field name="model">project.project</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_dashboard">
+                <field name="name"/>
+                <field name="user_id"/>
+                <field name="stage_id"/>
+                <field name="x_ai_work_done"/>
+                <field name="x_ai_open_tasks_count"/>
+                <field name="x_ai_overdue_tasks_count"/>
+                <field name="x_ai_overdue_activities_count"/>
+                <field name="x_ai_last_review_date"/>
+                <field name="x_ai_next_steps_preview"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div t-attf-class="oe_kanban_card oe_kanban_global_click #{record.x_ai_overdue_tasks_count.raw_value > 0 and 'oe_kanban_card_danger' or ''}">
+                            <div class="o_kanban_record_top">
+                                <div class="o_kanban_record_headings">
+                                    <strong class="o_kanban_record_title">
+                                        <field name="name"/>
+                                    </strong>
+                                    <br/>
+                                    <span class="text-muted">
+                                        <field name="stage_id"/>
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="o_kanban_record_body">
+                                <field name="user_id" widget="many2one_avatar_user"/>
+                                <div class="progress" style="height:6px;margin-top:8px;">
+                                    <div class="progress-bar bg-success" t-attf-style="width: #{record.x_ai_work_done.raw_value}%;"/>
+                                </div>
+                                <div class="text-muted" style="font-size:11px;">
+                                    نسبة الإنجاز: <t t-esc="record.x_ai_work_done.value"/>%
+                                </div>
+                                <div style="margin-top:6px;">
+                                    <span class="badge text-bg-secondary" t-if="record.x_ai_open_tasks_count.raw_value">
+                                        <t t-esc="record.x_ai_open_tasks_count.value"/> مفتوحة
+                                    </span>
+                                    <span class="badge text-bg-danger" t-if="record.x_ai_overdue_tasks_count.raw_value">
+                                        <t t-esc="record.x_ai_overdue_tasks_count.value"/> متأخرة
+                                    </span>
+                                    <span class="badge text-bg-warning" t-if="record.x_ai_overdue_activities_count.raw_value">
+                                        <t t-esc="record.x_ai_overdue_activities_count.value"/> أكتفيتيز متأخرة
+                                    </span>
+                                </div>
+                                <div class="text-muted" style="font-size:11px;margin-top:6px;" t-if="record.x_ai_next_steps_preview.value">
+                                    💡 <field name="x_ai_next_steps_preview"/>
+                                </div>
+                                <div class="text-muted" style="font-size:10px;margin-top:4px;" t-if="not record.x_ai_last_review_date.value">
+                                    ⚠️ لم تُراجَع بعد
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+</odoo>

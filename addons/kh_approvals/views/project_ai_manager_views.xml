@@ -16,7 +16,7 @@
             </xpath>
 
             <xpath expr="//notebook" position="inside">
-                <page string="AI Project Manager" name="kh_ai_project_manager">
+                <page string="🤖 AI Project Manager" name="kh_ai_project_manager" priority="1">
                     <group>
                         <group string="آخر مراجعة">
                             <field name="x_ai_last_review_date" readonly="1"/>

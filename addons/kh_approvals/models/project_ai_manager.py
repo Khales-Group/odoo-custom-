@@ -5,7 +5,6 @@
 #  بالكود (بدون تخمين)، وبعدين يبعت ملخّص لـ Claude API عشان يطلع
 #  تقييم للحالة (مطابقة مع الـ chatter؟) واقتراحات للخطوات التالية.
 # ============================================================
-import json
 import logging
 
 from markupsafe import Markup
@@ -38,6 +37,7 @@ class ProjectAiManager(models.Model):
     x_ai_last_review_date = fields.Datetime(string="آخر مراجعة AI", readonly=True, copy=False)
     x_ai_status_summary = fields.Html(string="تقييم الحالة (AI)", readonly=True, copy=False, sanitize=False)
     x_ai_next_steps = fields.Html(string="الخطوات التالية المقترحة (AI)", readonly=True, copy=False, sanitize=False)
+    x_ai_next_steps_preview = fields.Char(string="معاينة الخطوات التالية", readonly=True, copy=False)
 
     # ------------------------------------------------------------------
     # اكتشاف حقول Odoo Studio ديناميكياً (اسمها التقني مش موجود بالكود،
@@ -117,8 +117,10 @@ class ProjectAiManager(models.Model):
 
         status_html, next_steps_html = self._kh_ai_claude_review(digest)
 
+        preview = html2plaintext(next_steps_html or '').strip().replace('\n', ' ')
         self.x_ai_status_summary = status_html
         self.x_ai_next_steps = next_steps_html
+        self.x_ai_next_steps_preview = (preview[:140] + '…') if len(preview) > 140 else preview
         self.x_ai_last_review_date = fields.Datetime.now()
 
         report_html = (
@@ -199,30 +201,53 @@ class ProjectAiManager(models.Model):
             "--------------------------------------------------\n"
             "%s\n"
             "--------------------------------------------------\n\n"
-            "أجب حصراً بصيغة JSON صحيحة (بدون أي نص قبلها أو بعدها) بالشكل التالي:\n"
-            '{"status_summary": "<HTML بسيط: هل الحالة الفعلية (تاسكات/أكتفيتيز) متوافقة مع ما هو مذكور بسجل النشاط؟ '
-            'في أي فجوات أو تناقضات؟ أي ملاحظة مالية إذا سجل النشاط ذكر تأخر بفواتير أو دفعات؟>", '
-            '"next_steps": "<HTML بسيط (ul/li) لـ 3 إلى 5 خطوات تالية ملموسة ومباشرة لمدير المشروع، '
-            'مبنية فقط على التاسكات/الأكتفيتيز المتأخرة والمفتوحة أعلاه>"}\n'
-            "استخدم وسوم HTML بسيطة فقط (<p>, <strong>, <ul>, <li>) داخل قيم الـ JSON، بدون Markdown."
+            "استدعِ أداة provide_project_review بتقييم الحالة والخطوات التالية بناءً على البيانات أعلاه فقط."
             % digest_text
         )
+
+        # نستخدم Tool Use ونجبر Claude على استدعاء أداة بمخرجات مبنية (JSON مضمون
+        # الصحة من الـ SDK نفسه) بدل الاعتماد على تحليل نص حر - تفادياً لأخطاء
+        # JSON parsing لما يحتوي النص على أقواس/اقتباسات داخل الـ HTML.
+        review_tool = {
+            'name': 'provide_project_review',
+            'description': 'إرجاع تقييم حالة المشروع والخطوات التالية المقترحة.',
+            'input_schema': {
+                'type': 'object',
+                'properties': {
+                    'status_summary': {
+                        'type': 'string',
+                        'description': (
+                            'HTML بسيط (وسوم <p>/<strong>/<ul>/<li> فقط): هل الحالة الفعلية '
+                            '(تاسكات/أكتفيتيز) متوافقة مع سجل النشاط؟ أي فجوات أو تناقضات؟ '
+                            'أي ملاحظة مالية إذا سجل النشاط ذكر تأخر بفواتير أو دفعات؟'
+                        ),
+                    },
+                    'next_steps': {
+                        'type': 'string',
+                        'description': (
+                            'HTML بسيط (ul/li فقط) لـ 3 إلى 5 خطوات تالية ملموسة ومباشرة '
+                            'لمدير المشروع، مبنية فقط على التاسكات/الأكتفيتيز المتأخرة والمفتوحة أعلاه.'
+                        ),
+                    },
+                },
+                'required': ['status_summary', 'next_steps'],
+            },
+        }
 
         try:
             client = anthropic.Anthropic(api_key=api_key)
             resp = client.messages.create(
                 model=model,
                 max_tokens=2000,
+                tools=[review_tool],
+                tool_choice={'type': 'tool', 'name': 'provide_project_review'},
                 messages=[{'role': 'user', 'content': prompt}],
             )
-            text = ''.join(
-                getattr(block, 'text', '') for block in (resp.content or []) if getattr(block, 'type', '') == 'text'
-            ).strip()
-            if text.startswith('```'):
-                text = text.strip('`')
-                if text.lower().startswith('json'):
-                    text = text[4:]
-            data = json.loads(text)
+            tool_block = next(
+                (b for b in (resp.content or []) if getattr(b, 'type', '') == 'tool_use'), None)
+            if not tool_block:
+                raise ValueError('لم يرجع Claude أي نتيجة منظّمة (tool_use).')
+            data = tool_block.input or {}
             status_html = data.get('status_summary') or ''
             next_steps_html = data.get('next_steps') or ''
             return status_html, next_steps_html

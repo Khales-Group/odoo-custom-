@@ -23,6 +23,7 @@
         'views/project_email_views.xml',
         'views/project_views.xml',
         'views/project_ai_manager_views.xml',
+        'views/project_ai_manager_kanban_views.xml',
         'views/mail_activity_views.xml',
         'views/dashboard_views.xml',
         'views/hr_employee_views_extension.xml',
