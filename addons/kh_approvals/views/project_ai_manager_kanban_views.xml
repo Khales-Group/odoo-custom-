@@ -16,7 +16,7 @@
                 <field name="x_ai_last_review_date"/>
                 <field name="x_ai_next_steps_preview"/>
                 <templates>
-                    <t t-name="kanban-box">
+                    <t t-name="card">
                         <div t-attf-class="oe_kanban_card oe_kanban_global_click #{record.x_ai_overdue_tasks_count.raw_value > 0 and 'oe_kanban_card_danger' or ''}">
                             <div class="o_kanban_record_top">
                                 <div class="o_kanban_record_headings">
