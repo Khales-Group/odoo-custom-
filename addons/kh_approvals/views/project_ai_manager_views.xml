@@ -21,20 +21,65 @@
                         <group string="آخر مراجعة">
                             <field name="x_ai_last_review_date" readonly="1"/>
                             <field name="x_ai_work_done" readonly="1"/>
-                            <field name="x_ai_contract_value" readonly="1"/>
                         </group>
                         <group string="أرقام محسوبة">
                             <field name="x_ai_open_tasks_count" readonly="1"/>
                             <field name="x_ai_overdue_tasks_count" readonly="1"/>
                             <field name="x_ai_overdue_activities_count" readonly="1"/>
                         </group>
+                        <group string="💰 التحصيل المالي (فواتير Odoo فعلية)">
+                            <field name="x_ai_contract_value" readonly="1"/>
+                            <field name="x_ai_invoiced_amount" readonly="1"/>
+                            <field name="x_ai_collected_amount" readonly="1"/>
+                        </group>
                     </group>
-                    <group string="تقييم الحالة">
-                        <field name="x_ai_status_summary" readonly="1" nolabel="1"/>
-                    </group>
-                    <group string="الخطوات التالية المقترحة">
-                        <field name="x_ai_next_steps" readonly="1" nolabel="1"/>
-                    </group>
+                    <notebook>
+                        <page string="⏰ التاسكات المتأخرة" name="kh_ai_tab_overdue">
+                            <field name="task_ids" create="0" delete="0"
+                                   domain="[('date_deadline', '!=', False),
+                                            ('date_deadline', '&lt;', context_today().strftime('%Y-%m-%d')),
+                                            ('x_custom_state', 'not in', ['03_approved', '1_done', '1_canceled'])]">
+                                <list>
+                                    <field name="name"/>
+                                    <field name="user_ids" widget="many2many_tags"/>
+                                    <field name="x_custom_state"/>
+                                    <field name="date_deadline"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="📌 التاسكات التالية" name="kh_ai_tab_next">
+                            <field name="task_ids" create="0" delete="0"
+                                   domain="['|', ('date_deadline', '=', False),
+                                            ('date_deadline', '&gt;=', context_today().strftime('%Y-%m-%d')),
+                                            ('x_custom_state', 'not in', ['03_approved', '1_done', '1_canceled'])]">
+                                <list default_order="date_deadline asc">
+                                    <field name="name"/>
+                                    <field name="user_ids" widget="many2many_tags"/>
+                                    <field name="x_custom_state"/>
+                                    <field name="date_deadline"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="✅ التاسكات المنجزة" name="kh_ai_tab_done">
+                            <field name="task_ids" create="0" delete="0"
+                                   domain="[('x_custom_state', 'in', ['03_approved', '1_done'])]">
+                                <list>
+                                    <field name="name"/>
+                                    <field name="user_ids" widget="many2many_tags"/>
+                                    <field name="x_custom_state"/>
+                                    <field name="date_deadline"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="💡 التقييم والاقتراحات" name="kh_ai_tab_suggestions">
+                            <group string="تقييم الحالة">
+                                <field name="x_ai_status_summary" readonly="1" nolabel="1"/>
+                            </group>
+                            <group string="الخطوات التالية المقترحة">
+                                <field name="x_ai_next_steps" readonly="1" nolabel="1"/>
+                            </group>
+                        </page>
+                    </notebook>
                 </page>
             </xpath>
 

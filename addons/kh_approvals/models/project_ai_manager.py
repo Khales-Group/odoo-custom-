@@ -31,6 +31,8 @@ class ProjectAiManager(models.Model):
 
     x_ai_work_done = fields.Float(string="نسبة الإنجاز (AI)", readonly=True, copy=False)
     x_ai_contract_value = fields.Float(string="قيمة العقد (AI)", readonly=True, copy=False)
+    x_ai_invoiced_amount = fields.Float(string="المفوتر (AI)", readonly=True, copy=False)
+    x_ai_collected_amount = fields.Float(string="المحصّل فعلياً (AI)", readonly=True, copy=False)
     x_ai_open_tasks_count = fields.Integer(string="تاسكات مفتوحة (AI)", readonly=True, copy=False)
     x_ai_overdue_tasks_count = fields.Integer(string="تاسكات متأخرة (AI)", readonly=True, copy=False)
     x_ai_overdue_activities_count = fields.Integer(string="أكتفيتيز متأخرة (AI)", readonly=True, copy=False)
@@ -64,6 +66,42 @@ class ProjectAiManager(models.Model):
             return False
 
     # ------------------------------------------------------------------
+    # التحصيل المالي الفعلي - من فواتير Odoo الحقيقية المرتبطة بالمشروع عبر
+    # الحساب التحليلي (Analytic Account)، مش رقم يدوي. نكتشف اسم حقل الحساب
+    # التحليلي ديناميكياً (تغيّر بين إصدارات Odoo: account_id/analytic_account_id)
+    # بدل ما نثبّت اسم معيّن، وأي فشل بيرجع صفر بهدوء بدل ما يكسر المراجعة.
+    # ------------------------------------------------------------------
+    def _kh_ai_find_analytic_account(self):
+        for fname, f in self._fields.items():
+            if f.type == 'many2one' and getattr(f, 'comodel_name', None) == 'account.analytic.account':
+                try:
+                    val = self[fname]
+                except Exception:
+                    continue
+                if val:
+                    return val
+        return False
+
+    def _kh_ai_compute_financials(self):
+        try:
+            analytic_account = self._kh_ai_find_analytic_account()
+            if not analytic_account:
+                return 0.0, 0.0
+            AML = self.env['account.move.line'].sudo()
+            lines = AML.search([
+                ('analytic_distribution', 'in', [analytic_account.id]),
+                ('parent_state', '=', 'posted'),
+                ('move_id.move_type', 'in', ['out_invoice', 'out_refund']),
+            ])
+            moves = lines.mapped('move_id')
+            invoiced = sum(m.amount_total_signed for m in moves)
+            collected = sum(m.amount_total_signed - m.amount_residual_signed for m in moves)
+            return invoiced, collected
+        except Exception:
+            _logger.exception('KH_AI_MANAGER: financial computation failed')
+            return 0.0, 0.0
+
+    # ------------------------------------------------------------------
     # الميثود الرئيسية - تُستدعى من زر "🤖 مراجعة AI" على فورم المشروع
     # ------------------------------------------------------------------
     def action_run_ai_review(self):
@@ -83,6 +121,11 @@ class ProjectAiManager(models.Model):
         contract_value = self._kh_ai_read_studio_value(contract_value_field) or 0.0
         self.x_ai_work_done = work_done
         self.x_ai_contract_value = contract_value
+
+        # ---- التحصيل المالي الفعلي (من فواتير Odoo الحقيقية عبر Analytic Account) ----
+        invoiced_amount, collected_amount = self._kh_ai_compute_financials()
+        self.x_ai_invoiced_amount = invoiced_amount
+        self.x_ai_collected_amount = collected_amount
 
         # ---- التاسكات ----
         Task = self.env['project.task'].sudo()
@@ -112,7 +155,7 @@ class ProjectAiManager(models.Model):
         ], order='date desc', limit=40)
 
         digest = self._kh_ai_build_digest(
-            work_done, contract_value, open_tasks, overdue_tasks,
+            work_done, contract_value, invoiced_amount, collected_amount, open_tasks, overdue_tasks,
             overdue_proj_acts, overdue_task_acts, messages, today_str)
 
         status_html, next_steps_html = self._kh_ai_claude_review(digest)
@@ -137,13 +180,16 @@ class ProjectAiManager(models.Model):
     # ------------------------------------------------------------------
     # بناء نص الملخص (Digest) - بيانات فعلية جاهزة، بدون تخمين
     # ------------------------------------------------------------------
-    def _kh_ai_build_digest(self, work_done, contract_value, open_tasks, overdue_tasks,
-                             overdue_proj_acts, overdue_task_acts, messages, today_str):
+    def _kh_ai_build_digest(self, work_done, contract_value, invoiced_amount, collected_amount,
+                             open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts,
+                             messages, today_str):
         lines = []
         lines.append('المشروع: %s' % self.name)
         lines.append('المرحلة الحالية: %s' % (self.stage_id.name if self.stage_id else '-'))
         lines.append('مدير المشروع: %s' % (self.user_id.name if self.user_id else '-'))
         lines.append('نسبة الإنجاز: %.1f%% | قيمة العقد: %.2f' % (work_done, contract_value))
+        lines.append('المفوتر فعلياً (فواتير Odoo حقيقية): %.2f | المحصّل فعلياً (مدفوع): %.2f'
+                      % (invoiced_amount, collected_amount))
         lines.append('تاريخ اليوم: %s' % today_str)
 
         lines.append('\n--- التاسكات المفتوحة (غير Approved/Done) - العدد: %d ---' % len(open_tasks))
@@ -195,8 +241,10 @@ class ProjectAiManager(models.Model):
 
         prompt = (
             "أنت مساعد مدير مشاريع خبير بشركة هندسية وتجارية بالإمارات.\n"
-            "البيانات أدناه مستخرجة مباشرة من نظام Odoo (تاسكات، أكتفيتيز، سجل نشاط/شاتر المشروع) وهي دقيقة 100%%.\n"
-            "ممنوع منعاً باتاً أن تخترع أو تغيّر أي رقم (عدد التاسكات، التواريخ) - اعتمد عليها كما هي فقط.\n\n"
+            "البيانات أدناه مستخرجة مباشرة من نظام Odoo (تاسكات، أكتفيتيز، فواتير حقيقية، سجل نشاط/شاتر المشروع) وهي دقيقة 100%%.\n"
+            "ممنوع منعاً باتاً أن تخترع أو تغيّر أي رقم (عدد التاسكات، التواريخ، المبالغ المالية) - اعتمد عليها كما هي فقط.\n"
+            "قارن نسبة المحصّل فعلياً (المدفوع) لقيمة العقد مع نسبة الإنجاز - إذا التحصيل أقل بشكل واضح من نسبة الإنجاز، "
+            "هاي فجوة مالية مهمة لازم تنبّه عليها بوضوح بتقييم الحالة.\n\n"
             "البيانات:\n"
             "--------------------------------------------------\n"
             "%s\n"
@@ -219,7 +267,8 @@ class ProjectAiManager(models.Model):
                         'description': (
                             'HTML بسيط (وسوم <p>/<strong>/<ul>/<li> فقط): هل الحالة الفعلية '
                             '(تاسكات/أكتفيتيز) متوافقة مع سجل النشاط؟ أي فجوات أو تناقضات؟ '
-                            'أي ملاحظة مالية إذا سجل النشاط ذكر تأخر بفواتير أو دفعات؟'
+                            'وبند مالي واضح: قارن نسبة التحصيل الفعلي (المدفوع/قيمة العقد) مع نسبة '
+                            'الإنجاز - نبّه إذا كان التحصيل متأخر بشكل ملحوظ عن الإنجاز.'
                         ),
                     },
                     'next_steps': {

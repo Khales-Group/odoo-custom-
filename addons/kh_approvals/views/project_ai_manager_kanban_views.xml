@@ -15,6 +15,8 @@
                 <field name="x_ai_overdue_activities_count"/>
                 <field name="x_ai_last_review_date"/>
                 <field name="x_ai_next_steps_preview"/>
+                <field name="x_ai_contract_value"/>
+                <field name="x_ai_collected_amount"/>
                 <templates>
                     <t t-name="card">
                         <div t-attf-class="oe_kanban_card oe_kanban_global_click #{record.x_ai_overdue_tasks_count.raw_value > 0 and 'oe_kanban_card_danger' or ''}">
@@ -36,6 +38,9 @@
                                 </div>
                                 <div class="text-muted" style="font-size:11px;">
                                     نسبة الإنجاز: <t t-esc="record.x_ai_work_done.value"/>%
+                                </div>
+                                <div class="text-muted" style="font-size:11px;" t-if="record.x_ai_contract_value.raw_value">
+                                    💰 محصّل: <t t-esc="record.x_ai_collected_amount.value"/> / <t t-esc="record.x_ai_contract_value.value"/>
                                 </div>
                                 <div style="margin-top:6px;">
                                     <span class="badge text-bg-secondary" t-if="record.x_ai_open_tasks_count.raw_value">
