@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 # ============================================================
 #  مدير المشاريع الذكي (AI Project Manager)
-#  زر على المشروع: يحسب التاسكات المفتوحة/المتأخرة والأكتفيتيز المتأخرة
-#  بالكود (بدون تخمين)، وبعدين يبعت ملخّص لـ Claude API عشان يطلع
-#  تقييم للحالة (مطابقة مع الـ chatter؟) واقتراحات للخطوات التالية.
+#  الأرقام والقوائم (تاسكات مفتوحة/متأخرة، أكتفيتيز متأخرة، إسناد المهام،
+#  التحصيل المالي) محسوبة تلقائياً بالكود وتظهر فوراً بدون أي زر - مافي
+#  شي منها يحتاج استدعاء AI. زر "🤖 تشغيل مراجعة AI" الوحيد المطلوب هو
+#  فقط للجزء المكلف: تحليل Claude النصي (تقييم الحالة + الخطوات التالية).
 # ============================================================
 import logging
+from collections import defaultdict
 
 from markupsafe import Markup
 
@@ -29,13 +31,22 @@ DONE_STATES = ('03_approved', '1_done', '1_canceled')
 class ProjectAiManager(models.Model):
     _inherit = 'project.project'
 
-    x_ai_work_done = fields.Float(string="نسبة الإنجاز (AI)", readonly=True, copy=False)
-    x_ai_contract_value = fields.Float(string="قيمة العقد (AI)", readonly=True, copy=False)
-    x_ai_invoiced_amount = fields.Float(string="المفوتر (AI)", readonly=True, copy=False)
-    x_ai_collected_amount = fields.Float(string="المحصّل فعلياً (AI)", readonly=True, copy=False)
-    x_ai_open_tasks_count = fields.Integer(string="تاسكات مفتوحة (AI)", readonly=True, copy=False)
-    x_ai_overdue_tasks_count = fields.Integer(string="تاسكات متأخرة (AI)", readonly=True, copy=False)
-    x_ai_overdue_activities_count = fields.Integer(string="أكتفيتيز متأخرة (AI)", readonly=True, copy=False)
+    # ---- محسوبة تلقائياً، تظهر فوراً بدون أي زر ----
+    x_ai_work_done = fields.Float(string="نسبة الإنجاز (AI)", compute='_compute_ai_financials')
+    x_ai_contract_value = fields.Float(string="قيمة العقد (AI)", compute='_compute_ai_financials')
+    x_ai_invoiced_amount = fields.Float(string="المفوتر (AI)", compute='_compute_ai_financials')
+    x_ai_collected_amount = fields.Float(string="المحصّل فعلياً (AI)", compute='_compute_ai_financials')
+
+    x_ai_open_tasks_count = fields.Integer(
+        string="تاسكات مفتوحة (AI)", compute='_compute_ai_task_metrics', store=True)
+    x_ai_overdue_tasks_count = fields.Integer(
+        string="تاسكات متأخرة (AI)", compute='_compute_ai_task_metrics', store=True)
+    x_ai_overdue_activities_count = fields.Integer(
+        string="أكتفيتيز متأخرة (AI)", compute='_compute_ai_task_metrics', store=True)
+    x_ai_assignment_summary = fields.Html(
+        string="إسناد المهام (AI)", compute='_compute_ai_task_metrics', store=True, sanitize=False)
+
+    # ---- الوحيدة يلي بتحتاج زر (استدعاء Claude فعلي) ----
     x_ai_last_review_date = fields.Datetime(string="آخر مراجعة AI", readonly=True, copy=False)
     x_ai_status_summary = fields.Html(string="تقييم الحالة (AI)", readonly=True, copy=False, sanitize=False)
     x_ai_next_steps = fields.Html(string="الخطوات التالية المقترحة (AI)", readonly=True, copy=False, sanitize=False)
@@ -65,26 +76,37 @@ class ProjectAiManager(models.Model):
         except Exception:
             return False
 
-    # ------------------------------------------------------------------
-    # التحصيل المالي الفعلي - من فواتير Odoo الحقيقية المرتبطة بالمشروع عبر
-    # الحساب التحليلي (Analytic Account)، مش رقم يدوي. نكتشف اسم حقل الحساب
-    # التحليلي ديناميكياً (تغيّر بين إصدارات Odoo: account_id/analytic_account_id)
-    # بدل ما نثبّت اسم معيّن، وأي فشل بيرجع صفر بهدوء بدل ما يكسر المراجعة.
-    # ------------------------------------------------------------------
-    def _kh_ai_find_analytic_account(self):
+    def _kh_ai_analytic_account_field_name(self):
         for fname, f in self._fields.items():
             if f.type == 'many2one' and getattr(f, 'comodel_name', None) == 'account.analytic.account':
-                try:
-                    val = self[fname]
-                except Exception:
-                    continue
-                if val:
-                    return val
+                return fname
         return False
 
-    def _kh_ai_compute_financials(self):
+    # ------------------------------------------------------------------
+    # التحصيل المالي ونسبة الإنجاز - محسوبة تلقائياً (compute غير مخزّنة)،
+    # بتتحدّث لحالها بكل مرة تنفتح، بدون أي زر. اكتشاف حقول Studio (اسم
+    # الحقل بس، مش القيمة) يصير مرة وحدة للدفعة كلها مش لكل مشروع لحاله.
+    # ------------------------------------------------------------------
+    @api.depends()
+    def _compute_ai_financials(self):
+        work_done_field = self._kh_ai_find_studio_field(
+            ['work done', 'إنجاز', 'انجاز', 'progress'], ['float', 'integer', 'monetary'])
+        contract_value_field = self._kh_ai_find_studio_field(
+            ['contract value', 'قيمة العقد'], ['float', 'integer', 'monetary'])
+        analytic_field = self._kh_ai_analytic_account_field_name()
+
+        for project in self:
+            project.x_ai_work_done = project._kh_ai_read_studio_value(work_done_field) or 0.0
+            project.x_ai_contract_value = project._kh_ai_read_studio_value(contract_value_field) or 0.0
+            invoiced, collected = project._kh_ai_compute_financials(analytic_field)
+            project.x_ai_invoiced_amount = invoiced
+            project.x_ai_collected_amount = collected
+
+    def _kh_ai_compute_financials(self, analytic_field=None):
         try:
-            analytic_account = self._kh_ai_find_analytic_account()
+            if analytic_field is None:
+                analytic_field = self._kh_ai_analytic_account_field_name()
+            analytic_account = self._kh_ai_read_studio_value(analytic_field) if analytic_field else False
             if not analytic_account:
                 return 0.0, 0.0
             AML = self.env['account.move.line'].sudo()
@@ -102,51 +124,83 @@ class ProjectAiManager(models.Model):
             return 0.0, 0.0
 
     # ------------------------------------------------------------------
-    # الميثود الرئيسية - تُستدعى من زر "🤖 مراجعة AI" على فورم المشروع
+    # تاسكات مفتوحة/متأخرة + أكتفيتيز متأخرة + إسناد المهام - محسوبة
+    # ومخزّنة (store=True) وبتتحدّث لحالها لما التاسكات/تواريخها تتغيّر،
+    # بدون أي زر.
+    # ------------------------------------------------------------------
+    @api.depends('task_ids', 'task_ids.date_deadline', 'task_ids.x_custom_state', 'task_ids.user_ids',
+                 'activity_ids.date_deadline', 'task_ids.activity_ids.date_deadline')
+    def _compute_ai_task_metrics(self):
+        today_str = str(fields.Date.context_today(self))
+        for project in self:
+            all_tasks = project.task_ids
+            open_tasks = all_tasks.filtered(lambda t: (t.x_custom_state or '') not in DONE_STATES)
+            overdue_tasks = open_tasks.filtered(lambda t: t.date_deadline and str(t.date_deadline) < today_str)
+            overdue_proj_acts = project.activity_ids.filtered(
+                lambda a: a.date_deadline and str(a.date_deadline) < today_str)
+            overdue_task_acts = all_tasks.activity_ids.filtered(
+                lambda a: a.date_deadline and str(a.date_deadline) < today_str)
+
+            project.x_ai_open_tasks_count = len(open_tasks)
+            project.x_ai_overdue_tasks_count = len(overdue_tasks)
+            project.x_ai_overdue_activities_count = len(overdue_proj_acts) + len(overdue_task_acts)
+            project.x_ai_assignment_summary = project._kh_ai_build_assignment_summary(open_tasks, today_str)
+
+    def _kh_ai_build_assignment_summary(self, open_tasks, today_str):
+        counts = defaultdict(lambda: [0, 0])
+        unassigned = [0, 0]
+        for t in open_tasks:
+            is_overdue = bool(t.date_deadline and str(t.date_deadline) < today_str)
+            if not t.user_ids:
+                unassigned[0] += 1
+                if is_overdue:
+                    unassigned[1] += 1
+            for u in t.user_ids:
+                counts[u.name][0] += 1
+                if is_overdue:
+                    counts[u.name][1] += 1
+
+        if not counts and not unassigned[0]:
+            return '<p style="color:#999;">لا يوجد تاسكات مفتوحة.</p>'
+
+        rows = ''.join(
+            '<tr><td>%s</td><td style="text-align:center;">%d</td>'
+            '<td style="text-align:center;color:%s;">%d</td></tr>'
+            % (name, c[0], '#E74C3C' if c[1] else '#888', c[1])
+            for name, c in sorted(counts.items(), key=lambda kv: -kv[1][0])
+        )
+        if unassigned[0]:
+            rows += (
+                '<tr><td style="color:#E74C3C;">⚠️ غير مسندة</td>'
+                '<td style="text-align:center;">%d</td>'
+                '<td style="text-align:center;color:#E74C3C;">%d</td></tr>'
+                % (unassigned[0], unassigned[1])
+            )
+        return (
+            '<table style="width:100%%;border-collapse:collapse;font-size:13px;">'
+            '<thead><tr><th style="text-align:right;">المكلّف</th>'
+            '<th style="text-align:center;">مفتوحة</th><th style="text-align:center;">متأخرة</th></tr></thead>'
+            '<tbody>%s</tbody></table>' % rows
+        )
+
+    # ------------------------------------------------------------------
+    # الميثود الوحيدة يلي بتستدعي Claude - تُستدعى فقط من زر "🤖 مراجعة AI"
+    # (الأرقام والقوائم فوق محسوبة أصلاً تلقائياً وما بتحتاج هالزر)
     # ------------------------------------------------------------------
     def action_run_ai_review(self):
         self.ensure_one()
-        today = fields.Date.context_today(self)
-        today_str = str(today)
+        today_str = str(fields.Date.context_today(self))
         date_from = fields.Datetime.to_string(
             fields.Datetime.subtract(fields.Datetime.now(), days=DIGEST_DAYS)
         )
 
-        # ---- Work Done % وContract Value (حقول Studio، اسمها التقني مُكتشف وقت التشغيل) ----
-        work_done_field = self._kh_ai_find_studio_field(
-            ['work done', 'إنجاز', 'انجاز', 'progress'], ['float', 'integer', 'monetary'])
-        contract_value_field = self._kh_ai_find_studio_field(
-            ['contract value', 'قيمة العقد'], ['float', 'integer', 'monetary'])
-        work_done = self._kh_ai_read_studio_value(work_done_field) or 0.0
-        contract_value = self._kh_ai_read_studio_value(contract_value_field) or 0.0
-        self.x_ai_work_done = work_done
-        self.x_ai_contract_value = contract_value
-
-        # ---- التحصيل المالي الفعلي (من فواتير Odoo الحقيقية عبر Analytic Account) ----
-        invoiced_amount, collected_amount = self._kh_ai_compute_financials()
-        self.x_ai_invoiced_amount = invoiced_amount
-        self.x_ai_collected_amount = collected_amount
-
-        # ---- التاسكات ----
-        Task = self.env['project.task'].sudo()
-        all_tasks = Task.search([('project_id', '=', self.id)])
+        all_tasks = self.task_ids
         open_tasks = all_tasks.filtered(lambda t: (t.x_custom_state or '') not in DONE_STATES)
-        overdue_tasks = open_tasks.filtered(
-            lambda t: t.date_deadline and str(t.date_deadline) < today_str)
+        overdue_tasks = open_tasks.filtered(lambda t: t.date_deadline and str(t.date_deadline) < today_str)
+        overdue_proj_acts = self.activity_ids.filtered(lambda a: a.date_deadline and str(a.date_deadline) < today_str)
+        overdue_task_acts = all_tasks.activity_ids.filtered(
+            lambda a: a.date_deadline and str(a.date_deadline) < today_str)
 
-        # ---- الأكتفيتيز المتأخرة (على المشروع نفسه وعلى تاسكاته) ----
-        Activity = self.env['mail.activity'].sudo()
-        proj_activities = Activity.search([('res_model', '=', 'project.project'), ('res_id', '=', self.id)])
-        task_activities = Activity.search([('res_model', '=', 'project.task'), ('res_id', 'in', all_tasks.ids)]) \
-            if all_tasks else Activity.browse()
-        overdue_proj_acts = proj_activities.filtered(lambda a: a.date_deadline and str(a.date_deadline) < today_str)
-        overdue_task_acts = task_activities.filtered(lambda a: a.date_deadline and str(a.date_deadline) < today_str)
-
-        self.x_ai_open_tasks_count = len(open_tasks)
-        self.x_ai_overdue_tasks_count = len(overdue_tasks)
-        self.x_ai_overdue_activities_count = len(overdue_proj_acts) + len(overdue_task_acts)
-
-        # ---- الشاتر (chatter) تبع المشروع خلال آخر DIGEST_DAYS يوم ----
         messages = self.env['mail.message'].sudo().search([
             ('model', '=', 'project.project'),
             ('res_id', '=', self.id),
@@ -155,8 +209,8 @@ class ProjectAiManager(models.Model):
         ], order='date desc', limit=40)
 
         digest = self._kh_ai_build_digest(
-            work_done, contract_value, invoiced_amount, collected_amount, open_tasks, overdue_tasks,
-            overdue_proj_acts, overdue_task_acts, messages, today_str)
+            self.x_ai_work_done, self.x_ai_contract_value, self.x_ai_invoiced_amount, self.x_ai_collected_amount,
+            open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts, messages, today_str)
 
         status_html, next_steps_html = self._kh_ai_claude_review(digest)
 
@@ -197,7 +251,9 @@ class ProjectAiManager(models.Model):
             deadline = str(t.date_deadline)[:10] if t.date_deadline else 'بدون موعد'
             state_label = dict(t._fields['x_custom_state'].selection or []).get(t.x_custom_state, t.x_custom_state or '-')
             overdue_tag = ' [متأخرة]' if t in overdue_tasks else ''
-            lines.append('  📌 %s | الحالة: %s | الموعد: %s%s' % (t.name, state_label, deadline, overdue_tag))
+            assignees = ', '.join(t.user_ids.mapped('name')) or 'غير مسندة'
+            lines.append('  📌 %s | المكلّف: %s | الحالة: %s | الموعد: %s%s'
+                          % (t.name, assignees, state_label, deadline, overdue_tag))
 
         lines.append('\n--- أكتفيتيز متأخرة على المشروع - العدد: %d ---' % len(overdue_proj_acts))
         for a in overdue_proj_acts:
