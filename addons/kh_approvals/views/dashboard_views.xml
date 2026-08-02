@@ -10,7 +10,8 @@
                 <field name="name"/>
                 <field name="user_id" string="مدير المشروع"/>
                 <field name="stage_id" string="المرحلة"/>
-                <field name="x_ai_work_done" string="نسبة الإنجاز"/>
+                <field name="x_ai_work_done_tasks" string="نسبة الإنجاز (تاسكات)"/>
+                <field name="x_ai_work_done" string="نسبة الإنجاز (Odoo)"/>
                 <field name="x_ai_contract_value" string="قيمة العقد"/>
                 <field name="x_ai_invoiced_amount" string="المفوتر"/>
                 <field name="x_ai_collected_amount" string="المحصّل فعلياً"/>
@@ -46,29 +47,32 @@
                     <group>
                         <group string="📊 نظرة عامة">
                             <field name="x_ai_work_done"/>
+                            <field name="x_ai_work_done_tasks"/>
                             <field name="x_ai_open_tasks_count"/>
                             <field name="x_ai_overdue_tasks_count"/>
                             <field name="x_ai_overdue_activities_count"/>
+                            <field name="x_ai_last_review_date"/>
                         </group>
                         <group string="💰 التحصيل المالي (فواتير Odoo فعلية)">
                             <field name="x_ai_contract_value"/>
                             <field name="x_ai_invoiced_amount"/>
                             <field name="x_ai_collected_amount"/>
+                            <field name="x_ai_financial_data_note" nolabel="1" colspan="2"
+                                   invisible="not x_ai_financial_data_note"/>
                         </group>
                     </group>
-                    <group string="👥 إسناد المهام المفتوحة">
-                        <field name="x_ai_assignment_summary" nolabel="1"/>
-                    </group>
+
+                    <!-- خارج أي group بعدد أعمدة - عشان تاخد كامل عرض الصفحة -->
+                    <h4>👥 إسناد المهام المفتوحة</h4>
+                    <field name="x_ai_assignment_summary" nolabel="1"/>
 
                     <!-- الجزء الوحيد يلي فعلياً يحتاج الزر (تحليل Claude) -->
-                    <group string="💡 تقييم الحالة والخطوات التالية (AI)">
-                        <div class="alert alert-info" role="alert" invisible="x_ai_last_review_date">
-                            اضغط زر "🤖 تشغيل مراجعة AI" أعلى الصفحة عشان تطلع توصيات وتحليل الذكاء الاصطناعي.
-                        </div>
-                        <field name="x_ai_last_review_date"/>
-                        <field name="x_ai_status_summary" nolabel="1"/>
-                        <field name="x_ai_next_steps" nolabel="1"/>
-                    </group>
+                    <h4>💡 تقييم الحالة والخطوات التالية (AI)</h4>
+                    <div class="alert alert-info" role="alert" invisible="x_ai_last_review_date">
+                        اضغط زر "🤖 تشغيل مراجعة AI" أعلى الصفحة عشان تطلع توصيات وتحليل الذكاء الاصطناعي.
+                    </div>
+                    <field name="x_ai_status_summary" nolabel="1"/>
+                    <field name="x_ai_next_steps" nolabel="1"/>
 
                     <notebook>
                         <page string="⏰ التاسكات المتأخرة" name="kh_ai_overdue_tasks">

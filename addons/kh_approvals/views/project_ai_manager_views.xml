@@ -21,29 +21,32 @@
                     <group>
                         <group string="📊 نظرة عامة">
                             <field name="x_ai_work_done" readonly="1"/>
+                            <field name="x_ai_work_done_tasks" readonly="1"/>
                             <field name="x_ai_open_tasks_count" readonly="1"/>
                             <field name="x_ai_overdue_tasks_count" readonly="1"/>
                             <field name="x_ai_overdue_activities_count" readonly="1"/>
+                            <field name="x_ai_last_review_date" readonly="1"/>
                         </group>
                         <group string="💰 التحصيل المالي (فواتير Odoo فعلية)">
                             <field name="x_ai_contract_value" readonly="1"/>
                             <field name="x_ai_invoiced_amount" readonly="1"/>
                             <field name="x_ai_collected_amount" readonly="1"/>
+                            <field name="x_ai_financial_data_note" readonly="1" nolabel="1" colspan="2"
+                                   invisible="not x_ai_financial_data_note"/>
                         </group>
                     </group>
-                    <group string="👥 إسناد المهام المفتوحة">
-                        <field name="x_ai_assignment_summary" readonly="1" nolabel="1"/>
-                    </group>
+
+                    <!-- خارج أي group بعدد أعمدة - عشان تاخد كامل عرض الصفحة -->
+                    <h4>👥 إسناد المهام المفتوحة</h4>
+                    <field name="x_ai_assignment_summary" readonly="1" nolabel="1"/>
 
                     <!-- الجزء الوحيد يلي فعلياً يحتاج الزر (تحليل Claude) -->
-                    <group string="💡 تقييم الحالة والخطوات التالية (AI)">
-                        <div class="alert alert-info" role="alert" invisible="x_ai_last_review_date">
-                            اضغط زر "مراجعة AI" فوق (الأيقونة ⚡ ببوكس الأزرار) عشان تطلع توصيات وتحليل الذكاء الاصطناعي.
-                        </div>
-                        <field name="x_ai_last_review_date" readonly="1"/>
-                        <field name="x_ai_status_summary" readonly="1" nolabel="1"/>
-                        <field name="x_ai_next_steps" readonly="1" nolabel="1"/>
-                    </group>
+                    <h4>💡 تقييم الحالة والخطوات التالية (AI)</h4>
+                    <div class="alert alert-info" role="alert" invisible="x_ai_last_review_date">
+                        اضغط زر "مراجعة AI" فوق (الأيقونة ⚡ ببوكس الأزرار) عشان تطلع توصيات وتحليل الذكاء الاصطناعي.
+                    </div>
+                    <field name="x_ai_status_summary" readonly="1" nolabel="1"/>
+                    <field name="x_ai_next_steps" readonly="1" nolabel="1"/>
 
                     <notebook>
                         <page string="⏰ التاسكات المتأخرة" name="kh_ai_tab_overdue">

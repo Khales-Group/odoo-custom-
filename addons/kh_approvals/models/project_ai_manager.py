@@ -32,11 +32,15 @@ class ProjectAiManager(models.Model):
     _inherit = 'project.project'
 
     # ---- محسوبة تلقائياً، تظهر فوراً بدون أي زر ----
-    x_ai_work_done = fields.Float(string="نسبة الإنجاز (AI)", compute='_compute_ai_financials')
+    x_ai_work_done = fields.Float(string="نسبة الإنجاز حسب Odoo (AI)", compute='_compute_ai_financials')
     x_ai_contract_value = fields.Float(string="قيمة العقد (AI)", compute='_compute_ai_financials')
     x_ai_invoiced_amount = fields.Float(string="المفوتر (AI)", compute='_compute_ai_financials')
     x_ai_collected_amount = fields.Float(string="المحصّل فعلياً (AI)", compute='_compute_ai_financials')
+    x_ai_financial_data_note = fields.Char(
+        string="ملاحظة بيانات مالية", compute='_compute_ai_financials')
 
+    x_ai_work_done_tasks = fields.Float(
+        string="نسبة الإنجاز حسب التاسكات (AI)", compute='_compute_ai_task_metrics', store=True)
     x_ai_open_tasks_count = fields.Integer(
         string="تاسكات مفتوحة (AI)", compute='_compute_ai_task_metrics', store=True)
     x_ai_overdue_tasks_count = fields.Integer(
@@ -90,10 +94,21 @@ class ProjectAiManager(models.Model):
     @api.depends()
     def _compute_ai_financials(self):
         work_done_field = self._kh_ai_find_studio_field(
-            ['work done', 'إنجاز', 'انجاز', 'progress'], ['float', 'integer', 'monetary'])
+            ['work done', 'إنجاز', 'انجاز', 'progress', 'completion', '% complete', 'percent complete'],
+            ['float', 'integer', 'monetary'])
         contract_value_field = self._kh_ai_find_studio_field(
-            ['contract value', 'قيمة العقد'], ['float', 'integer', 'monetary'])
+            ['contract value', 'قيمة العقد', 'contract amount', 'project value', 'قيمة المشروع', 'total contract'],
+            ['float', 'integer', 'monetary'])
         analytic_field = self._kh_ai_analytic_account_field_name()
+
+        notes = []
+        if not work_done_field:
+            notes.append('⚠️ ما لقيت حقل "نسبة الإنجاز" على project.project بهذا النظام.')
+        if not contract_value_field:
+            notes.append('⚠️ ما لقيت حقل "قيمة العقد" على project.project بهذا النظام.')
+        if not analytic_field:
+            notes.append('⚠️ project.project ما فيه حقل حساب تحليلي (Analytic Account) - ما بقدر أحسب الفواتير.')
+        note = ' '.join(notes)
 
         for project in self:
             project.x_ai_work_done = project._kh_ai_read_studio_value(work_done_field) or 0.0
@@ -101,6 +116,11 @@ class ProjectAiManager(models.Model):
             invoiced, collected = project._kh_ai_compute_financials(analytic_field)
             project.x_ai_invoiced_amount = invoiced
             project.x_ai_collected_amount = collected
+            project_note = note
+            if analytic_field and not project._kh_ai_read_studio_value(analytic_field):
+                extra = '⚠️ هذا المشروع تحديداً غير مرتبط بحساب تحليلي - ما رح تظهر فواتيره.'
+                project_note = (project_note + ' ' + extra).strip()
+            project.x_ai_financial_data_note = project_note or False
 
     def _kh_ai_compute_financials(self, analytic_field=None):
         try:
@@ -140,6 +160,14 @@ class ProjectAiManager(models.Model):
                 lambda a: a.date_deadline and str(a.date_deadline) < today_str)
             overdue_task_acts = all_tasks.activity_ids.filtered(
                 lambda a: a.date_deadline and str(a.date_deadline) < today_str)
+
+            # نسبة إنجاز محسوبة فعلياً من التاسكات (بدون الملغاة) - بديل/مقارنة
+            # مستقلة عن حقل Studio اليدوي، لأنه هالأخير ممكن يكون فاضي أو ما تحدّث.
+            countable_tasks = all_tasks.filtered(lambda t: (t.x_custom_state or '') != '1_canceled')
+            done_tasks = countable_tasks.filtered(lambda t: (t.x_custom_state or '') in ('03_approved', '1_done'))
+            project.x_ai_work_done_tasks = (
+                (len(done_tasks) / len(countable_tasks) * 100.0) if countable_tasks else 0.0
+            )
 
             project.x_ai_open_tasks_count = len(open_tasks)
             project.x_ai_overdue_tasks_count = len(overdue_tasks)
@@ -209,7 +237,8 @@ class ProjectAiManager(models.Model):
         ], order='date desc', limit=40)
 
         digest = self._kh_ai_build_digest(
-            self.x_ai_work_done, self.x_ai_contract_value, self.x_ai_invoiced_amount, self.x_ai_collected_amount,
+            self.x_ai_work_done, self.x_ai_work_done_tasks, self.x_ai_contract_value,
+            self.x_ai_invoiced_amount, self.x_ai_collected_amount,
             open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts, messages, today_str)
 
         status_html, next_steps_html = self._kh_ai_claude_review(digest)
@@ -234,14 +263,16 @@ class ProjectAiManager(models.Model):
     # ------------------------------------------------------------------
     # بناء نص الملخص (Digest) - بيانات فعلية جاهزة، بدون تخمين
     # ------------------------------------------------------------------
-    def _kh_ai_build_digest(self, work_done, contract_value, invoiced_amount, collected_amount,
+    def _kh_ai_build_digest(self, work_done, work_done_tasks, contract_value, invoiced_amount, collected_amount,
                              open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts,
                              messages, today_str):
         lines = []
         lines.append('المشروع: %s' % self.name)
         lines.append('المرحلة الحالية: %s' % (self.stage_id.name if self.stage_id else '-'))
         lines.append('مدير المشروع: %s' % (self.user_id.name if self.user_id else '-'))
-        lines.append('نسبة الإنجاز: %.1f%% | قيمة العقد: %.2f' % (work_done, contract_value))
+        lines.append('نسبة الإنجاز المسجّلة يدوياً بـ Odoo: %.1f%%' % work_done)
+        lines.append('نسبة الإنجاز محسوبة فعلياً من التاسكات (منجز/الكل غير الملغى): %.1f%%' % work_done_tasks)
+        lines.append('قيمة العقد: %.2f' % contract_value)
         lines.append('المفوتر فعلياً (فواتير Odoo حقيقية): %.2f | المحصّل فعلياً (مدفوع): %.2f'
                       % (invoiced_amount, collected_amount))
         lines.append('تاريخ اليوم: %s' % today_str)
@@ -298,9 +329,11 @@ class ProjectAiManager(models.Model):
         prompt = (
             "أنت مساعد مدير مشاريع خبير بشركة هندسية وتجارية بالإمارات.\n"
             "البيانات أدناه مستخرجة مباشرة من نظام Odoo (تاسكات، أكتفيتيز، فواتير حقيقية، سجل نشاط/شاتر المشروع) وهي دقيقة 100%%.\n"
-            "ممنوع منعاً باتاً أن تخترع أو تغيّر أي رقم (عدد التاسكات، التواريخ، المبالغ المالية) - اعتمد عليها كما هي فقط.\n"
-            "قارن نسبة المحصّل فعلياً (المدفوع) لقيمة العقد مع نسبة الإنجاز - إذا التحصيل أقل بشكل واضح من نسبة الإنجاز، "
-            "هاي فجوة مالية مهمة لازم تنبّه عليها بوضوح بتقييم الحالة.\n\n"
+            "ممنوع منعاً باتاً أن تخترع أو تغيّر أي رقم (عدد التاسكات، التواريخ، المبالغ المالية، النسب) - اعتمد عليها كما هي فقط.\n"
+            "قارن ثلاث نسب مع بعضها: (1) نسبة الإنجاز المسجّلة يدوياً بـ Odoo، (2) نسبة الإنجاز المحسوبة فعلياً من "
+            "التاسكات المنجزة، (3) نسبة التحصيل الفعلي (المحصّل/قيمة العقد). إذا في فرق واضح بين أي منهم - "
+            "خصوصاً إذا نسبة التاسكات المنجزة أعلى بكثير من نسبة التحصيل، أو النسبة اليدوية بعيدة عن نسبة التاسكات - "
+            "هاي فجوة مهمة (بيانات غير محدّثة أو تحصيل متأخر) لازم تنبّه عليها بوضوح بتقييم الحالة.\n\n"
             "البيانات:\n"
             "--------------------------------------------------\n"
             "%s\n"
@@ -323,8 +356,8 @@ class ProjectAiManager(models.Model):
                         'description': (
                             'HTML بسيط (وسوم <p>/<strong>/<ul>/<li> فقط): هل الحالة الفعلية '
                             '(تاسكات/أكتفيتيز) متوافقة مع سجل النشاط؟ أي فجوات أو تناقضات؟ '
-                            'وبند مالي واضح: قارن نسبة التحصيل الفعلي (المدفوع/قيمة العقد) مع نسبة '
-                            'الإنجاز - نبّه إذا كان التحصيل متأخر بشكل ملحوظ عن الإنجاز.'
+                            'وبند مقارنة واضح بين النسب الثلاث (الإنجاز اليدوي، الإنجاز حسب التاسكات، '
+                            'التحصيل الفعلي) - نبّه إذا في فجوة ملحوظة بينهم.'
                         ),
                     },
                     'next_steps': {
