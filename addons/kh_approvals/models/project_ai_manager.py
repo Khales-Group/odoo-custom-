@@ -87,6 +87,22 @@ class ProjectAiManager(models.Model):
         return False
 
     # ------------------------------------------------------------------
+    # هل التاسك منجزة؟ - نفس منطق khales_ai_report.py المُثبت شغله فعلياً:
+    # الحقل الحقيقي المستخدم بالنظام هو state (المدمج بـ Odoo)، وx_custom_state
+    # هو حقل كاستوم إضافي ثبت إنه فاضي لمعظم التاسكات (مش هو يلي فيه البيانات
+    # الحقيقية) - نتحقق منه بس كـ fallback ثانوي. وبالإضافة اسم الـ stage
+    # كإشارة ثالثة، تماماً متل khales_ai_report.py.
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _kh_ai_is_task_done(task):
+        task_state = task.state or task.x_custom_state or ''
+        if task_state in DONE_STATES:
+            return True
+        if task.stage_id and 'done' in (task.stage_id.name or '').lower():
+            return True
+        return False
+
+    # ------------------------------------------------------------------
     # التحصيل المالي ونسبة الإنجاز - محسوبة تلقائياً (compute غير مخزّنة)،
     # بتتحدّث لحالها بكل مرة تنفتح، بدون أي زر. اكتشاف حقول Studio (اسم
     # الحقل بس، مش القيمة) يصير مرة وحدة للدفعة كلها مش لكل مشروع لحاله.
@@ -148,13 +164,14 @@ class ProjectAiManager(models.Model):
     # ومخزّنة (store=True) وبتتحدّث لحالها لما التاسكات/تواريخها تتغيّر،
     # بدون أي زر.
     # ------------------------------------------------------------------
-    @api.depends('task_ids', 'task_ids.date_deadline', 'task_ids.x_custom_state', 'task_ids.user_ids',
+    @api.depends('task_ids', 'task_ids.date_deadline', 'task_ids.state', 'task_ids.x_custom_state',
+                 'task_ids.stage_id', 'task_ids.user_ids',
                  'activity_ids.date_deadline', 'task_ids.activity_ids.date_deadline')
     def _compute_ai_task_metrics(self):
         today_str = str(fields.Date.context_today(self))
         for project in self:
             all_tasks = project.task_ids
-            open_tasks = all_tasks.filtered(lambda t: (t.x_custom_state or '') not in DONE_STATES)
+            open_tasks = all_tasks.filtered(lambda t: not project._kh_ai_is_task_done(t))
             overdue_tasks = open_tasks.filtered(lambda t: t.date_deadline and str(t.date_deadline) < today_str)
             overdue_proj_acts = project.activity_ids.filtered(
                 lambda a: a.date_deadline and str(a.date_deadline) < today_str)
@@ -163,8 +180,8 @@ class ProjectAiManager(models.Model):
 
             # نسبة إنجاز محسوبة فعلياً من التاسكات (بدون الملغاة) - بديل/مقارنة
             # مستقلة عن حقل Studio اليدوي، لأنه هالأخير ممكن يكون فاضي أو ما تحدّث.
-            countable_tasks = all_tasks.filtered(lambda t: (t.x_custom_state or '') != '1_canceled')
-            done_tasks = countable_tasks.filtered(lambda t: (t.x_custom_state or '') in ('03_approved', '1_done'))
+            countable_tasks = all_tasks.filtered(lambda t: (t.state or t.x_custom_state or '') != '1_canceled')
+            done_tasks = countable_tasks.filtered(lambda t: project._kh_ai_is_task_done(t))
             project.x_ai_work_done_tasks = (
                 (len(done_tasks) / len(countable_tasks) * 100.0) if countable_tasks else 0.0
             )
@@ -223,7 +240,7 @@ class ProjectAiManager(models.Model):
         )
 
         all_tasks = self.task_ids
-        open_tasks = all_tasks.filtered(lambda t: (t.x_custom_state or '') not in DONE_STATES)
+        open_tasks = all_tasks.filtered(lambda t: not self._kh_ai_is_task_done(t))
         overdue_tasks = open_tasks.filtered(lambda t: t.date_deadline and str(t.date_deadline) < today_str)
         overdue_proj_acts = self.activity_ids.filtered(lambda a: a.date_deadline and str(a.date_deadline) < today_str)
         overdue_task_acts = all_tasks.activity_ids.filtered(
@@ -280,7 +297,10 @@ class ProjectAiManager(models.Model):
         lines.append('\n--- التاسكات المفتوحة (غير Approved/Done) - العدد: %d ---' % len(open_tasks))
         for t in open_tasks:
             deadline = str(t.date_deadline)[:10] if t.date_deadline else 'بدون موعد'
-            state_label = dict(t._fields['x_custom_state'].selection or []).get(t.x_custom_state, t.x_custom_state or '-')
+            try:
+                state_label = dict(t._fields['state'].selection or []).get(t.state, t.state or '-')
+            except Exception:
+                state_label = t.state or '-'
             overdue_tag = ' [متأخرة]' if t in overdue_tasks else ''
             assignees = ', '.join(t.user_ids.mapped('name')) or 'غير مسندة'
             lines.append('  📌 %s | المكلّف: %s | الحالة: %s | الموعد: %s%s'
