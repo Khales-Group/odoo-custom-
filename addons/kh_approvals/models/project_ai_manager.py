@@ -270,6 +270,26 @@ class ProjectAiManager(models.Model):
         )
 
     # ------------------------------------------------------------------
+    # تنسيق موحّد ومضمون بصرياً - عبر CSS بـ class ثابت (مش بالاعتماد على
+    # إنه Claude يلتزم بوسوم style يدوياً بكل مرة، لأنه هذا مش مضمون 100%).
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _kh_ai_wrap_html(html):
+        if not html:
+            return html
+        return (
+            '<div class="kh_ai_box">'
+            '<style>'
+            '.kh_ai_box{line-height:1.9;font-size:14px;}'
+            '.kh_ai_box p{margin:0 0 12px 0;padding:8px 12px;background:#f8f7fa;'
+            'border-right:3px solid #714B67;border-radius:4px;}'
+            '.kh_ai_box ul{padding-right:22px;margin:8px 0;list-style:disc;}'
+            '.kh_ai_box li{margin-bottom:10px;}'
+            '.kh_ai_box strong{color:#714B67;}'
+            '</style>%s</div>' % html
+        )
+
+    # ------------------------------------------------------------------
     # الميثود الوحيدة يلي بتستدعي Claude - تُستدعى فقط من زر "🤖 مراجعة AI"
     # (الأرقام والقوائم فوق محسوبة أصلاً تلقائياً وما بتحتاج هالزر)
     # ------------------------------------------------------------------
@@ -302,9 +322,8 @@ class ProjectAiManager(models.Model):
         status_html, next_steps_html = self._kh_ai_claude_review(digest)
 
         preview = html2plaintext(next_steps_html or '').strip().replace('\n', ' ')
-        wrap = '<div style="line-height:1.9;font-size:14px;">%s</div>'
-        self.x_ai_status_summary = wrap % status_html if status_html else status_html
-        self.x_ai_next_steps = wrap % next_steps_html if next_steps_html else next_steps_html
+        self.x_ai_status_summary = self._kh_ai_wrap_html(status_html)
+        self.x_ai_next_steps = self._kh_ai_wrap_html(next_steps_html)
         self.x_ai_next_steps_preview = (preview[:140] + '…') if len(preview) > 140 else preview
         self.x_ai_last_review_date = fields.Datetime.now()
 
@@ -314,7 +333,8 @@ class ProjectAiManager(models.Model):
             '<p style="color:#666;font-size:12px;">تاسكات مفتوحة: %d | متأخرة: %d | أكتفيتيز متأخرة: %d</p>'
             '%s%s</div>'
             % (today_str, len(open_tasks), len(overdue_tasks),
-               len(overdue_proj_acts) + len(overdue_task_acts), status_html, next_steps_html)
+               len(overdue_proj_acts) + len(overdue_task_acts),
+               self.x_ai_status_summary or '', self.x_ai_next_steps or '')
         )
         self.message_post(body=Markup(report_html), message_type='comment', subtype_xmlid='mail.mt_comment')
         return True
