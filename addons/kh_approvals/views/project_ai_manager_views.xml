@@ -17,6 +17,10 @@
 
             <xpath expr="//notebook" position="inside">
                 <page string="🤖 AI Project Manager" name="kh_ai_project_manager" priority="1">
+                    <div class="alert alert-warning" role="alert" invisible="not x_ai_debug_note">
+                        <field name="x_ai_debug_note" readonly="1" nolabel="1"/>
+                    </div>
+
                     <!-- كل هذا محسوب تلقائياً وظاهر فوراً - ما بيحتاج أي زر -->
                     <group>
                         <group string="📊 نظرة عامة">

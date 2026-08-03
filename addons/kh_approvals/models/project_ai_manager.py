@@ -49,6 +49,8 @@ class ProjectAiManager(models.Model):
         string="أكتفيتيز متأخرة (AI)", compute='_compute_ai_task_metrics', store=True)
     x_ai_assignment_summary = fields.Html(
         string="إسناد المهام (AI)", compute='_compute_ai_task_metrics', store=True, sanitize=False)
+    x_ai_debug_note = fields.Char(
+        string="🔍 تشخيص مؤقت (AI)", compute='_compute_ai_task_metrics', store=True)
 
     # ---- الوحيدة يلي بتحتاج زر (استدعاء Claude فعلي) ----
     x_ai_last_review_date = fields.Datetime(string="آخر مراجعة AI", readonly=True, copy=False)
@@ -87,20 +89,43 @@ class ProjectAiManager(models.Model):
         return False
 
     # ------------------------------------------------------------------
-    # هل التاسك منجزة؟ - نفس منطق khales_ai_report.py المُثبت شغله فعلياً:
-    # الحقل الحقيقي المستخدم بالنظام هو state (المدمج بـ Odoo)، وx_custom_state
-    # هو حقل كاستوم إضافي ثبت إنه فاضي لمعظم التاسكات (مش هو يلي فيه البيانات
-    # الحقيقية) - نتحقق منه بس كـ fallback ثانوي. وبالإضافة اسم الـ stage
-    # كإشارة ثالثة، تماماً متل khales_ai_report.py.
+    # هل التاسك منجزة؟ - state وx_custom_state طلعوا فاضيين لمعظم التاسكات
+    # (جرّبنا الاثنين وما جابوا نتيجة). العدّاد الأصلي لـ Odoo (يلي طالع
+    # بالهيدر "236/271") غالباً بيعتمد على fold تبع الـ Kanban Stage (المرحلة
+    # المطوية = منجزة/ملغاة) - هذا أكتر إشارة موثوقة بـ Odoo الأساسي، نتحقق
+    # منها أول شي، وبعدها الإشارات الثانوية الباقية.
     # ------------------------------------------------------------------
     @staticmethod
     def _kh_ai_is_task_done(task):
+        if task.stage_id and task.stage_id.fold:
+            return True
         task_state = task.state or task.x_custom_state or ''
         if task_state in DONE_STATES:
             return True
         if task.stage_id and 'done' in (task.stage_id.name or '').lower():
             return True
         return False
+
+    # ------------------------------------------------------------------
+    # ملاحظة تشخيصية مؤقتة: بما إنو أول محاولتين (x_custom_state وstate)
+    # طلعوا مافيهم بيانات، منعرض هون بالضبط شو موجود فعلياً بكل تاسك عشان
+    # نعرف بدقة شو الحقل/الإشارة الصحيحة بدل التخمين.
+    # ------------------------------------------------------------------
+    def _kh_ai_build_debug_note(self, all_tasks):
+        total = len(all_tasks)
+        if not total:
+            return False
+        fold_true = len(all_tasks.filtered(lambda t: t.stage_id and t.stage_id.fold))
+        state_filled = len(all_tasks.filtered(lambda t: t.state))
+        xstate_filled = len(all_tasks.filtered(lambda t: t.x_custom_state))
+        stage_names = sorted(set(all_tasks.mapped('stage_id.name')) - {False})
+        return (
+            '🔍 تشخيص مؤقت: من أصل %d تاسك — فيها stage.fold=True: %d | فيها state معبّى: %d '
+            '(قيم موجودة: %s) | فيها x_custom_state معبّى: %d | أسماء المراحل (Stages) الموجودة: %s'
+            % (total, fold_true, state_filled,
+               ', '.join(sorted(set(all_tasks.filtered(lambda t: t.state).mapped('state')))) or '-',
+               xstate_filled, ', '.join(stage_names) or '-')
+        )
 
     # ------------------------------------------------------------------
     # التحصيل المالي ونسبة الإنجاز - محسوبة تلقائياً (compute غير مخزّنة)،
@@ -190,6 +215,7 @@ class ProjectAiManager(models.Model):
             project.x_ai_overdue_tasks_count = len(overdue_tasks)
             project.x_ai_overdue_activities_count = len(overdue_proj_acts) + len(overdue_task_acts)
             project.x_ai_assignment_summary = project._kh_ai_build_assignment_summary(open_tasks, today_str)
+            project.x_ai_debug_note = project._kh_ai_build_debug_note(all_tasks)
 
     def _kh_ai_build_assignment_summary(self, open_tasks, today_str):
         counts = defaultdict(lambda: [0, 0])

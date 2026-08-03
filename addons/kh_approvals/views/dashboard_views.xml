@@ -43,6 +43,10 @@
                         </h3>
                     </div>
 
+                    <div class="alert alert-warning" role="alert" invisible="not x_ai_debug_note">
+                        <field name="x_ai_debug_note" nolabel="1"/>
+                    </div>
+
                     <!-- كل هذا محسوب تلقائياً وظاهر فوراً - ما بيحتاج أي زر -->
                     <group>
                         <group string="📊 نظرة عامة">
