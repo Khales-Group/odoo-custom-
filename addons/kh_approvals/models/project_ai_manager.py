@@ -9,7 +9,7 @@
 import logging
 from collections import defaultdict
 
-from markupsafe import Markup
+from markupsafe import Markup, escape
 
 from odoo import api, fields, models
 from odoo.tools import html2plaintext
@@ -270,23 +270,45 @@ class ProjectAiManager(models.Model):
         )
 
     # ------------------------------------------------------------------
-    # تنسيق موحّد ومضمون بصرياً - عبر CSS بـ class ثابت (مش بالاعتماد على
-    # إنه Claude يلتزم بوسوم style يدوياً بكل مرة، لأنه هذا مش مضمون 100%).
+    # التنسيق البصري بالكامل بالكود (Python)، مش عند Claude - نطلب منه
+    # محتوى (نصوص عادية بسيطة بس)، ونحن يلي نبني الـ HTML/CSS بشكل ثابت
+    # ومضمون دايماً بنفس الشكل، بدل ما نعتمد على التزامه بوسوم/style
+    # في كل مرة (يلي ثبت إنه مش مضمون).
     # ------------------------------------------------------------------
-    @staticmethod
-    def _kh_ai_wrap_html(html):
-        if not html:
-            return html
+    _KH_AI_STYLE = (
+        '<style>'
+        '.kh_ai_box{line-height:1.8;font-size:14px;}'
+        '.kh_ai_box .kh_ai_headline{margin:0 0 12px 0;color:#714B67;'
+        'border-bottom:2px solid #714B67;padding-bottom:8px;font-size:16px;font-weight:bold;}'
+        '.kh_ai_box ul,.kh_ai_box ol{padding-right:22px;margin:0 0 12px 0;}'
+        '.kh_ai_box li{margin-bottom:8px;}'
+        '.kh_ai_box .kh_ai_financial{background:#fff8e6;border-right:3px solid #E67E22;'
+        'padding:10px 14px;border-radius:4px;margin-top:4px;}'
+        '</style>'
+    )
+
+    def _kh_ai_render_status_html(self, data):
+        headline = (data.get('headline') or '').strip()
+        points = [p for p in (data.get('status_points') or []) if p and p.strip()]
+        financial = (data.get('financial_comparison') or '').strip()
+
+        parts = ['<div class="kh_ai_box">', self._KH_AI_STYLE]
+        if headline:
+            parts.append('<div class="kh_ai_headline">%s</div>' % escape(headline))
+        if points:
+            parts.append('<ul>%s</ul>' % ''.join('<li>%s</li>' % escape(p) for p in points))
+        if financial:
+            parts.append('<div class="kh_ai_financial">💰 %s</div>' % escape(financial))
+        parts.append('</div>')
+        return ''.join(parts)
+
+    def _kh_ai_render_next_steps_html(self, data):
+        steps = [s for s in (data.get('next_steps') or []) if s and s.strip()]
+        if not steps:
+            return ''
         return (
-            '<div class="kh_ai_box">'
-            '<style>'
-            '.kh_ai_box{line-height:1.9;font-size:14px;}'
-            '.kh_ai_box p{margin:0 0 12px 0;padding:8px 12px;background:#f8f7fa;'
-            'border-right:3px solid #714B67;border-radius:4px;}'
-            '.kh_ai_box ul{padding-right:22px;margin:8px 0;list-style:disc;}'
-            '.kh_ai_box li{margin-bottom:10px;}'
-            '.kh_ai_box strong{color:#714B67;}'
-            '</style>%s</div>' % html
+            '<div class="kh_ai_box">%s<ol>%s</ol></div>'
+            % (self._KH_AI_STYLE, ''.join('<li>%s</li>' % escape(s) for s in steps))
         )
 
     # ------------------------------------------------------------------
@@ -319,11 +341,16 @@ class ProjectAiManager(models.Model):
             self.x_ai_invoiced_amount, self.x_ai_collected_amount,
             open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts, messages, today_str)
 
-        status_html, next_steps_html = self._kh_ai_claude_review(digest)
+        data, error_html = self._kh_ai_claude_review(digest)
+        if error_html:
+            status_html, next_steps_html = error_html, ''
+        else:
+            status_html = self._kh_ai_render_status_html(data)
+            next_steps_html = self._kh_ai_render_next_steps_html(data)
 
-        preview = html2plaintext(next_steps_html or '').strip().replace('\n', ' ')
-        self.x_ai_status_summary = self._kh_ai_wrap_html(status_html)
-        self.x_ai_next_steps = self._kh_ai_wrap_html(next_steps_html)
+        preview = ' | '.join((data or {}).get('next_steps') or [])
+        self.x_ai_status_summary = status_html
+        self.x_ai_next_steps = next_steps_html
         self.x_ai_next_steps_preview = (preview[:140] + '…') if len(preview) > 140 else preview
         self.x_ai_last_review_date = fields.Datetime.now()
 
@@ -394,19 +421,22 @@ class ProjectAiManager(models.Model):
         return '\n'.join(lines)
 
     # ------------------------------------------------------------------
-    # استدعاء Claude - يرجع (status_summary_html, next_steps_html)
+    # استدعاء Claude - نطلب منه محتوى (نصوص عادية قصيرة بس، بدون HTML)
+    # ونحن يلي نبني الشكل بالكامل بالكود (_kh_ai_render_*) - هيك التنسيق
+    # مضمون ثابت دايماً، مش متروك لالتزام الموديل بوسوم HTML.
+    # يرجع (data_dict, error_html) - وحدة منهم دايماً None.
     # ------------------------------------------------------------------
     def _kh_ai_claude_review(self, digest_text):
         warn_box = '<div style="color:#856404;background:#fff3cd;padding:8px 12px;border-radius:6px;">%s</div>'
 
         if not HAS_ANTHROPIC:
-            return warn_box % '⚠️ مكتبة anthropic غير مثبّتة.', ''
+            return None, warn_box % '⚠️ مكتبة anthropic غير مثبّتة.'
 
         ICP = self.env['ir.config_parameter'].sudo()
         api_key = ICP.get_param('mcp_server.anthropic_api_key')
         model = ICP.get_param('mcp_server.anthropic_model') or DEFAULT_MODEL
         if not api_key:
-            return warn_box % '⚠️ مفتاح mcp_server.anthropic_api_key غير موجود في إعدادات Odoo.', ''
+            return None, warn_box % '⚠️ مفتاح mcp_server.anthropic_api_key غير موجود في إعدادات Odoo.'
 
         prompt = (
             "أنت مساعد مدير مشاريع خبير بشركة هندسية وتجارية بالإمارات.\n"
@@ -415,48 +445,54 @@ class ProjectAiManager(models.Model):
             "قارن ثلاث نسب مع بعضها: (1) نسبة الإنجاز المسجّلة يدوياً بـ Odoo، (2) نسبة الإنجاز المحسوبة فعلياً من "
             "التاسكات المنجزة، (3) نسبة التحصيل الفعلي (المحصّل/قيمة العقد). إذا في فرق واضح بين أي منهم - "
             "خصوصاً إذا نسبة التاسكات المنجزة أعلى بكثير من نسبة التحصيل، أو النسبة اليدوية بعيدة عن نسبة التاسكات - "
-            "هاي فجوة مهمة (بيانات غير محدّثة أو تحصيل متأخر) لازم تنبّه عليها بوضوح بتقييم الحالة.\n\n"
+            "هاي فجوة مهمة (بيانات غير محدّثة أو تحصيل متأخر) لازم تنبّه عليها بوضوح.\n\n"
             "البيانات:\n"
             "--------------------------------------------------\n"
             "%s\n"
             "--------------------------------------------------\n\n"
-            "تنسيق الإجابة إلزامي - كل نقطة لحالها بفقرة أو سطر قائمة منفصل (ممنوع فقرة واحدة طويلة مكدّسة):\n"
-            "- كل نقطة بتقييم الحالة: <p style=\"margin:10px 0;\"><strong>عنوان قصير:</strong> شرح مختصر.</p>\n"
-            "- الخطوات التالية: <ul style=\"padding-right:22px;margin:8px 0;\">"
-            "<li style=\"margin-bottom:8px;\">خطوة واحدة واضحة</li>...</ul>\n\n"
-            "استدعِ أداة provide_project_review بتقييم الحالة والخطوات التالية بناءً على البيانات أعلاه فقط."
+            "أعطيني محتوى بس (جمل نص عادي قصيرة، بدون أي HTML أو Markdown) - أنا يلي رح أنسّقه. "
+            "استدعِ أداة provide_project_review."
             % digest_text
         )
 
-        # نستخدم Tool Use ونجبر Claude على استدعاء أداة بمخرجات مبنية (JSON مضمون
-        # الصحة من الـ SDK نفسه) بدل الاعتماد على تحليل نص حر - تفادياً لأخطاء
-        # JSON parsing لما يحتوي النص على أقواس/اقتباسات داخل الـ HTML.
+        # نستخدم Tool Use ونجبر Claude يرجّع محتوى منظّم (نص عادي بس بكل حقل)
+        # عشان نبني نحن الـ HTML/CSS بشكل ثابت - بدون الاعتماد على التزامه
+        # بتنسيق HTML، وبدون خطر JSON parsing لنص حر.
         review_tool = {
             'name': 'provide_project_review',
-            'description': 'إرجاع تقييم حالة المشروع والخطوات التالية المقترحة.',
+            'description': 'إرجاع محتوى تقييم حالة المشروع والخطوات التالية - نص عادي بس، بدون HTML.',
             'input_schema': {
                 'type': 'object',
                 'properties': {
-                    'status_summary': {
+                    'headline': {
+                        'type': 'string',
+                        'description': 'جملة واحدة قصيرة (أقل من 20 كلمة) تلخّص الحكم العام على حالة المشروع.',
+                    },
+                    'status_points': {
+                        'type': 'array',
+                        'items': {'type': 'string'},
+                        'description': (
+                            '2 إلى 4 نقاط قصيرة (جملة أو جملتين لكل نقطة) عن مدى توافق الحالة الفعلية '
+                            '(تاسكات/أكتفيتيز) مع سجل النشاط، وأي تناقضات ملموسة.'
+                        ),
+                    },
+                    'financial_comparison': {
                         'type': 'string',
                         'description': (
-                            'HTML - كل نقطة بفقرة <p style="margin:10px 0;"> منفصلة (لا تدمج كل الملاحظات '
-                            'بفقرة واحدة طويلة): (1) فقرة عن توافق الحالة الفعلية مع سجل النشاط والفجوات '
-                            'إن وجدت، (2) فقرة مقارنة واضحة بين النسب الثلاث (الإنجاز اليدوي، الإنجاز حسب '
-                            'التاسكات، التحصيل الفعلي) مع تنبيه إذا في فجوة ملحوظة. استخدم <strong> لعنوان '
-                            'قصير بأول كل فقرة.'
+                            'فقرة واحدة (2-3 جمل) تقارن النسب الثلاث بالأرقام (الإنجاز اليدوي، الإنجاز '
+                            'حسب التاسكات، التحصيل الفعلي) وتوضّح أي فجوة بينهم.'
                         ),
                     },
                     'next_steps': {
-                        'type': 'string',
+                        'type': 'array',
+                        'items': {'type': 'string'},
                         'description': (
-                            'HTML: <ul style="padding-right:22px;margin:8px 0;"> تحتوي 3 إلى 5 عناصر '
-                            '<li style="margin-bottom:8px;"> كل واحدة خطوة تالية واحدة ملموسة ومباشرة '
-                            'لمدير المشروع، مبنية فقط على التاسكات/الأكتفيتيز المتأخرة والمفتوحة أعلاه.'
+                            '3 إلى 5 خطوات تالية ملموسة ومباشرة لمدير المشروع، كل واحدة جملة واحدة واضحة، '
+                            'مبنية فقط على التاسكات/الأكتفيتيز المتأخرة والمفتوحة أعلاه.'
                         ),
                     },
                 },
-                'required': ['status_summary', 'next_steps'],
+                'required': ['headline', 'status_points', 'financial_comparison', 'next_steps'],
             },
         }
 
@@ -473,10 +509,7 @@ class ProjectAiManager(models.Model):
                 (b for b in (resp.content or []) if getattr(b, 'type', '') == 'tool_use'), None)
             if not tool_block:
                 raise ValueError('لم يرجع Claude أي نتيجة منظّمة (tool_use).')
-            data = tool_block.input or {}
-            status_html = data.get('status_summary') or ''
-            next_steps_html = data.get('next_steps') or ''
-            return status_html, next_steps_html
+            return (tool_block.input or {}), None
         except Exception as e:
             _logger.exception('KH_AI_MANAGER: Claude call failed')
-            return warn_box % ('⚠️ فشل استدعاء Claude: %s' % str(e)[:200]), ''
+            return None, warn_box % ('⚠️ فشل استدعاء Claude: %s' % str(e)[:200])
