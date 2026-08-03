@@ -52,6 +52,17 @@ class ProjectAiManager(models.Model):
     x_ai_debug_note = fields.Char(
         string="🔍 تشخيص مؤقت (AI)", compute='_compute_ai_task_metrics', store=True)
 
+    # ---- قوائم التاسكات المفلترة فعلياً بالكود (مش عبر domain على task_ids -
+    # الأخير بيعرض كل التاسكات المرتبطة بالمشروع بدون فلترة فعلية بفورم الـ
+    # one2many مهما حددنا domain، فاستبدلناها بحقول Many2many محسوبة تحتوي
+    # فقط على الـ ids الصحيحة). ---
+    x_ai_overdue_task_ids = fields.Many2many(
+        'project.task', compute='_compute_ai_task_metrics', string="التاسكات المتأخرة (AI)")
+    x_ai_next_task_ids = fields.Many2many(
+        'project.task', compute='_compute_ai_task_metrics', string="التاسكات التالية (AI)")
+    x_ai_done_task_ids = fields.Many2many(
+        'project.task', compute='_compute_ai_task_metrics', string="التاسكات المنجزة (AI)")
+
     # ---- الوحيدة يلي بتحتاج زر (استدعاء Claude فعلي) ----
     x_ai_last_review_date = fields.Datetime(string="آخر مراجعة AI", readonly=True, copy=False)
     x_ai_status_summary = fields.Html(string="تقييم الحالة (AI)", readonly=True, copy=False, sanitize=False)
@@ -217,6 +228,10 @@ class ProjectAiManager(models.Model):
             project.x_ai_assignment_summary = project._kh_ai_build_assignment_summary(open_tasks, today_str)
             project.x_ai_debug_note = project._kh_ai_build_debug_note(all_tasks)
 
+            project.x_ai_overdue_task_ids = overdue_tasks
+            project.x_ai_next_task_ids = open_tasks - overdue_tasks
+            project.x_ai_done_task_ids = all_tasks - open_tasks
+
     def _kh_ai_build_assignment_summary(self, open_tasks, today_str):
         counts = defaultdict(lambda: [0, 0])
         unassigned = [0, 0]
@@ -287,8 +302,9 @@ class ProjectAiManager(models.Model):
         status_html, next_steps_html = self._kh_ai_claude_review(digest)
 
         preview = html2plaintext(next_steps_html or '').strip().replace('\n', ' ')
-        self.x_ai_status_summary = status_html
-        self.x_ai_next_steps = next_steps_html
+        wrap = '<div style="line-height:1.9;font-size:14px;">%s</div>'
+        self.x_ai_status_summary = wrap % status_html if status_html else status_html
+        self.x_ai_next_steps = wrap % next_steps_html if next_steps_html else next_steps_html
         self.x_ai_next_steps_preview = (preview[:140] + '…') if len(preview) > 140 else preview
         self.x_ai_last_review_date = fields.Datetime.now()
 
@@ -384,6 +400,10 @@ class ProjectAiManager(models.Model):
             "--------------------------------------------------\n"
             "%s\n"
             "--------------------------------------------------\n\n"
+            "تنسيق الإجابة إلزامي - كل نقطة لحالها بفقرة أو سطر قائمة منفصل (ممنوع فقرة واحدة طويلة مكدّسة):\n"
+            "- كل نقطة بتقييم الحالة: <p style=\"margin:10px 0;\"><strong>عنوان قصير:</strong> شرح مختصر.</p>\n"
+            "- الخطوات التالية: <ul style=\"padding-right:22px;margin:8px 0;\">"
+            "<li style=\"margin-bottom:8px;\">خطوة واحدة واضحة</li>...</ul>\n\n"
             "استدعِ أداة provide_project_review بتقييم الحالة والخطوات التالية بناءً على البيانات أعلاه فقط."
             % digest_text
         )
@@ -400,16 +420,18 @@ class ProjectAiManager(models.Model):
                     'status_summary': {
                         'type': 'string',
                         'description': (
-                            'HTML بسيط (وسوم <p>/<strong>/<ul>/<li> فقط): هل الحالة الفعلية '
-                            '(تاسكات/أكتفيتيز) متوافقة مع سجل النشاط؟ أي فجوات أو تناقضات؟ '
-                            'وبند مقارنة واضح بين النسب الثلاث (الإنجاز اليدوي، الإنجاز حسب التاسكات، '
-                            'التحصيل الفعلي) - نبّه إذا في فجوة ملحوظة بينهم.'
+                            'HTML - كل نقطة بفقرة <p style="margin:10px 0;"> منفصلة (لا تدمج كل الملاحظات '
+                            'بفقرة واحدة طويلة): (1) فقرة عن توافق الحالة الفعلية مع سجل النشاط والفجوات '
+                            'إن وجدت، (2) فقرة مقارنة واضحة بين النسب الثلاث (الإنجاز اليدوي، الإنجاز حسب '
+                            'التاسكات، التحصيل الفعلي) مع تنبيه إذا في فجوة ملحوظة. استخدم <strong> لعنوان '
+                            'قصير بأول كل فقرة.'
                         ),
                     },
                     'next_steps': {
                         'type': 'string',
                         'description': (
-                            'HTML بسيط (ul/li فقط) لـ 3 إلى 5 خطوات تالية ملموسة ومباشرة '
+                            'HTML: <ul style="padding-right:22px;margin:8px 0;"> تحتوي 3 إلى 5 عناصر '
+                            '<li style="margin-bottom:8px;"> كل واحدة خطوة تالية واحدة ملموسة ومباشرة '
                             'لمدير المشروع، مبنية فقط على التاسكات/الأكتفيتيز المتأخرة والمفتوحة أعلاه.'
                         ),
                     },

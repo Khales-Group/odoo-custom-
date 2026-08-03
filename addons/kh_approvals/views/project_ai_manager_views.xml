@@ -54,10 +54,7 @@
 
                     <notebook>
                         <page string="⏰ التاسكات المتأخرة" name="kh_ai_tab_overdue">
-                            <field name="task_ids" create="0" delete="0"
-                                   domain="[('date_deadline', '!=', False),
-                                            ('date_deadline', '&lt;', context_today().strftime('%Y-%m-%d')),
-                                            ('state', 'not in', ['03_approved', '1_done', '1_canceled'])]">
+                            <field name="x_ai_overdue_task_ids" nolabel="1" readonly="1">
                                 <list>
                                     <field name="name"/>
                                     <field name="user_ids" widget="many2many_tags"/>
@@ -67,10 +64,7 @@
                             </field>
                         </page>
                         <page string="📌 التاسكات التالية" name="kh_ai_tab_next">
-                            <field name="task_ids" create="0" delete="0"
-                                   domain="['|', ('date_deadline', '=', False),
-                                            ('date_deadline', '&gt;=', context_today().strftime('%Y-%m-%d')),
-                                            ('state', 'not in', ['03_approved', '1_done', '1_canceled'])]">
+                            <field name="x_ai_next_task_ids" nolabel="1" readonly="1">
                                 <list default_order="date_deadline asc">
                                     <field name="name"/>
                                     <field name="user_ids" widget="many2many_tags"/>
@@ -80,8 +74,7 @@
                             </field>
                         </page>
                         <page string="✅ التاسكات المنجزة" name="kh_ai_tab_done">
-                            <field name="task_ids" create="0" delete="0"
-                                   domain="[('state', 'in', ['03_approved', '1_done'])]">
+                            <field name="x_ai_done_task_ids" nolabel="1" readonly="1">
                                 <list>
                                     <field name="name"/>
                                     <field name="user_ids" widget="many2many_tags"/>
