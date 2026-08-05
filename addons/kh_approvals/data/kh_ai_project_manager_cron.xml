@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- تشغيل يومي تلقائي لمراجعة AI لكل المشاريع النشطة بمرحلة
+         Under Processing/Sign & Design - بديل عن الضغط اليدوي على الزر.
+         أول تشغيل بعد التثبيت بيوم واحد الساعة 6 صباحاً، تفادياً لاستدعاء
+         API فوري ومكلف لكل المشاريع لحظة تثبيت/تحديث الموديول. -->
+    <record id="ir_cron_kh_ai_project_review" model="ir.cron">
+        <field name="name">AI Project Manager: مراجعة يومية تلقائية</field>
+        <field name="model_id" ref="project.model_project_project"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_run_ai_review_batch()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="numbercall">-1</field>
+        <field name="active" eval="True"/>
+        <field name="nextcall"
+               eval="(datetime.datetime.now() + datetime.timedelta(days=1)).strftime('%Y-%m-%d 06:00:00')"/>
+    </record>
+
+</odoo>

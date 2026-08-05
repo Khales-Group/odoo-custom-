@@ -6,6 +6,7 @@
 #  شي منها يحتاج استدعاء AI. زر "🤖 تشغيل مراجعة AI" الوحيد المطلوب هو
 #  فقط للجزء المكلف: تحليل Claude النصي (تقييم الحالة + الخطوات التالية).
 # ============================================================
+import json
 import logging
 from collections import defaultdict
 
@@ -13,6 +14,7 @@ from markupsafe import Markup, escape
 
 from odoo import api, fields, models
 from odoo.tools import html2plaintext
+from odoo.tools.safe_eval import safe_eval
 
 _logger = logging.getLogger(__name__)
 
@@ -26,6 +28,18 @@ except ImportError:
 DIGEST_DAYS = 60
 DEFAULT_MODEL = 'claude-opus-4-8'
 DONE_STATES = ('03_approved', '1_done', '1_canceled')
+MAX_AGENTIC_ITERATIONS = 6
+
+# نماذج مسموحة للأداة الاستكشافية (Agentic) - قراءة فقط، بدون أي كتابة/حذف.
+# هذا نطاق مخصّص لهذا الفيتشر بس (منفصل بالكامل عن mcp_server وحظره الصارم
+# لـ account.*/purchase.* - هون كل هذا مفتوح لمدير المشاريع الذكي بقرار واعي
+# من الإدارة، لكن قراءة بس دايماً).
+KH_AI_TOOL_MODELS = (
+    'project.project', 'project.task', 'mail.activity', 'mail.message',
+    'account.move', 'account.move.line', 'account.analytic.account',
+    'purchase.order', 'purchase.order.line',
+    'crm.lead', 'kh.approval.request', 'res.partner',
+)
 
 
 class ProjectAiManager(models.Model):
@@ -312,6 +326,57 @@ class ProjectAiManager(models.Model):
         )
 
     # ------------------------------------------------------------------
+    # أداة استكشاف حرّة لـ Claude (Agentic) - قراءة فقط، على النماذج المسموحة
+    # (KH_AI_TOOL_MODELS) بس. منفصلة كلياً عن mcp_server - هذا نطاق خاص بمدير
+    # المشاريع الذكي بقرار من الإدارة، بدون حظر account.*/purchase.* يلي
+    # موجود بالمحرّك العام.
+    # ------------------------------------------------------------------
+    _KH_AI_SEARCH_TOOL = {
+        'name': 'search_odoo_records',
+        'description': (
+            'ابحث واقرأ سجلات Odoo (قراءة فقط - ممنوع كتابة/تعديل) من النماذج التالية بس: '
+            + ', '.join(KH_AI_TOOL_MODELS) + '. استخدمها لما تحتاج معلومة إضافية غير موجودة '
+            'بالبيانات المرفقة - مثل عروض/فرص CRM، أوامر شراء (Purchase Orders)، طلبات اعتماد '
+            '(Approvals)، أو تفاصيل فواتير إضافية.'
+        ),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'model': {'type': 'string', 'description': 'الاسم التقني للموديل، مثلاً purchase.order'},
+                'domain': {
+                    'type': 'string',
+                    'description': 'دومين Odoo كنص Python، مثلاً [["partner_id", "=", 5]] - اختياري.',
+                },
+                'fields': {
+                    'type': 'array', 'items': {'type': 'string'},
+                    'description': 'أسماء الحقول المطلوبة - اختياري، لو فاضي بيرجع الحقول الأساسية.',
+                },
+                'limit': {'type': 'integer', 'description': 'أقصى عدد سجلات (حد أعلى 30).'},
+            },
+            'required': ['model'],
+        },
+    }
+
+    def _kh_ai_execute_search_tool(self, tool_input):
+        model_name = (tool_input or {}).get('model') or ''
+        if model_name not in KH_AI_TOOL_MODELS:
+            return {'error': 'موديل غير مسموح لهذه الأداة: %s' % model_name}
+        try:
+            domain_str = (tool_input or {}).get('domain') or '[]'
+            domain = safe_eval(domain_str) if isinstance(domain_str, str) else (domain_str or [])
+            if not isinstance(domain, list):
+                domain = []
+            limit = min(int((tool_input or {}).get('limit') or 20), 30)
+            field_names = (tool_input or {}).get('fields') or []
+
+            Model = self.env[model_name].sudo()
+            records = Model.search(domain, limit=limit)
+            data = records.read(field_names) if field_names else records.read()
+            return {'count': len(data), 'records': data}
+        except Exception as e:
+            return {'error': str(e)[:300]}
+
+    # ------------------------------------------------------------------
     # الميثود الوحيدة يلي بتستدعي Claude - تُستدعى فقط من زر "🤖 مراجعة AI"
     # (الأرقام والقوائم فوق محسوبة أصلاً تلقائياً وما بتحتاج هالزر)
     # ------------------------------------------------------------------
@@ -363,8 +428,73 @@ class ProjectAiManager(models.Model):
                len(overdue_proj_acts) + len(overdue_task_acts),
                self.x_ai_status_summary or '', self.x_ai_next_steps or '')
         )
+        if self.user_id and self.user_id.partner_id:
+            self.message_subscribe(partner_ids=self.user_id.partner_id.ids)
         self.message_post(body=Markup(report_html), message_type='comment', subtype_xmlid='mail.mt_comment')
+
+        self._kh_ai_notify_pm_if_needed(open_tasks)
         return True
+
+    # ------------------------------------------------------------------
+    # تنبيه فوري لمدير المشروع (Activity Odoo قياسية - بتفعّل تذكير إيميل
+    # حسب تفضيلاته الشخصية) إذا في متأخرات أو تاسكات بدون مسؤول. بتحدّث
+    # نفس التنبيه بدل ما تكرره كل يوم لو التشغيل صار Cron يومي.
+    # ------------------------------------------------------------------
+    def _kh_ai_notify_pm_if_needed(self, open_tasks):
+        self.ensure_one()
+        if not self.user_id:
+            return
+
+        issues = []
+        if self.x_ai_overdue_tasks_count:
+            issues.append('%d تاسك متأخر' % self.x_ai_overdue_tasks_count)
+        if self.x_ai_overdue_activities_count:
+            issues.append('%d أكتفيتي متأخر' % self.x_ai_overdue_activities_count)
+        unassigned_count = len(open_tasks.filtered(lambda t: not t.user_ids))
+        if unassigned_count:
+            issues.append('%d تاسك بدون مسؤول' % unassigned_count)
+
+        today = fields.Date.context_today(self)
+        existing = self.env['mail.activity'].search([
+            ('res_model', '=', 'project.project'),
+            ('res_id', '=', self.id),
+            ('user_id', '=', self.user_id.id),
+            ('summary', 'like', '⚠️ تنبيه AI:'),
+        ], limit=1)
+
+        if not issues:
+            if existing:
+                existing.unlink()
+            return
+
+        summary = '⚠️ تنبيه AI: ' + '، '.join(issues)
+        if existing:
+            existing.write({'summary': summary, 'note': self.x_ai_status_summary or '', 'date_deadline': today})
+        else:
+            self.activity_schedule(
+                'mail.mail_activity_data_todo',
+                summary=summary,
+                note=self.x_ai_status_summary or '',
+                user_id=self.user_id.id,
+                date_deadline=today,
+            )
+
+    # ------------------------------------------------------------------
+    # التشغيل التلقائي اليومي (ir.cron) - بيمرّ على كل المشاريع النشطة
+    # بمرحلة Under Processing/Sign & Design ويشغّل نفس مراجعة الزر لكل
+    # واحد. فشل مشروع واحد ما بوقف الباقي.
+    # ------------------------------------------------------------------
+    def _cron_run_ai_review_batch(self):
+        projects = self.search([
+            ('active', '=', True),
+            ('stage_id.name', 'in', ['Under Processing', 'Sign & Design']),
+        ])
+        for project in projects:
+            try:
+                project.action_run_ai_review()
+            except Exception:
+                _logger.exception('KH_AI_MANAGER: scheduled review failed for project %s (%s)',
+                                   project.id, project.name)
 
     # ------------------------------------------------------------------
     # بناء نص الملخص (Digest) - بيانات فعلية جاهزة، بدون تخمين
@@ -420,10 +550,62 @@ class ProjectAiManager(models.Model):
 
         return '\n'.join(lines)
 
+    _KH_AI_REVIEW_TOOL = {
+        'name': 'provide_project_review',
+        'description': (
+            'إرجاع محتوى تقييم حالة المشروع والخطوات التالية - نص عادي بس، بدون HTML. '
+            'استدعِ هذه الأداة فقط لما تكون خلصت الاستكشاف وجاهز للنتيجة النهائية.'
+        ),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'headline': {
+                    'type': 'string',
+                    'description': 'جملة واحدة قصيرة (أقل من 20 كلمة) تلخّص الحكم العام على حالة المشروع.',
+                },
+                'status_points': {
+                    'type': 'array',
+                    'items': {'type': 'string'},
+                    'description': (
+                        '2 إلى 5 نقاط قصيرة (جملة أو جملتين لكل نقطة) عن مدى توافق الحالة الفعلية '
+                        '(تاسكات/أكتفيتيز/فواتير/CRM/مشتريات/اعتمادات) مع سجل النشاط، وأي تناقضات ملموسة.'
+                    ),
+                },
+                'financial_comparison': {
+                    'type': 'string',
+                    'description': (
+                        'فقرة واحدة (2-3 جمل) تقارن النسب الثلاث بالأرقام (الإنجاز اليدوي، الإنجاز '
+                        'حسب التاسكات، التحصيل الفعلي) وتوضّح أي فجوة بينهم.'
+                    ),
+                },
+                'next_steps': {
+                    'type': 'array',
+                    'items': {'type': 'string'},
+                    'description': (
+                        '3 إلى 5 خطوات تالية ملموسة ومباشرة لمدير المشروع، كل واحدة جملة واحدة واضحة.'
+                    ),
+                },
+            },
+            'required': ['headline', 'status_points', 'financial_comparison', 'next_steps'],
+        },
+    }
+
+    def _kh_ai_build_seed_context(self):
+        parts = []
+        if self.partner_id:
+            parts.append('العميل (partner_id): %s (id=%d)' % (self.partner_id.name, self.partner_id.id))
+        analytic_field = self._kh_ai_analytic_account_field_name()
+        analytic_account = self._kh_ai_read_studio_value(analytic_field) if analytic_field else False
+        if analytic_account:
+            parts.append('الحساب التحليلي (Analytic Account): %s (id=%d)' % (analytic_account.name, analytic_account.id))
+        parts.append('project_id = %d' % self.id)
+        return '\n'.join(parts) if parts else 'لا يوجد معرّفات إضافية (عميل/حساب تحليلي) لهذا المشروع.'
+
     # ------------------------------------------------------------------
-    # استدعاء Claude - نطلب منه محتوى (نصوص عادية قصيرة بس، بدون HTML)
-    # ونحن يلي نبني الشكل بالكامل بالكود (_kh_ai_render_*) - هيك التنسيق
-    # مضمون ثابت دايماً، مش متروك لالتزام الموديل بوسوم HTML.
+    # استدعاء Claude Agentic - نعطيه أداة بحث حرّة (search_odoo_records) على
+    # النماذج المسموحة (project/task/CRM/purchase/account/approvals/partner)
+    # بالإضافة لملخّص جاهز، وبيقرر هو لحاله شو يحتاج يفتش زيادة (متل CRM أو
+    # أوامر شراء)، لحد ما يستدعي provide_project_review بالنتيجة النهائية.
     # يرجع (data_dict, error_html) - وحدة منهم دايماً None.
     # ------------------------------------------------------------------
     def _kh_ai_claude_review(self, digest_text):
@@ -446,70 +628,51 @@ class ProjectAiManager(models.Model):
             "التاسكات المنجزة، (3) نسبة التحصيل الفعلي (المحصّل/قيمة العقد). إذا في فرق واضح بين أي منهم - "
             "خصوصاً إذا نسبة التاسكات المنجزة أعلى بكثير من نسبة التحصيل، أو النسبة اليدوية بعيدة عن نسبة التاسكات - "
             "هاي فجوة مهمة (بيانات غير محدّثة أو تحصيل متأخر) لازم تنبّه عليها بوضوح.\n\n"
+            "معرّفات مفيدة للاستكشاف:\n%s\n\n"
+            "عندك أداة search_odoo_records تقدر تستخدمها (أكتر من مرة إذا لزم) لتتحقق من معلومات إضافية "
+            "مرتبطة بهذا المشروع - مثلاً: عروض/فرص CRM لهذا العميل، أوامر شراء (purchase.order) مرتبطة "
+            "بالحساب التحليلي، طلبات اعتماد (kh.approval.request) معلّقة، أو تفاصيل فواتير إضافية. "
+            "استخدمها فقط لو فعلاً بتضيف معلومة مفيدة، وما تلزّق أكتر من 3-4 استدعاءات.\n\n"
             "البيانات:\n"
             "--------------------------------------------------\n"
             "%s\n"
             "--------------------------------------------------\n\n"
-            "أعطيني محتوى بس (جمل نص عادي قصيرة، بدون أي HTML أو Markdown) - أنا يلي رح أنسّقه. "
-            "استدعِ أداة provide_project_review."
-            % digest_text
+            "لما تخلص استكشاف، استدعِ أداة provide_project_review بمحتوى نصي عادي بس (بدون HTML)."
+            % (self._kh_ai_build_seed_context(), digest_text)
         )
 
-        # نستخدم Tool Use ونجبر Claude يرجّع محتوى منظّم (نص عادي بس بكل حقل)
-        # عشان نبني نحن الـ HTML/CSS بشكل ثابت - بدون الاعتماد على التزامه
-        # بتنسيق HTML، وبدون خطر JSON parsing لنص حر.
-        review_tool = {
-            'name': 'provide_project_review',
-            'description': 'إرجاع محتوى تقييم حالة المشروع والخطوات التالية - نص عادي بس، بدون HTML.',
-            'input_schema': {
-                'type': 'object',
-                'properties': {
-                    'headline': {
-                        'type': 'string',
-                        'description': 'جملة واحدة قصيرة (أقل من 20 كلمة) تلخّص الحكم العام على حالة المشروع.',
-                    },
-                    'status_points': {
-                        'type': 'array',
-                        'items': {'type': 'string'},
-                        'description': (
-                            '2 إلى 4 نقاط قصيرة (جملة أو جملتين لكل نقطة) عن مدى توافق الحالة الفعلية '
-                            '(تاسكات/أكتفيتيز) مع سجل النشاط، وأي تناقضات ملموسة.'
-                        ),
-                    },
-                    'financial_comparison': {
-                        'type': 'string',
-                        'description': (
-                            'فقرة واحدة (2-3 جمل) تقارن النسب الثلاث بالأرقام (الإنجاز اليدوي، الإنجاز '
-                            'حسب التاسكات، التحصيل الفعلي) وتوضّح أي فجوة بينهم.'
-                        ),
-                    },
-                    'next_steps': {
-                        'type': 'array',
-                        'items': {'type': 'string'},
-                        'description': (
-                            '3 إلى 5 خطوات تالية ملموسة ومباشرة لمدير المشروع، كل واحدة جملة واحدة واضحة، '
-                            'مبنية فقط على التاسكات/الأكتفيتيز المتأخرة والمفتوحة أعلاه.'
-                        ),
-                    },
-                },
-                'required': ['headline', 'status_points', 'financial_comparison', 'next_steps'],
-            },
-        }
+        tools = [self._KH_AI_SEARCH_TOOL, self._KH_AI_REVIEW_TOOL]
+        messages = [{'role': 'user', 'content': prompt}]
 
         try:
             client = anthropic.Anthropic(api_key=api_key)
-            resp = client.messages.create(
-                model=model,
-                max_tokens=2000,
-                tools=[review_tool],
-                tool_choice={'type': 'tool', 'name': 'provide_project_review'},
-                messages=[{'role': 'user', 'content': prompt}],
-            )
-            tool_block = next(
-                (b for b in (resp.content or []) if getattr(b, 'type', '') == 'tool_use'), None)
-            if not tool_block:
-                raise ValueError('لم يرجع Claude أي نتيجة منظّمة (tool_use).')
-            return (tool_block.input or {}), None
+            for _ in range(MAX_AGENTIC_ITERATIONS):
+                resp = client.messages.create(
+                    model=model, max_tokens=2000, tools=tools, messages=messages)
+                messages.append({'role': 'assistant', 'content': resp.content})
+
+                tool_uses = [b for b in (resp.content or []) if getattr(b, 'type', '') == 'tool_use']
+                if not tool_uses:
+                    break
+
+                review_call = next((b for b in tool_uses if b.name == 'provide_project_review'), None)
+                if review_call:
+                    return (review_call.input or {}), None
+
+                tool_results = []
+                for block in tool_uses:
+                    if block.name == 'search_odoo_records':
+                        result = self._kh_ai_execute_search_tool(block.input or {})
+                    else:
+                        result = {'error': 'أداة غير معروفة: %s' % block.name}
+                    tool_results.append({
+                        'type': 'tool_result',
+                        'tool_use_id': block.id,
+                        'content': json.dumps(result, default=str, ensure_ascii=False)[:8000],
+                    })
+                messages.append({'role': 'user', 'content': tool_results})
+
+            raise ValueError('وصل الحد الأقصى لعدد التكرارات (%d) بدون نتيجة نهائية.' % MAX_AGENTIC_ITERATIONS)
         except Exception as e:
             _logger.exception('KH_AI_MANAGER: Claude call failed')
             return None, warn_box % ('⚠️ فشل استدعاء Claude: %s' % str(e)[:200])

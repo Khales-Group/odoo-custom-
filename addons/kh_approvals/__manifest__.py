@@ -32,6 +32,7 @@
         'views/qweb_templates.xml',
         'data/sequence.xml',
         'data/email_categories.xml',
+        'data/kh_ai_project_manager_cron.xml',
     ],
     'assets': {
         'web.assets_backend': [
