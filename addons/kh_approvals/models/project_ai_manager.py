@@ -301,9 +301,29 @@ class ProjectAiManager(models.Model):
         '</style>'
     )
 
+    @staticmethod
+    def _kh_ai_as_list(value):
+        # بعض المرات Claude يرجّع الحقول من نوع array كنص JSON مكتوب (string)
+        # بدل array حقيقية - لو تعاملنا معه كـ list مباشرة، بايثون بيكرّر
+        # على كل حرف لحاله (string قابلة للتكرار). هذا الحل يطبّع الحالتين.
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                return []
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, list):
+                    return parsed
+            except Exception:
+                pass
+            return [value]
+        return []
+
     def _kh_ai_render_status_html(self, data):
         headline = (data.get('headline') or '').strip()
-        points = [p for p in (data.get('status_points') or []) if p and p.strip()]
+        points = [p for p in self._kh_ai_as_list(data.get('status_points')) if p and str(p).strip()]
         financial = (data.get('financial_comparison') or '').strip()
 
         parts = ['<div class="kh_ai_box">', self._KH_AI_STYLE]
@@ -317,7 +337,7 @@ class ProjectAiManager(models.Model):
         return ''.join(parts)
 
     def _kh_ai_render_next_steps_html(self, data):
-        steps = [s for s in (data.get('next_steps') or []) if s and s.strip()]
+        steps = [s for s in self._kh_ai_as_list(data.get('next_steps')) if s and str(s).strip()]
         if not steps:
             return ''
         return (
@@ -413,7 +433,7 @@ class ProjectAiManager(models.Model):
             status_html = self._kh_ai_render_status_html(data)
             next_steps_html = self._kh_ai_render_next_steps_html(data)
 
-        preview = ' | '.join((data or {}).get('next_steps') or [])
+        preview = ' | '.join(str(s) for s in self._kh_ai_as_list((data or {}).get('next_steps')))
         self.x_ai_status_summary = status_html
         self.x_ai_next_steps = next_steps_html
         self.x_ai_next_steps_preview = (preview[:140] + '…') if len(preview) > 140 else preview
@@ -568,7 +588,8 @@ class ProjectAiManager(models.Model):
                     'items': {'type': 'string'},
                     'description': (
                         '2 إلى 5 نقاط قصيرة (جملة أو جملتين لكل نقطة) عن مدى توافق الحالة الفعلية '
-                        '(تاسكات/أكتفيتيز/فواتير/CRM/مشتريات/اعتمادات) مع سجل النشاط، وأي تناقضات ملموسة.'
+                        '(تاسكات/أكتفيتيز/فواتير/CRM/مشتريات/اعتمادات) مع سجل النشاط، وأي تناقضات ملموسة. '
+                        'لازم تكون array حقيقية (عنصر نص لكل نقطة)، مش نص واحد فيه أقواس/فواصل.'
                     ),
                 },
                 'financial_comparison': {
@@ -582,7 +603,8 @@ class ProjectAiManager(models.Model):
                     'type': 'array',
                     'items': {'type': 'string'},
                     'description': (
-                        '3 إلى 5 خطوات تالية ملموسة ومباشرة لمدير المشروع، كل واحدة جملة واحدة واضحة.'
+                        '3 إلى 5 خطوات تالية ملموسة ومباشرة لمدير المشروع، كل واحدة جملة واحدة واضحة. '
+                        'لازم تكون array حقيقية (عنصر نص لكل خطوة)، مش نص واحد فيه أقواس/فواصل.'
                     ),
                 },
             },
