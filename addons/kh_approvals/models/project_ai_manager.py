@@ -172,8 +172,6 @@ class ProjectAiManager(models.Model):
             notes.append('⚠️ ما لقيت حقل "نسبة الإنجاز" على project.project بهذا النظام.')
         if not contract_value_field:
             notes.append('⚠️ ما لقيت حقل "قيمة العقد" على project.project بهذا النظام.')
-        if not analytic_field:
-            notes.append('⚠️ project.project ما فيه حقل حساب تحليلي (Analytic Account) - ما بقدر أحسب الفواتير.')
         note = ' '.join(notes)
 
         for project in self:
@@ -183,25 +181,40 @@ class ProjectAiManager(models.Model):
             project.x_ai_invoiced_amount = invoiced
             project.x_ai_collected_amount = collected
             project_note = note
-            if analytic_field and not project._kh_ai_read_studio_value(analytic_field):
-                extra = '⚠️ هذا المشروع تحديداً غير مرتبط بحساب تحليلي - ما رح تظهر فواتيره.'
+            if not project.partner_id and not (analytic_field and project._kh_ai_read_studio_value(analytic_field)):
+                extra = '⚠️ هذا المشروع بدون عميل (partner_id) وبدون حساب تحليلي - ما بقدر ألقى فواتيره.'
                 project_note = (project_note + ' ' + extra).strip()
             project.x_ai_financial_data_note = project_note or False
 
     def _kh_ai_compute_financials(self, analytic_field=None):
+        # المصدر الأساسي: فواتير العميل (partner_id) تبع المشروع مباشرة - هذا
+        # فعلياً كيف الفواتير مربوطة بالمشروع بهذا النظام (تأكدنا منه فعلياً:
+        # مافي Analytic Account مستخدم على الفواتير، بس فلترة الفواتير بالعميل
+        # هي يلي تطلع النتيجة الصحيحة). الحساب التحليلي (لو موجود) بيتفحص
+        # كمان كـ مصدر إضافي، بدون تكرار (نفس الفاتورة ما تُحسب مرتين).
         try:
+            Move = self.env['account.move'].sudo()
+            moves = Move.browse()
+
+            if self.partner_id:
+                moves |= Move.search([
+                    ('partner_id', 'child_of', self.partner_id.id),
+                    ('state', '=', 'posted'),
+                    ('move_type', 'in', ['out_invoice', 'out_refund']),
+                ])
+
             if analytic_field is None:
                 analytic_field = self._kh_ai_analytic_account_field_name()
             analytic_account = self._kh_ai_read_studio_value(analytic_field) if analytic_field else False
-            if not analytic_account:
-                return 0.0, 0.0
-            AML = self.env['account.move.line'].sudo()
-            lines = AML.search([
-                ('analytic_distribution', 'in', [analytic_account.id]),
-                ('parent_state', '=', 'posted'),
-                ('move_id.move_type', 'in', ['out_invoice', 'out_refund']),
-            ])
-            moves = lines.mapped('move_id')
+            if analytic_account:
+                AML = self.env['account.move.line'].sudo()
+                lines = AML.search([
+                    ('analytic_distribution', 'in', [analytic_account.id]),
+                    ('parent_state', '=', 'posted'),
+                    ('move_id.move_type', 'in', ['out_invoice', 'out_refund']),
+                ])
+                moves |= lines.mapped('move_id')
+
             invoiced = sum(m.amount_total_signed for m in moves)
             collected = sum(m.amount_total_signed - m.amount_residual_signed for m in moves)
             return invoiced, collected
