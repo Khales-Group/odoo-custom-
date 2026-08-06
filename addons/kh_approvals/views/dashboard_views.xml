@@ -125,7 +125,7 @@
     </record>
 
     <record id="action_kh_ai_project_dashboard" model="ir.actions.act_window">
-        <field name="name">AI Project Manager</field>
+        <field name="name">📊 كل المشاريع</field>
         <field name="res_model">project.project</field>
         <field name="view_mode">kanban,list,form</field>
         <field name="domain">[('active', '=', True), ('stage_id.name', 'in', ['Under Processing', 'Sign &amp; Design'])]</field>
@@ -138,7 +138,7 @@
         </field>
     </record>
 
-    <!-- إجراء جماعي: يظهر تلقائياً بقائمة "⚙️ Actions" لما تحدد صف/أكثر بالداشبورد -->
+    <!-- إجراء جماعي: يظهر تلقائياً بقائمة "⚙️ Actions" لما تحدد صف/أكثر بأي قائمة تابعة لهذا التطبيق -->
     <record id="action_kh_ai_review_bulk" model="ir.actions.server">
         <field name="name">🤖 تشغيل مراجعة AI</field>
         <field name="model_id" ref="project.model_project_project"/>
@@ -151,12 +151,134 @@ for rec in records:
         </field>
     </record>
 
+    <!-- ===================== الأقسام الأربعة (الشاشة الرئيسية) ===================== -->
+
+    <!-- 1️⃣ ملخّص اليوم -->
+    <record id="view_kh_ai_today_list" model="ir.ui.view">
+        <field name="name">project.project.list.kh.ai.today</field>
+        <field name="model">project.project</field>
+        <field name="arch" type="xml">
+            <list string="ملخّص اليوم" default_order="x_ai_last_review_date desc">
+                <field name="name"/>
+                <field name="user_id" string="المسؤول"/>
+                <field name="stage_id" string="المرحلة"/>
+                <field name="x_ai_last_review_date" string="آخر تحديث"/>
+                <field name="x_ai_today_summary_preview" string="ملخّص اليوم"/>
+            </list>
+        </field>
+    </record>
+    <record id="action_kh_ai_today" model="ir.actions.act_window">
+        <field name="name">1️⃣ ملخّص اليوم</field>
+        <field name="res_model">project.project</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('active', '=', True), ('stage_id.name', 'in', ['Under Processing', 'Sign &amp; Design'])]</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_kh_ai_today_list')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('view_kh_ai_project_dashboard_form')})]"/>
+    </record>
+
+    <!-- 2️⃣ التحصيل -->
+    <record id="view_kh_ai_collection_list" model="ir.ui.view">
+        <field name="name">project.project.list.kh.ai.collection</field>
+        <field name="model">project.project</field>
+        <field name="arch" type="xml">
+            <list string="التحصيل">
+                <field name="name"/>
+                <field name="user_id" string="المسؤول"/>
+                <field name="x_ai_work_done_tasks" string="نسبة الإنجاز"/>
+                <field name="x_ai_contract_value" string="قيمة العقد"/>
+                <field name="x_ai_invoiced_amount" string="المفوتر"/>
+                <field name="x_ai_collected_amount" string="المحصّل"/>
+                <field name="x_ai_collection_note_preview" string="ملاحظة التحصيل"/>
+            </list>
+        </field>
+    </record>
+    <record id="action_kh_ai_collection" model="ir.actions.act_window">
+        <field name="name">2️⃣ التحصيل</field>
+        <field name="res_model">project.project</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('active', '=', True), ('stage_id.name', 'in', ['Under Processing', 'Sign &amp; Design'])]</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_kh_ai_collection_list')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('view_kh_ai_project_dashboard_form')})]"/>
+    </record>
+
+    <!-- 3️⃣ التنبيهات -->
+    <record id="view_kh_ai_alerts_list" model="ir.ui.view">
+        <field name="name">project.project.list.kh.ai.alerts</field>
+        <field name="model">project.project</field>
+        <field name="arch" type="xml">
+            <list string="التنبيهات" default_order="x_ai_overdue_tasks_count desc"
+                  decoration-danger="x_ai_overdue_tasks_count &gt; 0 or x_ai_overdue_activities_count &gt; 0">
+                <field name="name"/>
+                <field name="user_id" string="المسؤول"/>
+                <field name="x_ai_overdue_tasks_count" string="تاسكات متأخرة"/>
+                <field name="x_ai_overdue_activities_count" string="أكتفيتيز متأخرة"/>
+                <field name="x_ai_alerts_preview" string="التنبيهات"/>
+            </list>
+        </field>
+    </record>
+    <record id="action_kh_ai_alerts" model="ir.actions.act_window">
+        <field name="name">3️⃣ التنبيهات</field>
+        <field name="res_model">project.project</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('active', '=', True), ('stage_id.name', 'in', ['Under Processing', 'Sign &amp; Design'])]</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_kh_ai_alerts_list')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('view_kh_ai_project_dashboard_form')})]"/>
+    </record>
+
+    <!-- 4️⃣ الخطوات التالية -->
+    <record id="view_kh_ai_next_steps_list" model="ir.ui.view">
+        <field name="name">project.project.list.kh.ai.next.steps</field>
+        <field name="model">project.project</field>
+        <field name="arch" type="xml">
+            <list string="الخطوات التالية">
+                <field name="name"/>
+                <field name="user_id" string="المسؤول"/>
+                <field name="x_ai_next_steps_preview" string="الخطوات التالية"/>
+            </list>
+        </field>
+    </record>
+    <record id="action_kh_ai_next_steps" model="ir.actions.act_window">
+        <field name="name">4️⃣ الخطوات التالية</field>
+        <field name="res_model">project.project</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('active', '=', True), ('stage_id.name', 'in', ['Under Processing', 'Sign &amp; Design'])]</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_kh_ai_next_steps_list')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('view_kh_ai_project_dashboard_form')})]"/>
+    </record>
+
+    <!-- ===================== القائمة (Menu) ===================== -->
     <!-- تطبيق مستقل بأيقونته الخاصة بشاشة الـ Apps (نعيد استخدام أيقونة الموديول
-         الموجودة أصلاً بدل ما ننشئ ملف صورة جديد) -->
+         الموجودة أصلاً بدل ما ننشئ ملف صورة جديد). بدون action مباشر على
+         الـ root - عشان لما تفتح التطبيق يطلعلك أول قسم (ملخّص اليوم) مش
+         كل المشاريع دفعة وحدة. -->
     <menuitem id="menu_kh_ai_project_dashboard_root"
               name="AI Project Manager"
-              action="action_kh_ai_project_dashboard"
               sequence="70"
               web_icon="kh_approvals,static/description/icon.png"/>
+
+    <menuitem id="menu_kh_ai_today"
+              parent="menu_kh_ai_project_dashboard_root"
+              action="action_kh_ai_today"
+              sequence="1"/>
+    <menuitem id="menu_kh_ai_collection"
+              parent="menu_kh_ai_project_dashboard_root"
+              action="action_kh_ai_collection"
+              sequence="2"/>
+    <menuitem id="menu_kh_ai_alerts"
+              parent="menu_kh_ai_project_dashboard_root"
+              action="action_kh_ai_alerts"
+              sequence="3"/>
+    <menuitem id="menu_kh_ai_next_steps"
+              parent="menu_kh_ai_project_dashboard_root"
+              action="action_kh_ai_next_steps"
+              sequence="4"/>
+    <menuitem id="menu_kh_ai_project_dashboard_all"
+              parent="menu_kh_ai_project_dashboard_root"
+              action="action_kh_ai_project_dashboard"
+              sequence="5"/>
 
 </odoo>

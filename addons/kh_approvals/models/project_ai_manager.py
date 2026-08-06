@@ -85,6 +85,11 @@ class ProjectAiManager(models.Model):
     x_ai_collection_note = fields.Html(string="التحصيل مع المحاسب (AI)", readonly=True, copy=False, sanitize=False)
     x_ai_alerts = fields.Html(string="التنبيهات (AI)", readonly=True, copy=False, sanitize=False)
     x_ai_next_steps = fields.Html(string="الخطوات التالية المقترحة (AI)", readonly=True, copy=False, sanitize=False)
+    # معاينات نصية بسيطة (بدون HTML) - لعرض نظيف بالـ List views (عرض HTML
+    # خام جوا خلية List بيطلع فيه وسم <style> مكرّر بكل صف، شكله مش منظّم).
+    x_ai_today_summary_preview = fields.Char(string="معاينة ملخّص اليوم", readonly=True, copy=False)
+    x_ai_collection_note_preview = fields.Char(string="معاينة التحصيل", readonly=True, copy=False)
+    x_ai_alerts_preview = fields.Char(string="معاينة التنبيهات", readonly=True, copy=False)
     x_ai_next_steps_preview = fields.Char(string="معاينة الخطوات التالية", readonly=True, copy=False)
 
     # ------------------------------------------------------------------
@@ -307,7 +312,7 @@ class ProjectAiManager(models.Model):
                     counts[u.name][1] += 1
 
         if not counts and not unassigned[0]:
-            return '<p style="color:#999;">لا يوجد تاسكات مفتوحة.</p>'
+            return '<p dir="rtl" style="text-align:right;color:#999;">لا يوجد تاسكات مفتوحة.</p>'
 
         rows = ''.join(
             '<tr><td>%s</td><td style="text-align:center;">%d</td>'
@@ -323,7 +328,7 @@ class ProjectAiManager(models.Model):
                 % (unassigned[0], unassigned[1])
             )
         return (
-            '<table style="width:100%%;border-collapse:collapse;font-size:13px;">'
+            '<table dir="rtl" style="width:100%%;border-collapse:collapse;font-size:13px;text-align:right;">'
             '<thead><tr><th style="text-align:right;">المكلّف</th>'
             '<th style="text-align:center;">مفتوحة</th><th style="text-align:center;">متأخرة</th></tr></thead>'
             '<tbody>%s</tbody></table>' % rows
@@ -337,7 +342,7 @@ class ProjectAiManager(models.Model):
     # ------------------------------------------------------------------
     _KH_AI_STYLE = (
         '<style>'
-        '.kh_ai_box{line-height:1.8;font-size:14px;}'
+        '.kh_ai_box{line-height:1.8;font-size:14px;direction:rtl;text-align:right;}'
         '.kh_ai_box p{margin:0 0 10px 0;}'
         '.kh_ai_box ul,.kh_ai_box ol{padding-right:22px;margin:0 0 12px 0;}'
         '.kh_ai_box li{margin-bottom:8px;}'
@@ -380,11 +385,16 @@ class ProjectAiManager(models.Model):
             return [value]
         return []
 
+    @staticmethod
+    def _kh_ai_truncate(text, length=140):
+        text = (text or '').strip()
+        return (text[:length] + '…') if len(text) > length else text
+
     def _kh_ai_render_simple_html(self, text):
         text = (text or '').strip()
         if not text:
             return ''
-        return '<div class="kh_ai_box">%s<p>%s</p></div>' % (self._KH_AI_STYLE, escape(text))
+        return '<div class="kh_ai_box" dir="rtl">%s<p>%s</p></div>' % (self._KH_AI_STYLE, escape(text))
 
     def _kh_ai_render_alerts_html(self, data):
         alerts = self._kh_ai_as_list(data.get('alerts'))
@@ -401,15 +411,15 @@ class ProjectAiManager(models.Model):
             rows.append('<div class="kh_ai_alert kh_ai_alert_%s">%s %s</div>' % (
                 a_type if a_type in self._KH_AI_ALERT_ICONS else 'other', icon, escape(message)))
         if not rows:
-            return '<div class="kh_ai_box">%s<p style="color:#27AE60;">✅ لا يوجد تنبيهات حالياً.</p></div>' % self._KH_AI_STYLE
-        return '<div class="kh_ai_box">%s%s</div>' % (self._KH_AI_STYLE, ''.join(rows))
+            return '<div class="kh_ai_box" dir="rtl">%s<p style="color:#27AE60;">✅ لا يوجد تنبيهات حالياً.</p></div>' % self._KH_AI_STYLE
+        return '<div class="kh_ai_box" dir="rtl">%s%s</div>' % (self._KH_AI_STYLE, ''.join(rows))
 
     def _kh_ai_render_next_steps_html(self, data):
         steps = [s for s in self._kh_ai_as_list(data.get('next_steps')) if s and str(s).strip()]
         if not steps:
             return ''
         return (
-            '<div class="kh_ai_box">%s<ol>%s</ol></div>'
+            '<div class="kh_ai_box" dir="rtl">%s<ol>%s</ol></div>'
             % (self._KH_AI_STYLE, ''.join('<li>%s</li>' % escape(s) for s in steps))
         )
 
@@ -511,12 +521,23 @@ class ProjectAiManager(models.Model):
             alerts_html = self._kh_ai_render_alerts_html(data)
             next_steps_html = self._kh_ai_render_next_steps_html(data)
 
-        preview = ' | '.join(str(s) for s in self._kh_ai_as_list(data.get('next_steps')))
+        alerts_list = self._kh_ai_as_list(data.get('alerts'))
+        if alerts_list:
+            first_msgs = '؛ '.join(
+                (a.get('message') if isinstance(a, dict) else str(a)) for a in alerts_list[:2])
+            alerts_preview = '%d تنبيه: %s' % (len(alerts_list), first_msgs)
+        else:
+            alerts_preview = '✅ لا يوجد تنبيهات'
+        next_steps_preview = ' | '.join(str(s) for s in self._kh_ai_as_list(data.get('next_steps')))
+
         self.x_ai_today_summary = today_html
         self.x_ai_collection_note = collection_html
         self.x_ai_alerts = alerts_html
         self.x_ai_next_steps = next_steps_html
-        self.x_ai_next_steps_preview = (preview[:140] + '…') if len(preview) > 140 else preview
+        self.x_ai_today_summary_preview = self._kh_ai_truncate(data.get('today_summary'))
+        self.x_ai_collection_note_preview = self._kh_ai_truncate(data.get('collection_note'))
+        self.x_ai_alerts_preview = self._kh_ai_truncate(alerts_preview)
+        self.x_ai_next_steps_preview = self._kh_ai_truncate(next_steps_preview)
         self.x_ai_last_review_date = fields.Datetime.now()
 
         if self.user_id and self.user_id.partner_id:
@@ -524,7 +545,7 @@ class ProjectAiManager(models.Model):
 
         if post_report:
             report_html = (
-                '<div style="border:2px solid #714B67;border-radius:8px;padding:12px;margin-bottom:10px;">'
+                '<div dir="rtl" style="text-align:right;border:2px solid #714B67;border-radius:8px;padding:12px;margin-bottom:10px;">'
                 '<h4 style="margin:0 0 8px;color:#714B67;">🤖 التقرير الأسبوعي - مدير المشاريع الذكي - %s</h4>'
                 '<p style="color:#666;font-size:12px;">تاسكات مفتوحة: %d | متأخرة: %d | أكتفيتيز متأخرة: %d</p>'
                 '<h5 style="color:#714B67;margin:10px 0 4px;">📋 ملخّص</h5>%s'
