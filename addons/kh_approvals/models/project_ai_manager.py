@@ -274,6 +274,36 @@ class ProjectAiManager(models.Model):
             return 0.0, 0.0
 
     # ------------------------------------------------------------------
+    # لو Claude فعلياً دقّق بفواتير حقيقية (عبر search_odoo_records) ولقى
+    # أرقام مختلفة عن الحساب الآلي (متل حالة Contact مختلف) - منستبدل
+    # الأرقام الرسمية بالأرقام المؤكّدة، ومنسجّل الملاحظة ليكون واضح إنها
+    # صُحّحت. هذا الاستبدال الوحيد المسموح لـ AI على الأرقام المالية،
+    # وبس لما يقول صراحة "confident".
+    # ------------------------------------------------------------------
+    def _kh_ai_apply_financial_verification(self, verification):
+        if not isinstance(verification, dict) or not verification.get('confident'):
+            return
+        try:
+            invoiced = verification.get('invoiced_amount')
+            collected = verification.get('collected_amount')
+            contract = verification.get('contract_value')
+            source = (verification.get('source_note') or '').strip()
+
+            if invoiced is not None:
+                self.x_ai_invoiced_amount = float(invoiced)
+            if collected is not None:
+                self.x_ai_collected_amount = float(collected)
+            if contract:
+                self.x_ai_contract_value = float(contract)
+            self.x_ai_outstanding_amount = self.x_ai_invoiced_amount - self.x_ai_collected_amount
+
+            note = '✅ صُحّحت الأرقام أعلاه من AI بعد تدقيق حقيقي.' + (' (%s)' % source if source else '')
+            existing = self.x_ai_financial_data_note or ''
+            self.x_ai_financial_data_note = (note + ' ' + existing).strip()
+        except Exception:
+            _logger.exception('KH_AI_MANAGER: applying financial verification failed')
+
+    # ------------------------------------------------------------------
     # تاسكات مفتوحة/متأخرة + أكتفيتيز متأخرة + إسناد المهام - محسوبة
     # ومخزّنة (store=True) وبتتحدّث لحالها لما التاسكات/تواريخها تتغيّر،
     # بدون أي زر.
@@ -534,6 +564,7 @@ class ProjectAiManager(models.Model):
             collection_html = self._kh_ai_render_simple_html(data.get('collection_note'))
             alerts_html = self._kh_ai_render_alerts_html(data)
             next_steps_html = self._kh_ai_render_next_steps_html(data)
+            self._kh_ai_apply_financial_verification(data.get('financial_verification'))
 
         alerts_list = self._kh_ai_as_list(data.get('alerts'))
         if alerts_list:
@@ -747,6 +778,26 @@ class ProjectAiManager(models.Model):
                         'وبالحالة الثانية اذكر الاسم الصحيح والفرق بالأرقام بوضوح). لو في نقطة يلزم '
                         'المحاسب يتابعها، وجّهها له بالاسم (موجود بالمعرّفات أعلاه لو موجود بالنظام).'
                     ),
+                },
+                'financial_verification': {
+                    'type': 'object',
+                    'description': (
+                        'اذا دقّقت فعلياً بفواتير حقيقية (عبر search_odoo_records على account.move) '
+                        'ولقيت أرقام مختلفة عن الأرقام الجاهزة (لأن Contact مختلف مثلاً) - رجّع هون '
+                        'الأرقام الصحيحة يلي جمعتها فعلياً من سجلات حقيقية (مش تقدير). لو الأرقام '
+                        'الجاهزة صحيحة أصلاً أو ما دقّقت، خلّي confident=false وبلاش تعبّي الأرقام.'
+                    ),
+                    'properties': {
+                        'confident': {
+                            'type': 'boolean',
+                            'description': 'true بس إذا فعلياً جمعت أرقام حقيقية من نتائج search_odoo_records.',
+                        },
+                        'invoiced_amount': {'type': 'number', 'description': 'إجمالي الفواتير الصحيح (لو confident).'},
+                        'collected_amount': {'type': 'number', 'description': 'إجمالي المحصّل الصحيح (لو confident).'},
+                        'contract_value': {'type': 'number', 'description': 'قيمة العقد الصحيحة لو لقيتها (اختياري).'},
+                        'source_note': {'type': 'string', 'description': 'من وين جبت هذا الرقم (اسم Contact/فرصة CRM).'},
+                    },
+                    'required': ['confident'],
                 },
                 'alerts': {
                     'type': 'array',
