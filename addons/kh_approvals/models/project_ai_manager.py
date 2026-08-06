@@ -742,6 +742,7 @@ class ProjectAiManager(models.Model):
             self.message_post(body=Markup(report_html), message_type='comment', subtype_xmlid='mail.mt_comment')
 
         self._kh_ai_notify_pm_if_needed(open_tasks)
+        self._kh_ai_notify_accountant_if_needed(accountant)
         return True
 
     # ------------------------------------------------------------------
@@ -785,6 +786,48 @@ class ProjectAiManager(models.Model):
                 summary=summary,
                 note=self.x_ai_alerts or self.x_ai_today_summary or '',
                 user_id=self.user_id.id,
+                date_deadline=today,
+            )
+
+    # ------------------------------------------------------------------
+    # تاسك حقيقي (mail.activity) للمحاسب (Karan) على هذا المشروع بالتحديد
+    # لما يكون في مبلغ متبقّي غير محصّل - مش مجرد ذكر اسمه بالنص، هذا تاسك
+    # فعلي بالـ Activities تبعه بـ Odoo. بتحدّث نفس التاسك (مش تكرره) كل
+    # مرة تتغيّر فيها الأرقام، وبتحذفه أوتوماتيكياً لو المبلغ تحصّل بالكامل.
+    # ------------------------------------------------------------------
+    def _kh_ai_notify_accountant_if_needed(self, accountant):
+        self.ensure_one()
+        if not accountant:
+            return
+
+        today = fields.Date.context_today(self)
+        existing = self.env['mail.activity'].search([
+            ('res_model', '=', 'project.project'),
+            ('res_id', '=', self.id),
+            ('user_id', '=', accountant.id),
+            ('summary', 'like', '💰 تحصيل مطلوب:'),
+        ], limit=1)
+
+        outstanding = self.x_ai_outstanding_amount or 0.0
+        if outstanding <= 0:
+            if existing:
+                existing.unlink()
+            return
+
+        summary = '💰 تحصيل مطلوب: %s - المتبقّي %.2f' % (self.name, outstanding)
+        note = (
+            'المفوتر: %.2f | المحصّل: %.2f | المتبقّي: %.2f\n%s'
+            % (self.x_ai_invoiced_amount or 0.0, self.x_ai_collected_amount or 0.0,
+               outstanding, html2plaintext(self.x_ai_collection_note or '').strip())
+        )
+        if existing:
+            existing.write({'summary': summary, 'note': note, 'date_deadline': today})
+        else:
+            self.activity_schedule(
+                'mail.mail_activity_data_todo',
+                summary=summary,
+                note=note,
+                user_id=accountant.id,
                 date_deadline=today,
             )
 
