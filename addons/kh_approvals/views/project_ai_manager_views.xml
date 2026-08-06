@@ -40,16 +40,24 @@
                         </group>
                     </group>
 
-                    <!-- خارج أي group بعدد أعمدة - عشان تاخد كامل عرض الصفحة -->
+                    <!-- الأقسام الأربعة - بتتحدّث تلقائياً كل ساعة (Cron)، بدون أي زر -->
+                    <div class="alert alert-info" role="alert" invisible="x_ai_last_review_date">
+                        أول تحديث آلي رح يصير خلال ساعة، أو اضغط زر "مراجعة AI" فوق (الأيقونة ⚡) فوراً.
+                    </div>
+
+                    <h4>1️⃣ ملخّص اليوم</h4>
+                    <field name="x_ai_today_summary" readonly="1" nolabel="1"/>
+
+                    <h4>2️⃣ التحصيل المالي</h4>
+                    <field name="x_ai_collection_note" readonly="1" nolabel="1"/>
+
+                    <h4>3️⃣ التنبيهات</h4>
+                    <field name="x_ai_alerts" readonly="1" nolabel="1"/>
+
                     <h4>👥 إسناد المهام المفتوحة</h4>
                     <field name="x_ai_assignment_summary" readonly="1" nolabel="1"/>
 
-                    <!-- الجزء الوحيد يلي فعلياً يحتاج الزر (تحليل Claude) -->
-                    <h4>💡 تقييم الحالة والخطوات التالية (AI)</h4>
-                    <div class="alert alert-info" role="alert" invisible="x_ai_last_review_date">
-                        اضغط زر "مراجعة AI" فوق (الأيقونة ⚡ ببوكس الأزرار) عشان تطلع توصيات وتحليل الذكاء الاصطناعي.
-                    </div>
-                    <field name="x_ai_status_summary" readonly="1" nolabel="1"/>
+                    <h4>4️⃣ الخطوات التالية المقترحة</h4>
                     <field name="x_ai_next_steps" readonly="1" nolabel="1"/>
 
                     <notebook>

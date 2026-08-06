@@ -77,9 +77,13 @@ class ProjectAiManager(models.Model):
     x_ai_done_task_ids = fields.Many2many(
         'project.task', compute='_compute_ai_task_metrics', string="التاسكات المنجزة (AI)")
 
-    # ---- الوحيدة يلي بتحتاج زر (استدعاء Claude فعلي) ----
+    # ---- الوحيدة يلي بتحتاج استدعاء Claude فعلي - بتتحدّث تلقائياً كل ساعة
+    # (Cron) أو فوراً لو ضغطت الزر، بدون أي Spam على الشاتر (الشاتر بس
+    # بالتقرير الأسبوعي) ----
     x_ai_last_review_date = fields.Datetime(string="آخر مراجعة AI", readonly=True, copy=False)
-    x_ai_status_summary = fields.Html(string="تقييم الحالة (AI)", readonly=True, copy=False, sanitize=False)
+    x_ai_today_summary = fields.Html(string="ملخّص اليوم (AI)", readonly=True, copy=False, sanitize=False)
+    x_ai_collection_note = fields.Html(string="التحصيل مع المحاسب (AI)", readonly=True, copy=False, sanitize=False)
+    x_ai_alerts = fields.Html(string="التنبيهات (AI)", readonly=True, copy=False, sanitize=False)
     x_ai_next_steps = fields.Html(string="الخطوات التالية المقترحة (AI)", readonly=True, copy=False, sanitize=False)
     x_ai_next_steps_preview = fields.Char(string="معاينة الخطوات التالية", readonly=True, copy=False)
 
@@ -112,6 +116,35 @@ class ProjectAiManager(models.Model):
             if f.type == 'many2one' and getattr(f, 'comodel_name', None) == 'account.analytic.account':
                 return fname
         return False
+
+    # ------------------------------------------------------------------
+    # اكتشاف المحاسب "Karan" ديناميكياً بالاسم (مش id ثابت بالكود) - عشان
+    # لو تغيّر شي بالنظام ما ينكسر، ولأننا ما نعرف id الحقيقي أصلاً.
+    # ------------------------------------------------------------------
+    def _kh_ai_find_accountant_user(self):
+        return self.env['res.users'].sudo().search([('name', 'ilike', 'karan')], limit=1)
+
+    # ------------------------------------------------------------------
+    # فحوصات استباقية بالكود (مش بانتظار Claude يلاحظها): مشروع بدون أي
+    # تحديث/زيارة ميدانية موثّقة بالشاتر منذ فترة، وتاسكات مفتوحة ما تحرّكت
+    # (write_date) منذ فترة طويلة - "معلومات مش موجودة" و"تاسكات ما تحدّثت".
+    # ------------------------------------------------------------------
+    def _kh_ai_check_staleness(self, open_tasks):
+        self.ensure_one()
+        last_msg = self.env['mail.message'].sudo().search([
+            ('model', '=', 'project.project'),
+            ('res_id', '=', self.id),
+            ('message_type', 'in', ['comment', 'email']),
+        ], order='date desc', limit=1)
+        days_since_update = None
+        if last_msg and last_msg.date:
+            days_since_update = (fields.Datetime.now() - last_msg.date).days
+
+        now = fields.Datetime.now()
+        stale_tasks = open_tasks.filtered(
+            lambda t: t.write_date and (now - t.write_date).days >= 14)
+
+        return days_since_update, stale_tasks
 
     # ------------------------------------------------------------------
     # هل التاسك منجزة؟ - state وx_custom_state طلعوا فاضيين لمعظم التاسكات
@@ -305,14 +338,27 @@ class ProjectAiManager(models.Model):
     _KH_AI_STYLE = (
         '<style>'
         '.kh_ai_box{line-height:1.8;font-size:14px;}'
-        '.kh_ai_box .kh_ai_headline{margin:0 0 12px 0;color:#714B67;'
-        'border-bottom:2px solid #714B67;padding-bottom:8px;font-size:16px;font-weight:bold;}'
+        '.kh_ai_box p{margin:0 0 10px 0;}'
         '.kh_ai_box ul,.kh_ai_box ol{padding-right:22px;margin:0 0 12px 0;}'
         '.kh_ai_box li{margin-bottom:8px;}'
-        '.kh_ai_box .kh_ai_financial{background:#fff8e6;border-right:3px solid #E67E22;'
-        'padding:10px 14px;border-radius:4px;margin-top:4px;}'
+        '.kh_ai_alert{padding:8px 12px;border-radius:4px;margin-bottom:8px;border-right:3px solid;}'
+        '.kh_ai_alert_missing_update{background:#fdecea;border-color:#E74C3C;}'
+        '.kh_ai_alert_stale_task{background:#fff3cd;border-color:#E67E22;}'
+        '.kh_ai_alert_overdue{background:#fdecea;border-color:#E74C3C;}'
+        '.kh_ai_alert_unassigned{background:#fff3cd;border-color:#E67E22;}'
+        '.kh_ai_alert_financial{background:#fff8e6;border-color:#E67E22;}'
+        '.kh_ai_alert_other{background:#eef2ff;border-color:#714B67;}'
         '</style>'
     )
+
+    _KH_AI_ALERT_ICONS = {
+        'missing_update': '📭',
+        'stale_task': '🕰️',
+        'overdue': '⏰',
+        'unassigned': '👤',
+        'financial': '💰',
+        'other': '💡',
+    }
 
     @staticmethod
     def _kh_ai_as_list(value):
@@ -334,20 +380,29 @@ class ProjectAiManager(models.Model):
             return [value]
         return []
 
-    def _kh_ai_render_status_html(self, data):
-        headline = (data.get('headline') or '').strip()
-        points = [p for p in self._kh_ai_as_list(data.get('status_points')) if p and str(p).strip()]
-        financial = (data.get('financial_comparison') or '').strip()
+    def _kh_ai_render_simple_html(self, text):
+        text = (text or '').strip()
+        if not text:
+            return ''
+        return '<div class="kh_ai_box">%s<p>%s</p></div>' % (self._KH_AI_STYLE, escape(text))
 
-        parts = ['<div class="kh_ai_box">', self._KH_AI_STYLE]
-        if headline:
-            parts.append('<div class="kh_ai_headline">%s</div>' % escape(headline))
-        if points:
-            parts.append('<ul>%s</ul>' % ''.join('<li>%s</li>' % escape(p) for p in points))
-        if financial:
-            parts.append('<div class="kh_ai_financial">💰 %s</div>' % escape(financial))
-        parts.append('</div>')
-        return ''.join(parts)
+    def _kh_ai_render_alerts_html(self, data):
+        alerts = self._kh_ai_as_list(data.get('alerts'))
+        rows = []
+        for a in alerts:
+            if isinstance(a, dict):
+                a_type = a.get('type') or 'other'
+                message = a.get('message') or ''
+            else:
+                a_type, message = 'other', str(a)
+            if not message.strip():
+                continue
+            icon = self._KH_AI_ALERT_ICONS.get(a_type, self._KH_AI_ALERT_ICONS['other'])
+            rows.append('<div class="kh_ai_alert kh_ai_alert_%s">%s %s</div>' % (
+                a_type if a_type in self._KH_AI_ALERT_ICONS else 'other', icon, escape(message)))
+        if not rows:
+            return '<div class="kh_ai_box">%s<p style="color:#27AE60;">✅ لا يوجد تنبيهات حالياً.</p></div>' % self._KH_AI_STYLE
+        return '<div class="kh_ai_box">%s%s</div>' % (self._KH_AI_STYLE, ''.join(rows))
 
     def _kh_ai_render_next_steps_html(self, data):
         steps = [s for s in self._kh_ai_as_list(data.get('next_steps')) if s and str(s).strip()]
@@ -410,10 +465,13 @@ class ProjectAiManager(models.Model):
             return {'error': str(e)[:300]}
 
     # ------------------------------------------------------------------
-    # الميثود الوحيدة يلي بتستدعي Claude - تُستدعى فقط من زر "🤖 مراجعة AI"
-    # (الأرقام والقوائم فوق محسوبة أصلاً تلقائياً وما بتحتاج هالزر)
+    # الميثود الوحيدة يلي بتستدعي Claude - بتشتغل تلقائياً كل ساعة (Cron)
+    # أو فوراً لو ضغطت الزر، وبتحدّث 4 أقسام: ملخّص اليوم، التحصيل مع
+    # المحاسب، التنبيهات، الخطوات التالية. post_report=True (التقرير
+    # الأسبوعي بس) هو الوقت الوحيد يلي بننشر بالشاتر - تفادياً لـ Spam
+    # لو صار التشغيل كل ساعة.
     # ------------------------------------------------------------------
-    def action_run_ai_review(self):
+    def action_run_ai_review(self, post_report=False):
         self.ensure_one()
         today_str = str(fields.Date.context_today(self))
         date_from = fields.Datetime.to_string(
@@ -426,6 +484,8 @@ class ProjectAiManager(models.Model):
         overdue_proj_acts = self.activity_ids.filtered(lambda a: a.date_deadline and str(a.date_deadline) < today_str)
         overdue_task_acts = all_tasks.activity_ids.filtered(
             lambda a: a.date_deadline and str(a.date_deadline) < today_str)
+        days_since_update, stale_tasks = self._kh_ai_check_staleness(open_tasks)
+        accountant = self._kh_ai_find_accountant_user()
 
         messages = self.env['mail.message'].sudo().search([
             ('model', '=', 'project.project'),
@@ -437,33 +497,45 @@ class ProjectAiManager(models.Model):
         digest = self._kh_ai_build_digest(
             self.x_ai_work_done, self.x_ai_work_done_tasks, self.x_ai_contract_value,
             self.x_ai_invoiced_amount, self.x_ai_collected_amount,
-            open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts, messages, today_str)
+            open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts, messages, today_str,
+            days_since_update, stale_tasks, accountant)
 
         data, error_html = self._kh_ai_claude_review(digest)
         if error_html:
-            status_html, next_steps_html = error_html, ''
+            today_html, collection_html, alerts_html, next_steps_html = error_html, '', '', ''
+            data = {}
         else:
-            status_html = self._kh_ai_render_status_html(data)
+            data = data or {}
+            today_html = self._kh_ai_render_simple_html(data.get('today_summary'))
+            collection_html = self._kh_ai_render_simple_html(data.get('collection_note'))
+            alerts_html = self._kh_ai_render_alerts_html(data)
             next_steps_html = self._kh_ai_render_next_steps_html(data)
 
-        preview = ' | '.join(str(s) for s in self._kh_ai_as_list((data or {}).get('next_steps')))
-        self.x_ai_status_summary = status_html
+        preview = ' | '.join(str(s) for s in self._kh_ai_as_list(data.get('next_steps')))
+        self.x_ai_today_summary = today_html
+        self.x_ai_collection_note = collection_html
+        self.x_ai_alerts = alerts_html
         self.x_ai_next_steps = next_steps_html
         self.x_ai_next_steps_preview = (preview[:140] + '…') if len(preview) > 140 else preview
         self.x_ai_last_review_date = fields.Datetime.now()
 
-        report_html = (
-            '<div style="border:2px solid #714B67;border-radius:8px;padding:12px;margin-bottom:10px;">'
-            '<h4 style="margin:0 0 8px;color:#714B67;">🤖 مراجعة مدير المشاريع الذكي - %s</h4>'
-            '<p style="color:#666;font-size:12px;">تاسكات مفتوحة: %d | متأخرة: %d | أكتفيتيز متأخرة: %d</p>'
-            '%s%s</div>'
-            % (today_str, len(open_tasks), len(overdue_tasks),
-               len(overdue_proj_acts) + len(overdue_task_acts),
-               self.x_ai_status_summary or '', self.x_ai_next_steps or '')
-        )
         if self.user_id and self.user_id.partner_id:
             self.message_subscribe(partner_ids=self.user_id.partner_id.ids)
-        self.message_post(body=Markup(report_html), message_type='comment', subtype_xmlid='mail.mt_comment')
+
+        if post_report:
+            report_html = (
+                '<div style="border:2px solid #714B67;border-radius:8px;padding:12px;margin-bottom:10px;">'
+                '<h4 style="margin:0 0 8px;color:#714B67;">🤖 التقرير الأسبوعي - مدير المشاريع الذكي - %s</h4>'
+                '<p style="color:#666;font-size:12px;">تاسكات مفتوحة: %d | متأخرة: %d | أكتفيتيز متأخرة: %d</p>'
+                '<h5 style="color:#714B67;margin:10px 0 4px;">📋 ملخّص</h5>%s'
+                '<h5 style="color:#714B67;margin:10px 0 4px;">💰 التحصيل</h5>%s'
+                '<h5 style="color:#714B67;margin:10px 0 4px;">⚠️ التنبيهات</h5>%s'
+                '<h5 style="color:#714B67;margin:10px 0 4px;">➡️ الخطوات التالية</h5>%s</div>'
+                % (today_str, len(open_tasks), len(overdue_tasks),
+                   len(overdue_proj_acts) + len(overdue_task_acts),
+                   today_html, collection_html, alerts_html, next_steps_html)
+            )
+            self.message_post(body=Markup(report_html), message_type='comment', subtype_xmlid='mail.mt_comment')
 
         self._kh_ai_notify_pm_if_needed(open_tasks)
         return True
@@ -502,31 +574,45 @@ class ProjectAiManager(models.Model):
 
         summary = '⚠️ تنبيه AI: ' + '، '.join(issues)
         if existing:
-            existing.write({'summary': summary, 'note': self.x_ai_status_summary or '', 'date_deadline': today})
+            existing.write({'summary': summary, 'note': self.x_ai_alerts or self.x_ai_today_summary or '', 'date_deadline': today})
         else:
             self.activity_schedule(
                 'mail.mail_activity_data_todo',
                 summary=summary,
-                note=self.x_ai_status_summary or '',
+                note=self.x_ai_alerts or self.x_ai_today_summary or '',
                 user_id=self.user_id.id,
                 date_deadline=today,
             )
 
-    # ------------------------------------------------------------------
-    # التشغيل التلقائي اليومي (ir.cron) - بيمرّ على كل المشاريع النشطة
-    # بمرحلة Under Processing/Sign & Design ويشغّل نفس مراجعة الزر لكل
-    # واحد. فشل مشروع واحد ما بوقف الباقي.
-    # ------------------------------------------------------------------
-    def _cron_run_ai_review_batch(self):
-        projects = self.search([
+    def _kh_ai_target_projects(self):
+        return self.search([
             ('active', '=', True),
             ('stage_id.name', 'in', ['Under Processing', 'Sign & Design']),
         ])
-        for project in projects:
+
+    # ------------------------------------------------------------------
+    # التشغيل التلقائي كل ساعة (ir.cron) - تحديث صامت لكل المشاريع النشطة
+    # (بدون نشر بالشاتر، بس تحديث الحقول + تنبيه المدير لو في مشكلة حقيقية).
+    # فشل مشروع واحد ما بوقف الباقي.
+    # ------------------------------------------------------------------
+    def _cron_run_ai_review_batch(self):
+        for project in self._kh_ai_target_projects():
             try:
-                project.action_run_ai_review()
+                project.action_run_ai_review(post_report=False)
             except Exception:
-                _logger.exception('KH_AI_MANAGER: scheduled review failed for project %s (%s)',
+                _logger.exception('KH_AI_MANAGER: hourly review failed for project %s (%s)',
+                                   project.id, project.name)
+
+    # ------------------------------------------------------------------
+    # التقرير الأسبوعي (ir.cron أسبوعي) - نفس التحديث، بس بينشر بالشاتر
+    # (المكان الوحيد يلي بيتكرر فيه النشر - تفادياً لـ Spam من التشغيل الساعي).
+    # ------------------------------------------------------------------
+    def _cron_weekly_report_batch(self):
+        for project in self._kh_ai_target_projects():
+            try:
+                project.action_run_ai_review(post_report=True)
+            except Exception:
+                _logger.exception('KH_AI_MANAGER: weekly report failed for project %s (%s)',
                                    project.id, project.name)
 
     # ------------------------------------------------------------------
@@ -534,7 +620,7 @@ class ProjectAiManager(models.Model):
     # ------------------------------------------------------------------
     def _kh_ai_build_digest(self, work_done, work_done_tasks, contract_value, invoiced_amount, collected_amount,
                              open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts,
-                             messages, today_str):
+                             messages, today_str, days_since_update=None, stale_tasks=None, accountant=None):
         lines = []
         lines.append('المشروع: %s' % self.name)
         lines.append('المرحلة الحالية: %s' % (self.stage_id.name if self.stage_id else '-'))
@@ -545,6 +631,24 @@ class ProjectAiManager(models.Model):
         lines.append('المفوتر فعلياً (فواتير Odoo حقيقية): %.2f | المحصّل فعلياً (مدفوع): %.2f'
                       % (invoiced_amount, collected_amount))
         lines.append('تاريخ اليوم: %s' % today_str)
+
+        if days_since_update is None:
+            lines.append('⚠️ حقيقة مهمة: لا يوجد ولا رسالة/تحديث واحد بسجل نشاط المشروع إطلاقاً.')
+        elif days_since_update >= 7:
+            lines.append('⚠️ حقيقة مهمة: آخر تحديث/رسالة بسجل النشاط كان قبل %d يوم (فجوة تحديث حقيقية).' % days_since_update)
+        else:
+            lines.append('آخر تحديث بسجل النشاط: قبل %d يوم.' % days_since_update)
+
+        stale_tasks = stale_tasks or self.env['project.task']
+        if stale_tasks:
+            lines.append('⚠️ حقيقة مهمة: %d تاسك مفتوح ما تحرّك (بدون أي تعديل) منذ 14 يوم أو أكتر: %s'
+                          % (len(stale_tasks), ', '.join(stale_tasks.mapped('name')[:10])))
+
+        if accountant:
+            lines.append('المحاسب المسؤول عن التحصيل: %s (user_id=%d) - لو في ملاحظة تحصيل، وجّهها له بالاسم.'
+                          % (accountant.name, accountant.id))
+        else:
+            lines.append('تنويه: ما لقيت مستخدم اسمه "Karan" بالنظام حالياً.')
 
         lines.append('\n--- التاسكات المفتوحة (غير Approved/Done) - العدد: %d ---' % len(open_tasks))
         for t in open_tasks:
@@ -586,30 +690,51 @@ class ProjectAiManager(models.Model):
     _KH_AI_REVIEW_TOOL = {
         'name': 'provide_project_review',
         'description': (
-            'إرجاع محتوى تقييم حالة المشروع والخطوات التالية - نص عادي بس، بدون HTML. '
+            'إرجاع محتوى مراجعة المشروع بـ 4 أقسام - نص عادي بس بكل قيمة، بدون HTML. '
             'استدعِ هذه الأداة فقط لما تكون خلصت الاستكشاف وجاهز للنتيجة النهائية.'
         ),
         'input_schema': {
             'type': 'object',
             'properties': {
-                'headline': {
+                'today_summary': {
                     'type': 'string',
-                    'description': 'جملة واحدة قصيرة (أقل من 20 كلمة) تلخّص الحكم العام على حالة المشروع.',
-                },
-                'status_points': {
-                    'type': 'array',
-                    'items': {'type': 'string'},
                     'description': (
-                        '2 إلى 5 نقاط قصيرة (جملة أو جملتين لكل نقطة) عن مدى توافق الحالة الفعلية '
-                        '(تاسكات/أكتفيتيز/فواتير/CRM/مشتريات/اعتمادات) مع سجل النشاط، وأي تناقضات ملموسة. '
-                        'لازم تكون array حقيقية (عنصر نص لكل نقطة)، مش نص واحد فيه أقواس/فواصل.'
+                        'فقرة قصيرة (2-4 جمل): شو صار بالمشروع اليوم/آخر تحديث فعلي - بناءً على سجل '
+                        'النشاط الأحدث والتاسكات المتحرّكة. إذا مافي شي جديد اليوم، قول هذا بوضوح.'
                     ),
                 },
-                'financial_comparison': {
+                'collection_note': {
                     'type': 'string',
                     'description': (
-                        'فقرة واحدة (2-3 جمل) تقارن النسب الثلاث بالأرقام (الإنجاز اليدوي، الإنجاز '
-                        'حسب التاسكات، التحصيل الفعلي) وتوضّح أي فجوة بينهم.'
+                        'فقرة (2-4 جمل) عن وضع التحصيل المالي: قارن الإنجاز (يدوي وحسب التاسكات) مع '
+                        'التحصيل الفعلي، ووضّح أي فجوة. لو في نقطة يلزم المحاسب يتابعها، وجّهها له '
+                        'بالاسم (موجود بالمعرّفات أعلاه لو موجود بالنظام).'
+                    ),
+                },
+                'alerts': {
+                    'type': 'array',
+                    'items': {
+                        'type': 'object',
+                        'properties': {
+                            'type': {
+                                'type': 'string',
+                                'enum': ['missing_update', 'stale_task', 'overdue', 'unassigned', 'financial', 'other'],
+                                'description': (
+                                    'نوع التنبيه: missing_update (مافي تحديث بالسجل)، stale_task '
+                                    '(تاسك ما تحرّك)، overdue (متأخر)، unassigned (بدون مسؤول)، '
+                                    'financial (فجوة مالية)، other (أي ملاحظة ذكية تانية لاحظتها انت '
+                                    'وما بتنطبق على الأنواع فوق - هذا القسم يلي بيخليك تفكّر مش بس تعدّ).'
+                                ),
+                            },
+                            'message': {'type': 'string', 'description': 'نص التنبيه، جملة أو جملتين، واضح ومباشر.'},
+                        },
+                        'required': ['type', 'message'],
+                    },
+                    'description': (
+                        'كل التنبيهات المهمة - لازم تشمل حقائق "مهمة" المذكورة بالبيانات (مافي تحديث/'
+                        'تاسكات ما تحرّكت) إذا موجودة، بالإضافة لأي مشكلة حقيقية تانية تلاحظها انت '
+                        '(نوع other) - فكّر متل مدير مشاريع حقيقي بيحاول يحل مشاكل الموقع، مش بس عداد. '
+                        'لو ما في أي تنبيه فعلي، رجّع array فاضية [].'
                     ),
                 },
                 'next_steps': {
@@ -621,7 +746,7 @@ class ProjectAiManager(models.Model):
                     ),
                 },
             },
-            'required': ['headline', 'status_points', 'financial_comparison', 'next_steps'],
+            'required': ['today_summary', 'collection_note', 'alerts', 'next_steps'],
         },
     }
 
@@ -633,6 +758,9 @@ class ProjectAiManager(models.Model):
         analytic_account = self._kh_ai_read_studio_value(analytic_field) if analytic_field else False
         if analytic_account:
             parts.append('الحساب التحليلي (Analytic Account): %s (id=%d)' % (analytic_account.name, analytic_account.id))
+        accountant = self._kh_ai_find_accountant_user()
+        if accountant:
+            parts.append('المحاسب المسؤول عن التحصيل (Karan): %s (user_id=%d)' % (accountant.name, accountant.id))
         parts.append('project_id = %d' % self.id)
         return '\n'.join(parts) if parts else 'لا يوجد معرّفات إضافية (عميل/حساب تحليلي) لهذا المشروع.'
 
@@ -656,13 +784,16 @@ class ProjectAiManager(models.Model):
             return None, warn_box % '⚠️ مفتاح mcp_server.anthropic_api_key غير موجود في إعدادات Odoo.'
 
         prompt = (
-            "أنت مساعد مدير مشاريع خبير بشركة هندسية وتجارية بالإمارات.\n"
+            "أنت مساعد مدير مشاريع خبير بشركة هندسية وتجارية بالإمارات - بتفكّر متل مدير مشاريع حقيقي "
+            "بيحاول يحل مشاكل الموقع، مش بس نظام بيعدّ أرقام.\n"
             "البيانات أدناه مستخرجة مباشرة من نظام Odoo (تاسكات، أكتفيتيز، فواتير حقيقية، سجل نشاط/شاتر المشروع) وهي دقيقة 100%%.\n"
             "ممنوع منعاً باتاً أن تخترع أو تغيّر أي رقم (عدد التاسكات، التواريخ، المبالغ المالية، النسب) - اعتمد عليها كما هي فقط.\n"
             "قارن ثلاث نسب مع بعضها: (1) نسبة الإنجاز المسجّلة يدوياً بـ Odoo، (2) نسبة الإنجاز المحسوبة فعلياً من "
             "التاسكات المنجزة، (3) نسبة التحصيل الفعلي (المحصّل/قيمة العقد). إذا في فرق واضح بين أي منهم - "
             "خصوصاً إذا نسبة التاسكات المنجزة أعلى بكثير من نسبة التحصيل، أو النسبة اليدوية بعيدة عن نسبة التاسكات - "
-            "هاي فجوة مهمة (بيانات غير محدّثة أو تحصيل متأخر) لازم تنبّه عليها بوضوح.\n\n"
+            "هاي فجوة مهمة لازم تنبّه عليها بوضوح بقسم collection_note.\n"
+            "لو في مشروع بدون أي تحديث حديث بسجل النشاط، أو تاسكات مفتوحة ما تحرّكت من فترة طويلة - هاي "
+            "حقائق جاهزة بالبيانات تحت، لازم تظهر بقسم alerts (type: missing_update / stale_task).\n\n"
             "معرّفات مفيدة للاستكشاف:\n%s\n\n"
             "عندك أداة search_odoo_records تقدر تستخدمها (أكتر من مرة إذا لزم) لتتحقق من معلومات إضافية "
             "مرتبطة بهذا المشروع - مثلاً: عروض/فرص CRM لهذا العميل، أوامر شراء (purchase.order) مرتبطة "
@@ -672,7 +803,8 @@ class ProjectAiManager(models.Model):
             "--------------------------------------------------\n"
             "%s\n"
             "--------------------------------------------------\n\n"
-            "لما تخلص استكشاف، استدعِ أداة provide_project_review بمحتوى نصي عادي بس (بدون HTML)."
+            "لما تخلص استكشاف، استدعِ أداة provide_project_review بمحتوى نصي عادي بس (بدون HTML) بـ 4 "
+            "أقسام: ملخّص اليوم، ملاحظة التحصيل، التنبيهات، الخطوات التالية."
             % (self._kh_ai_build_seed_context(), digest_text)
         )
 
