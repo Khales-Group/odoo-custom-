@@ -60,11 +60,16 @@ def sanitize_model_name(model_name: str) -> str:
     return model_name.strip()
 
 
-def is_mcp_enabled() -> bool:
+def is_mcp_enabled(env: Optional[Environment] = None) -> bool:
     """
     Check if MCP is globally enabled via `mcp_server.enabled` system parameter.
     Result is cached for 5 minutes to reduce database queries.
 
+    :param env: Optional Odoo environment to use when there is no bound HTTP
+        request (e.g. called from an ir.cron job). When omitted, falls back
+        to `request.env` as before - existing callers inside an HTTP request
+        are unaffected.
+    :type env: odoo.api.Environment | None
     :return: True if MCP is enabled, False otherwise.
     :rtype: bool
     """
@@ -79,8 +84,17 @@ def is_mcp_enabled() -> bool:
 
     # Get fresh value
     try:
+        try:
+            target_env = env if env is not None else request.env
+        except RuntimeError:
+            # No HTTP request bound to this thread (e.g. ir.cron) and no env
+            # explicitly passed in - can't look anything up.
+            if env is None:
+                return False
+            target_env = env
+
         value = (
-            request.env["ir.config_parameter"]
+            target_env["ir.config_parameter"]
             .sudo()
             .get_param("mcp_server.enabled", "False")
             == "True"
@@ -109,7 +123,7 @@ def is_model_mcp_enabled(env: Environment, model_name: str) -> bool:
     :return: True if the model is MCP-enabled, False otherwise.
     :rtype: bool
     """
-    if not is_mcp_enabled():  # Check global switch first
+    if not is_mcp_enabled(env=env):  # Check global switch first
         return False
 
     now = datetime.now(timezone.utc)
@@ -160,7 +174,7 @@ def check_model_operation_allowed(
     :return: True if the operation is allowed, False otherwise.
     :rtype: bool
     """
-    if not is_mcp_enabled():  # Check global switch first
+    if not is_mcp_enabled(env=env):  # Check global switch first
         return False
 
     # Normalize and validate inputs
@@ -226,7 +240,7 @@ def get_enabled_models(env: Environment) -> List[Dict[str, str]]:
     (technical name) and "name" (display name).
     :rtype: list[dict]
     """
-    if not is_mcp_enabled():
+    if not is_mcp_enabled(env=env):
         return []
 
     try:
@@ -272,7 +286,7 @@ def get_model_allowed_operations(env: Environment, model_name: str) -> Dict[str,
              not found or not MCP enabled.
     :rtype: dict
     """
-    if not is_mcp_enabled():
+    if not is_mcp_enabled(env=env):
         return {}
 
     try:

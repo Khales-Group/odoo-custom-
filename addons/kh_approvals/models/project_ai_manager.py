@@ -16,6 +16,14 @@ from odoo import api, fields, models
 from odoo.tools import html2plaintext
 from odoo.tools.safe_eval import safe_eval
 
+# نعيد استخدام نفس محرّك الأدوات تبع الشات العام (mcp_server) للتحقق المالي -
+# هذا المحرّك أثبت فعلياً إنه بيجيب الأرقام الصحيحة (find_customer +
+# search_records على account.move)، بعكس منطقنا الحتمي بالأسفل (مطابقة
+# partner_id مباشرة) يلي ثبت إنه غلط 3 مرات على بيانات حقيقية. القرار (من
+# صاحب العمل): "بلاش نحسب مالياً بمنطقنا - خلي Claude يستخدم نفس أدوات
+# الشات العام يلي جابت الرقم الصحيح فعلياً، وحطها بتبع المدير الذكي".
+from odoo.addons.mcp_server.controllers import ai_tools as mcp_ai_tools
+
 _logger = logging.getLogger(__name__)
 
 try:
@@ -304,6 +312,125 @@ class ProjectAiManager(models.Model):
             _logger.exception('KH_AI_MANAGER: applying financial verification failed')
 
     # ------------------------------------------------------------------
+    # حلقة Agentic عامة تعيد استخدام محرّك أدوات mcp_server (نفس الأدوات يلي
+    # الشات العام يستخدمها: find_customer/search_records/list_enabled_models
+    # الخ) بدل أداتنا الخاصة - القرار: نعتمد على نفس المحرّك المُثبَت صحته،
+    # ونصمّم فقط "برومبت جاهز" مركّز لكل حاجة (طلب واحد = برومبت واحد +
+    # أداة نتيجة نهائية واحدة)، بدل حلقة عامة تحاول تعمل كل شي بمرة واحدة.
+    # execute_tool بيتطلب env تبع اليوزر الحقيقي (مش sudo) عشان صلاحياته
+    # الفعلية تنطبق تماماً متل الشات العام - هذا هو نفس مبدأ "الصلاحيات
+    # حسب اليوزر مش حسب Claude" يلي طلبه صاحب العمل.
+    # بيرجع (data_dict, error_message) - وحدة منهم دايماً None/فاضي.
+    # ------------------------------------------------------------------
+    def _kh_ai_run_mcp_prompt(self, prompt, result_tool):
+        if not HAS_ANTHROPIC:
+            return None, 'مكتبة anthropic غير مثبّتة.'
+
+        ICP = self.env['ir.config_parameter'].sudo()
+        api_key = ICP.get_param('mcp_server.anthropic_api_key')
+        model = ICP.get_param('mcp_server.anthropic_model') or DEFAULT_MODEL
+        if not api_key:
+            return None, 'مفتاح mcp_server.anthropic_api_key غير موجود في إعدادات Odoo.'
+
+        tools = mcp_ai_tools.build_tool_definitions(self.env) + [result_tool]
+        messages = [{'role': 'user', 'content': prompt}]
+
+        try:
+            client = anthropic.Anthropic(api_key=api_key)
+            for _ in range(MAX_AGENTIC_ITERATIONS):
+                resp = client.messages.create(
+                    model=model, max_tokens=2000, tools=tools, messages=messages)
+                messages.append({'role': 'assistant', 'content': resp.content})
+
+                tool_uses = [b for b in (resp.content or []) if getattr(b, 'type', '') == 'tool_use']
+                if not tool_uses:
+                    break
+
+                final_call = next((b for b in tool_uses if b.name == result_tool['name']), None)
+                if final_call:
+                    return (final_call.input or {}), None
+
+                tool_results = []
+                for block in tool_uses:
+                    result, is_error = mcp_ai_tools.execute_tool(
+                        self.env, self.env.user, block.name, block.input or {})
+                    tool_results.append({
+                        'type': 'tool_result',
+                        'tool_use_id': block.id,
+                        'content': json.dumps(result, default=str, ensure_ascii=False)[:8000],
+                        'is_error': is_error,
+                    })
+                messages.append({'role': 'user', 'content': tool_results})
+
+            return None, 'وصل الحد الأقصى لعدد التكرارات (%d) بدون نتيجة نهائية.' % MAX_AGENTIC_ITERATIONS
+        except Exception as e:
+            _logger.exception('KH_AI_MANAGER: MCP-based prompt call failed')
+            return None, 'فشل استدعاء Claude عبر أدوات mcp_server: %s' % str(e)[:200]
+
+    _KH_AI_FINANCIAL_TOOL = {
+        'name': 'report_financials',
+        'description': (
+            'أرجع نتيجة التحقق المالي النهائية بعد التأكد من فواتير حقيقية - '
+            'استدعِ هذه الأداة فقط لما تكون خلصت التحقق (أو تأكدت إنه ما بقدر تتحقق).'
+        ),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'confident': {
+                    'type': 'boolean',
+                    'description': 'true فقط إذا فعلياً جمعت أرقام حقيقية من نتائج search_records على account.move.',
+                },
+                'invoiced_amount': {'type': 'number', 'description': 'إجمالي الفواتير الصحيح (لو confident).'},
+                'collected_amount': {'type': 'number', 'description': 'إجمالي المحصّل فعلياً الصحيح (لو confident).'},
+                'contract_value': {'type': 'number', 'description': 'قيمة العقد الصحيحة لو لقيتها (اختياري).'},
+                'source_note': {
+                    'type': 'string',
+                    'description': 'اسم الـ Contact/العميل الصحيح المستخدم بالتحقق، وملخّص قصير كيف توصلت للرقم.',
+                },
+            },
+            'required': ['confident'],
+        },
+    }
+
+    # ------------------------------------------------------------------
+    # البرومبت الجاهز المركّز الأول: التحقق المالي - بديل كامل لمنطقنا
+    # الحتمي (_kh_ai_compute_financials) يلي ثبت غلطه 3 مرات على بيانات
+    # حقيقية. بيستخدم find_customer (لحل اختلاف اسم الـ Contact عن اسم
+    # العميل بالمشروع) بعدها search_records على account.move.
+    # ------------------------------------------------------------------
+    def _kh_ai_verify_financials_via_mcp(self):
+        self.ensure_one()
+        partner_name = self.partner_id.name if self.partner_id else '-'
+        partner_id = self.partner_id.id if self.partner_id else '-'
+        prompt = (
+            "أنت محاسب مدقّق بشركة إماراتية. مطلوب منك تتحقق من الوضع المالي الحقيقي "
+            "لمشروع اسمه \"%s\". العميل المسجّل بالمشروع بالنظام: \"%s\" (partner_id=%s) - "
+            "بس هذا الاسم ممكن يكون مختلف شوي عن اسم الـ Contact الحقيقي بالمحاسبة (لغة "
+            "مختلفة، أو Contact تابع بس بنفس المجموعة)، فلازم تتأكد بنفسك مش تفترض.\n\n"
+            "الخطوات:\n"
+            "1) استخدم أداة find_customer بالاسم \"%s\" (وجرّب أسماء قريبة لو الأول ما رجّع "
+            "نتيجة واضحة) لتحدّد الـ partner_id الصحيح فعلياً.\n"
+            "2) استخدم أداة search_records على account.move بـ domain يحتوي "
+            "[\"partner_id\", \"=\", <الid الصحيح يلي لقيته>], [\"state\", \"=\", \"posted\"], "
+            "[\"move_type\", \"in\", [\"out_invoice\", \"out_refund\"]] واطلب الحقول "
+            "amount_total_signed وamount_residual_signed.\n"
+            "3) اجمع amount_total_signed لكل الفواتير = المفوتر الكلي. المحصّل فعلياً = "
+            "المفوتر الكلي - مجموع amount_residual_signed.\n"
+            "4) لو الـ partner_id الأول ما طلع منه فواتير، جرّب اسم قريب تاني (شركة أم/فرد "
+            "تابع) قبل ما تستسلم.\n"
+            "5) استدعِ report_financials بالنتيجة. ممنوع تخترع رقم أو تقدّره - لو ما قدرت "
+            "تتأكد فعلياً من فواتير حقيقية، خلّي confident=false وبلاش تعبّي الأرقام."
+            % (self.name, partner_name, partner_id, partner_name or self.name)
+        )
+        data, error = self._kh_ai_run_mcp_prompt(prompt, self._KH_AI_FINANCIAL_TOOL)
+        if error:
+            _logger.warning(
+                'KH_AI_MANAGER: financial MCP verification failed for project %s (%s): %s',
+                self.id, self.name, error)
+            return None
+        return data
+
+    # ------------------------------------------------------------------
     # تاسكات مفتوحة/متأخرة + أكتفيتيز متأخرة + إسناد المهام - محسوبة
     # ومخزّنة (store=True) وبتتحدّث لحالها لما التاسكات/تواريخها تتغيّر،
     # بدون أي زر.
@@ -548,6 +675,18 @@ class ProjectAiManager(models.Model):
             ('message_type', 'in', ['comment', 'email', 'notification']),
         ], order='date desc', limit=40)
 
+        # التحقق المالي عبر برومبت مخصّص يستخدم أدوات mcp_server (find_customer +
+        # search_records) - بديل عن منطقنا الحتمي (_kh_ai_compute_financials) يلي
+        # ثبت غلطه على بيانات حقيقية. لازم يصير قبل بناء الـ digest عشان الأرقام
+        # المصحّحة توصل لبرومبت المراجعة الرئيسي كمان، مش بس تتحدّث بالفورم بعدين.
+        try:
+            mcp_verification = self._kh_ai_verify_financials_via_mcp()
+        except Exception:
+            _logger.exception('KH_AI_MANAGER: financial MCP verification crashed for project %s', self.id)
+            mcp_verification = None
+        if mcp_verification:
+            self._kh_ai_apply_financial_verification(mcp_verification)
+
         digest = self._kh_ai_build_digest(
             self.x_ai_work_done, self.x_ai_work_done_tasks, self.x_ai_contract_value,
             self.x_ai_invoiced_amount, self.x_ai_collected_amount,
@@ -564,7 +703,6 @@ class ProjectAiManager(models.Model):
             collection_html = self._kh_ai_render_simple_html(data.get('collection_note'))
             alerts_html = self._kh_ai_render_alerts_html(data)
             next_steps_html = self._kh_ai_render_next_steps_html(data)
-            self._kh_ai_apply_financial_verification(data.get('financial_verification'))
 
         alerts_list = self._kh_ai_as_list(data.get('alerts'))
         if alerts_list:
@@ -773,31 +911,11 @@ class ProjectAiManager(models.Model):
                     'type': 'string',
                     'description': (
                         'فقرة (2-5 جمل) عن وضع التحصيل المالي: قارن الإنجاز (يدوي وحسب التاسكات) مع '
-                        'التحصيل الفعلي، ووضّح أي فجوة. لازم تذكر نتيجة تحقّقك من CRM/الفواتير (هل '
-                        'الأرقام الجاهزة دقيقة، ولا لقيت Contact مختلف بفواتير حقيقية غير محسوبة - '
-                        'وبالحالة الثانية اذكر الاسم الصحيح والفرق بالأرقام بوضوح). لو في نقطة يلزم '
-                        'المحاسب يتابعها، وجّهها له بالاسم (موجود بالمعرّفات أعلاه لو موجود بالنظام).'
+                        'التحصيل الفعلي، ووضّح أي فجوة. الأرقام المالية المرفقة بالبيانات (المفوتر/'
+                        'المحصّل) مدقّقة مسبقاً بفحص مالي منفصل - اعتمد عليها كما هي، مش مطلوب منك '
+                        'تتحقق منها بنفسك. لو في نقطة يلزم المحاسب يتابعها، وجّهها له بالاسم (موجود '
+                        'بالمعرّفات أعلاه لو موجود بالنظام).'
                     ),
-                },
-                'financial_verification': {
-                    'type': 'object',
-                    'description': (
-                        'اذا دقّقت فعلياً بفواتير حقيقية (عبر search_odoo_records على account.move) '
-                        'ولقيت أرقام مختلفة عن الأرقام الجاهزة (لأن Contact مختلف مثلاً) - رجّع هون '
-                        'الأرقام الصحيحة يلي جمعتها فعلياً من سجلات حقيقية (مش تقدير). لو الأرقام '
-                        'الجاهزة صحيحة أصلاً أو ما دقّقت، خلّي confident=false وبلاش تعبّي الأرقام.'
-                    ),
-                    'properties': {
-                        'confident': {
-                            'type': 'boolean',
-                            'description': 'true بس إذا فعلياً جمعت أرقام حقيقية من نتائج search_odoo_records.',
-                        },
-                        'invoiced_amount': {'type': 'number', 'description': 'إجمالي الفواتير الصحيح (لو confident).'},
-                        'collected_amount': {'type': 'number', 'description': 'إجمالي المحصّل الصحيح (لو confident).'},
-                        'contract_value': {'type': 'number', 'description': 'قيمة العقد الصحيحة لو لقيتها (اختياري).'},
-                        'source_note': {'type': 'string', 'description': 'من وين جبت هذا الرقم (اسم Contact/فرصة CRM).'},
-                    },
-                    'required': ['confident'],
                 },
                 'alerts': {
                     'type': 'array',
@@ -882,20 +1000,13 @@ class ProjectAiManager(models.Model):
             "هاي فجوة مهمة لازم تنبّه عليها بوضوح بقسم collection_note.\n"
             "لو في مشروع بدون أي تحديث حديث بسجل النشاط، أو تاسكات مفتوحة ما تحرّكت من فترة طويلة - هاي "
             "حقائق جاهزة بالبيانات تحت، لازم تظهر بقسم alerts (type: missing_update / stale_task).\n\n"
-            "مهم جداً بخصوص الفواتير: الرقم المحسوب أوتوماتيكياً (المفوتر/المحصّل تحت) معتمد على partner_id "
-            "المسجّل بحقل العميل تبع المشروع - وهذا ممكن يكون غلط أو ناقص (مثلاً الفاتورة الحقيقية مسجّلة "
-            "باسم Contact مختلف شوي عن اسم العميل بالمشروع، أو شركة الأم/فرد تابع لنفس العميل). لهذا "
-            "لازم تتحقق بنفسك: (1) دوّر بـ crm.lead عن فرصة باسم قريب من اسم المشروع أو العميل، وشوف شو "
-            "الـ partner_id/contact المسجّل فيها، (2) لو لقيت اسم مختلف، دوّر بـ account.move بـ domain "
-            "['|', ('partner_id.name', 'ilike', '<اسم>'), ('partner_id.name', 'ilike', '<اسم قريب>')] "
-            "لتتأكد إذا في فواتير حقيقية تحت هذا الاسم ما انحسبت أوتوماتيكياً. (3) إذا لقيت فرق حقيقي، "
-            "اذكره بوضوح بقسم collection_note (مين الاسم الصحيح، وشو الفرق بالأرقام) - هذا أهم من مجرد "
-            "تكرار الرقم الجاهز.\n\n"
+            "بخصوص الفواتير: الرقم المرفق (المفوتر/المحصّل تحت) مُدقّق مسبقاً بفحص مالي منفصل عبر فواتير "
+            "حقيقية - اعتمد عليه كما هو، مش مطلوب منك تتحقق منه بنفسك.\n\n"
             "معرّفات مفيدة للاستكشاف:\n%s\n\n"
             "عندك أداة search_odoo_records تقدر تستخدمها (أكتر من مرة إذا لزم) لتتحقق من معلومات إضافية "
             "مرتبطة بهذا المشروع - مثلاً: عروض/فرص CRM لهذا العميل، أوامر شراء (purchase.order) مرتبطة "
-            "بالحساب التحليلي، طلبات اعتماد (kh.approval.request) معلّقة، أو تفاصيل فواتير إضافية. "
-            "استخدمها بحرية (لحد 5-6 استدعاءات) لما يفيد التحقق من الفواتير خصوصاً.\n\n"
+            "بالحساب التحليلي، أو طلبات اعتماد (kh.approval.request) معلّقة. استخدمها بحرية (لحد 3-4 "
+            "استدعاءات) لو تحتاج سياق إضافي غير موجود بالبيانات تحت.\n\n"
             "البيانات:\n"
             "--------------------------------------------------\n"
             "%s\n"
