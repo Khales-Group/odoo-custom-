@@ -236,9 +236,12 @@ class ProjectAiManager(models.Model):
 
     def _kh_ai_compute_financials(self, analytic_field=None):
         # المصدر الأساسي: فواتير العميل (partner_id) تبع المشروع مباشرة - هذا
-        # فعلياً كيف الفواتير مربوطة بالمشروع بهذا النظام (تأكدنا منه فعلياً:
-        # مافي Analytic Account مستخدم على الفواتير، بس فلترة الفواتير بالعميل
-        # هي يلي تطلع النتيجة الصحيحة). الحساب التحليلي (لو موجود) بيتفحص
+        # فعلياً كيف الفواتير مربوطة بالمشروع بهذا النظام. تطابق حرفي بالضبط
+        # (=) مش child_of - لأنه child_of بيجمع فواتير كل الـ Contacts التابعين
+        # لنفس الشركة الأم، وهذا بيضخّم الأرقام لو نفس العميل عنده أكتر من
+        # مشروع/Contact تحته (جرّبناها فعلياً وطلعت أرقام مبالغ فيها). أي
+        # تطابق تقريبي/مش مؤكد منترك اكتشافه لـ Claude (استكشاف CRM بالنص)
+        # مش نضخّمه بالأرقام الرسمية. الحساب التحليلي (لو موجود) بيتفحص
         # كمان كـ مصدر إضافي، بدون تكرار (نفس الفاتورة ما تُحسب مرتين).
         try:
             Move = self.env['account.move'].sudo()
@@ -246,7 +249,7 @@ class ProjectAiManager(models.Model):
 
             if self.partner_id:
                 moves |= Move.search([
-                    ('partner_id', 'child_of', self.partner_id.id),
+                    ('partner_id', '=', self.partner_id.id),
                     ('state', '=', 'posted'),
                     ('move_type', 'in', ['out_invoice', 'out_refund']),
                 ])
