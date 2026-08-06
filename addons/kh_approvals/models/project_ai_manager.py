@@ -8,6 +8,7 @@
 # ============================================================
 import json
 import logging
+import time
 from collections import defaultdict
 
 from markupsafe import Markup, escape
@@ -850,28 +851,51 @@ class ProjectAiManager(models.Model):
     # ------------------------------------------------------------------
     # التشغيل التلقائي كل ساعة (ir.cron) - تحديث صامت لكل المشاريع النشطة
     # (بدون نشر بالشاتر، بس تحديث الحقول + تنبيه المدير لو في مشكلة حقيقية).
-    # فشل مشروع واحد ما بوقف الباقي.
+    # كل مشروع بحلقتين Agentic كاملتين (مراجعة رئيسية + تحقق مالي) - يعني
+    # ممكن ياخد عشرات الثواني لكل مشروع لحاله. لهذا لازم commit() بعد كل
+    # مشروع نجح على حدا (مش بانتظار خلاص كل الدفعة) - لو صار قطع اتصال أو
+    # الـ worker انقتل بالنص (متل Connection Lost)، المشاريع يلي خلصت قبل
+    # القطع بتبقى محفوظة، بدل ما ترجع كلها صفر لأنها كلها كانت transaction
+    # واحدة. فشل مشروع واحد (استثناء) بيتراجع (rollback) لحاله بس، وبيكمل
+    # عالتالي - ما بوقف الباقي.
     # ------------------------------------------------------------------
     def _cron_run_ai_review_batch(self):
         for project in self._kh_ai_target_projects():
+            start = time.time()
             try:
                 project.action_run_ai_review(post_report=False)
+                self.env.cr.commit()
+                _logger.info('KH_AI_MANAGER: hourly review OK for project %s (%s) in %.1fs',
+                              project.id, project.name, time.time() - start)
             except Exception:
-                _logger.exception('KH_AI_MANAGER: hourly review failed for project %s (%s)',
-                                   project.id, project.name)
+                self.env.cr.rollback()
+                _logger.exception('KH_AI_MANAGER: hourly review failed for project %s (%s) after %.1fs',
+                                   project.id, project.name, time.time() - start)
 
     # ------------------------------------------------------------------
     # التقرير الأسبوعي (ir.cron أسبوعي) - نفس التحديث، بس بينشر بالشاتر
     # (المكان الوحيد يلي بيتكرر فيه النشر - تفادياً لـ Spam من التشغيل الساعي).
+    # نفس مبدأ commit()/rollback() لكل مشروع لحاله (شرح فوق).
     # ------------------------------------------------------------------
     def _cron_weekly_report_batch(self):
         projects = self._kh_ai_target_projects()
         for project in projects:
+            start = time.time()
             try:
                 project.action_run_ai_review(post_report=True)
+                self.env.cr.commit()
+                _logger.info('KH_AI_MANAGER: weekly report OK for project %s (%s) in %.1fs',
+                              project.id, project.name, time.time() - start)
             except Exception:
-                _logger.exception('KH_AI_MANAGER: weekly report failed for project %s (%s)',
-                                   project.id, project.name)
+                self.env.cr.rollback()
+                _logger.exception('KH_AI_MANAGER: weekly report failed for project %s (%s) after %.1fs',
+                                   project.id, project.name, time.time() - start)
+        try:
+            self._kh_ai_send_gm_weekly_digest(projects)
+            self.env.cr.commit()
+        except Exception:
+            self.env.cr.rollback()
+            _logger.exception('KH_AI_MANAGER: GM weekly digest failed')
         try:
             self._kh_ai_send_gm_weekly_digest(projects)
         except Exception:
