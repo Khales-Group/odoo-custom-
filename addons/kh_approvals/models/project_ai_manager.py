@@ -147,6 +147,16 @@ class ProjectAiManager(models.Model):
         return self.env['res.users'].sudo().search([('name', 'ilike', 'karan')], limit=1)
 
     # ------------------------------------------------------------------
+    # اكتشاف المدير العام ديناميكياً بالاسم (مش id ثابت) - نفس أسلوب
+    # الاكتشاف تبع المحاسب فوق. شرطين (Majed + Alkindi) بدل الاسم الكامل
+    # تفادياً لأي فرق بالتشكيل/الترتيب بالاسم المسجّل فعلياً بـ Odoo.
+    # ------------------------------------------------------------------
+    def _kh_ai_find_general_manager(self):
+        return self.env['res.users'].sudo().search([
+            ('name', 'ilike', 'Majed'), ('name', 'ilike', 'Alkindi'),
+        ], limit=1)
+
+    # ------------------------------------------------------------------
     # فحوصات استباقية بالكود (مش بانتظار Claude يلاحظها): مشروع بدون أي
     # تحديث/زيارة ميدانية موثّقة بالشاتر منذ فترة، وتاسكات مفتوحة ما تحرّكت
     # (write_date) منذ فترة طويلة - "معلومات مش موجودة" و"تاسكات ما تحدّثت".
@@ -855,12 +865,101 @@ class ProjectAiManager(models.Model):
     # (المكان الوحيد يلي بيتكرر فيه النشر - تفادياً لـ Spam من التشغيل الساعي).
     # ------------------------------------------------------------------
     def _cron_weekly_report_batch(self):
-        for project in self._kh_ai_target_projects():
+        projects = self._kh_ai_target_projects()
+        for project in projects:
             try:
                 project.action_run_ai_review(post_report=True)
             except Exception:
                 _logger.exception('KH_AI_MANAGER: weekly report failed for project %s (%s)',
                                    project.id, project.name)
+        try:
+            self._kh_ai_send_gm_weekly_digest(projects)
+        except Exception:
+            _logger.exception('KH_AI_MANAGER: GM weekly digest failed')
+
+    # ------------------------------------------------------------------
+    # التقرير الأسبوعي الشامل للمدير العام - مش تقرير مشروع لحاله، إنما
+    # نظرة عامة على كل المشاريع سوا: حمل الفريق مجمّع (مين شغال عالشو بكل
+    # المشاريع)، وحالة كل مشروع (إنجاز/متأخرات/تحصيل). بيوصله بطريقتين
+    # (Inbox عبر message_notify + إيميل مباشر) عشان نضمن يشوفه أكيد، حسب
+    # طلب صاحب العمل تحديداً - بيصير مرة وحدة أسبوعياً بعد ما كل المشاريع
+    # تتحدّث (فريش، مش أرقام قديمة).
+    # ------------------------------------------------------------------
+    def _kh_ai_send_gm_weekly_digest(self, projects):
+        gm = self._kh_ai_find_general_manager()
+        if not gm or not gm.partner_id:
+            _logger.warning('KH_AI_MANAGER: General Manager user not found by name - skipping weekly digest.')
+            return
+        if not projects:
+            return
+
+        today_str = str(fields.Date.context_today(self))
+        overdue_projects = projects.filtered(lambda p: p.x_ai_overdue_tasks_count or p.x_ai_overdue_activities_count)
+        collection_projects = projects.filtered(lambda p: (p.x_ai_outstanding_amount or 0.0) > 0)
+        total_outstanding = sum(projects.mapped('x_ai_outstanding_amount'))
+
+        # حمل الفريق مجمّع عبر كل المشاريع المستهدفة سوا (مش لكل مشروع لحاله)
+        workload = defaultdict(lambda: [0, 0])
+        for project in projects:
+            open_tasks = project.task_ids.filtered(lambda t: not project._kh_ai_is_task_done(t))
+            for t in open_tasks:
+                is_overdue = bool(t.date_deadline and str(t.date_deadline) < today_str)
+                names = t.user_ids.mapped('name') or ['⚠️ غير مسندة']
+                for name in names:
+                    workload[name][0] += 1
+                    if is_overdue:
+                        workload[name][1] += 1
+
+        workload_rows = ''.join(
+            '<tr><td>%s</td><td style="text-align:center;">%d</td>'
+            '<td style="text-align:center;color:%s;">%d</td></tr>'
+            % (escape(name), c[0], '#E74C3C' if c[1] else '#888', c[1])
+            for name, c in sorted(workload.items(), key=lambda kv: -kv[1][0])
+        ) or '<tr><td colspan="3" style="text-align:center;color:#999;">لا يوجد تاسكات مفتوحة حالياً.</td></tr>'
+
+        project_rows = ''.join(
+            '<tr><td>%s</td><td>%s</td><td style="text-align:center;">%.0f%%</td>'
+            '<td style="text-align:center;color:%s;">%d</td>'
+            '<td style="text-align:center;">%.2f</td></tr>'
+            % (escape(p.name), escape(p.stage_id.name or '-'), p.x_ai_work_done_tasks,
+               '#E74C3C' if (p.x_ai_overdue_tasks_count or p.x_ai_overdue_activities_count) else '#888',
+               (p.x_ai_overdue_tasks_count or 0) + (p.x_ai_overdue_activities_count or 0),
+               p.x_ai_outstanding_amount or 0.0)
+            for p in projects
+        )
+
+        body_html = (
+            '%s<div class="kh_ai_box" dir="rtl">'
+            '<h3 style="color:#714B67;">🤖 التقرير الأسبوعي الشامل - كل المشاريع - %s</h3>'
+            '<p>📊 %d مشروع نشط | ⚠️ %d فيهم متأخرات | 💰 %d محتاجين تحصيل (الإجمالي المتبقّي: %.2f)</p>'
+            '<h4 style="color:#714B67;">👥 حمل الفريق (مجمّع على كل المشاريع)</h4>'
+            '<table style="width:100%%;border-collapse:collapse;font-size:13px;">'
+            '<thead><tr><th style="text-align:right;">الموظف</th><th>مفتوحة</th><th>متأخرة</th></tr></thead>'
+            '<tbody>%s</tbody></table>'
+            '<h4 style="color:#714B67;margin-top:14px;">📋 تفاصيل كل مشروع</h4>'
+            '<table style="width:100%%;border-collapse:collapse;font-size:13px;">'
+            '<thead><tr><th style="text-align:right;">المشروع</th><th>المرحلة</th><th>الإنجاز</th>'
+            '<th>متأخرات</th><th>المتبقّي تحصيله</th></tr></thead>'
+            '<tbody>%s</tbody></table></div>'
+            % (self._KH_AI_STYLE, today_str, len(projects), len(overdue_projects),
+               len(collection_projects), total_outstanding, workload_rows, project_rows)
+        )
+        subject = '🤖 التقرير الأسبوعي الشامل - مدير المشاريع الذكي (%s)' % today_str
+
+        try:
+            self.env['mail.thread'].message_notify(
+                partner_ids=gm.partner_id.ids, subject=subject, body=Markup(body_html))
+        except Exception:
+            _logger.exception('KH_AI_MANAGER: message_notify to GM failed')
+
+        try:
+            self.env['mail.mail'].sudo().create({
+                'subject': subject,
+                'body_html': body_html,
+                'recipient_ids': [(6, 0, gm.partner_id.ids)],
+            }).send()
+        except Exception:
+            _logger.exception('KH_AI_MANAGER: sending GM weekly digest email failed')
 
     # ------------------------------------------------------------------
     # بناء نص الملخص (Digest) - بيانات فعلية جاهزة، بدون تخمين
