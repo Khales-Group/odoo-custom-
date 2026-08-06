@@ -21,12 +21,18 @@ _logger = logging.getLogger(__name__)
 MAX_LIMIT = 200
 DEFAULT_LIMIT = 20
 
-# Hard safety net: these models are never reachable from the AI chat, no
-# matter what an administrator enables under Settings > MCP Server >
-# Enabled Models. A checkbox is one click away from being toggled by
-# mistake (or too broadly) during testing; this list requires an actual
-# code change to lift, which is a much higher bar for exposing payroll,
-# banking, or full accounting-ledger data through natural language.
+# Sensitive-data models: create/write/unlink through the AI chat are always
+# blocked here, no matter what an administrator enables under Settings >
+# MCP Server > Enabled Models - a mutating mistake on payroll/banking/ledger
+# data via natural language needs an actual code change to allow, not a
+# checkbox someone could toggle by accident.
+#
+# READ is a different story: it is gated by the SAME two checks as any other
+# model - an admin must explicitly enable it under Settings > MCP Server >
+# Enabled Models, AND the calling user must personally have real Odoo read
+# access to it (see _user_can below, which already checks this). There is no
+# separate "am I allowed to even ask" wall for read - permissions come from
+# the user's own Odoo access, not from a blanket ban on the assistant.
 HARD_BLOCKED_MODEL_PREFIXES = (
     "account.",  # invoices, payments, bank statements, journals, ledgers
     "hr.payslip",
@@ -38,14 +44,16 @@ HARD_BLOCKED_MODEL_PREFIXES = (
     "pos.",  # point of sale orders/payments
 )
 HARD_BLOCKED_MODELS = {
-    "res.partner.bank",  # partner bank account numbers/IBANs
+    "res.partner.bank",  # partner bank account numbers/IBANs - blocked outright, even for read
 }
 
 
-def is_hard_blocked_model(model_name):
+def is_hard_blocked_model(model_name, operation):
     if model_name in HARD_BLOCKED_MODELS:
         return True
-    return model_name.startswith(HARD_BLOCKED_MODEL_PREFIXES)
+    if not model_name.startswith(HARD_BLOCKED_MODEL_PREFIXES):
+        return False
+    return operation != "read"
 
 
 class ToolError(Exception):
@@ -217,11 +225,18 @@ def build_tool_definitions(env):
 
 def _require_model_operation(env, model_name, operation):
     model_name = utils.sanitize_model_name(model_name)
-    if is_hard_blocked_model(model_name):
+    if is_hard_blocked_model(model_name, operation):
+        if operation == "read":
+            raise ToolError(
+                f"Model '{model_name}' isn't enabled for the AI chat yet. Ask an "
+                "administrator to enable it under Settings > MCP Server > Enabled "
+                "Models - once enabled, your own Odoo read access decides what "
+                "you can actually see."
+            )
         raise ToolError(
-            f"Model '{model_name}' is permanently blocked from the AI chat "
-            "(accounting, payroll, or banking data). This cannot be enabled "
-            "from Settings - it requires a code change."
+            f"Operation '{operation}' on model '{model_name}' is permanently "
+            "blocked from the AI chat (accounting, payroll, or banking data). "
+            "This cannot be enabled from Settings - it requires a code change."
         )
     if not utils.check_model_operation_allowed(env, model_name, operation):
         raise ToolError(
@@ -311,11 +326,11 @@ def _tool_list_enabled_models(env, user, tool_input):
     models = []
     for m in utils.get_enabled_models(env):
         model_name = m["model"]
-        if is_hard_blocked_model(model_name):
+        if model_name in HARD_BLOCKED_MODELS:
             continue
         system_ops = utils.get_model_allowed_operations(env, model_name)
         user_ops = {
-            op: allowed and _user_can(env, model_name, op)
+            op: allowed and not is_hard_blocked_model(model_name, op) and _user_can(env, model_name, op)
             for op, allowed in system_ops.items()
         }
         if any(user_ops.values()):
