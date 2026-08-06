@@ -45,15 +45,22 @@ KH_AI_TOOL_MODELS = (
 class ProjectAiManager(models.Model):
     _inherit = 'project.project'
 
-    # ---- محسوبة تلقائياً، تظهر فوراً بدون أي زر ----
-    x_ai_work_done = fields.Float(string="نسبة الإنجاز حسب Odoo (AI)", compute='_compute_ai_financials')
-    x_ai_contract_value = fields.Float(string="قيمة العقد (AI)", compute='_compute_ai_financials')
-    x_ai_invoiced_amount = fields.Float(string="المفوتر (AI)", compute='_compute_ai_financials')
-    x_ai_collected_amount = fields.Float(string="المحصّل فعلياً (AI)", compute='_compute_ai_financials')
+    # ---- محسوبة، ومخزّنة (store=True) - لازم store عشان نقدر نستخدمها
+    # بـ domain فلترة (بطاقة "التحصيل")، الحقل غير المخزّن ما بينحوّل SQL.
+    # بتنعمل fresh عند كل تشغيل مراجعة AI (يدوي أو الـ Cron الساعي) - مش
+    # عند كل فتح صفحة (كانت هيك قبل، بس هذا أرخص وأسرع لعرض القوائم). ----
+    x_ai_work_done = fields.Float(
+        string="نسبة الإنجاز حسب Odoo (AI)", compute='_compute_ai_financials', store=True)
+    x_ai_contract_value = fields.Float(
+        string="قيمة العقد (AI)", compute='_compute_ai_financials', store=True)
+    x_ai_invoiced_amount = fields.Float(
+        string="المفوتر (AI)", compute='_compute_ai_financials', store=True)
+    x_ai_collected_amount = fields.Float(
+        string="المحصّل فعلياً (AI)", compute='_compute_ai_financials', store=True)
     x_ai_outstanding_amount = fields.Float(
-        string="المتبقّي غير المحصّل (AI)", compute='_compute_ai_financials')
+        string="المتبقّي غير المحصّل (AI)", compute='_compute_ai_financials', store=True)
     x_ai_financial_data_note = fields.Char(
-        string="ملاحظة بيانات مالية", compute='_compute_ai_financials')
+        string="ملاحظة بيانات مالية", compute='_compute_ai_financials', store=True)
 
     x_ai_work_done_tasks = fields.Float(
         string="نسبة الإنجاز حسب التاسكات (AI)", compute='_compute_ai_task_metrics', store=True)
@@ -486,6 +493,7 @@ class ProjectAiManager(models.Model):
     # ------------------------------------------------------------------
     def action_run_ai_review(self, post_report=False):
         self.ensure_one()
+        self._compute_ai_financials()  # فريش (store=True بدون depends تلقائي - لازم نطلبه يدوياً)
         today_str = str(fields.Date.context_today(self))
         date_from = fields.Datetime.to_string(
             fields.Datetime.subtract(fields.Datetime.now(), days=DIGEST_DAYS)
