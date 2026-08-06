@@ -50,6 +50,8 @@ class ProjectAiManager(models.Model):
     x_ai_contract_value = fields.Float(string="قيمة العقد (AI)", compute='_compute_ai_financials')
     x_ai_invoiced_amount = fields.Float(string="المفوتر (AI)", compute='_compute_ai_financials')
     x_ai_collected_amount = fields.Float(string="المحصّل فعلياً (AI)", compute='_compute_ai_financials')
+    x_ai_outstanding_amount = fields.Float(
+        string="المتبقّي غير المحصّل (AI)", compute='_compute_ai_financials')
     x_ai_financial_data_note = fields.Char(
         string="ملاحظة بيانات مالية", compute='_compute_ai_financials')
 
@@ -218,6 +220,7 @@ class ProjectAiManager(models.Model):
             invoiced, collected = project._kh_ai_compute_financials(analytic_field)
             project.x_ai_invoiced_amount = invoiced
             project.x_ai_collected_amount = collected
+            project.x_ai_outstanding_amount = invoiced - collected
             project_note = note
             if not project.partner_id and not (analytic_field and project._kh_ai_read_studio_value(analytic_field)):
                 extra = '⚠️ هذا المشروع بدون عميل (partner_id) وبدون حساب تحليلي - ما بقدر ألقى فواتيره.'

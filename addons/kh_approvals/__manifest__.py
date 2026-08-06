@@ -31,6 +31,9 @@
         'views/project_views.xml',
         'views/project_ai_manager_kanban_views.xml',
         'views/mail_activity_views.xml',
+        # kh_ai_dashboard_tile_views.xml لازم يتحمّل قبل dashboard_views.xml
+        # لأنه هذا الأخير بيربط menuitem بـ action_kh_ai_dashboard_tiles.
+        'views/kh_ai_dashboard_tile_views.xml',
         'views/dashboard_views.xml',
         'views/hr_employee_views_extension.xml',
         'views/payslip_views.xml',

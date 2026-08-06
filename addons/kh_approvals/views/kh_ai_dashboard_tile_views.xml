@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- الشاشة الرئيسية لتطبيق AI Project Manager: بطاقات كبيرة (Boxes) -
+         كل بطاقة بتفتح Action مختلف (List مفلترة + فورم مخصّص لموضوعها بس). -->
+    <record id="view_kh_ai_dashboard_tile_kanban" model="ir.ui.view">
+        <field name="name">kh.ai.dashboard.tile.kanban</field>
+        <field name="model">kh.ai.dashboard.tile</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_dashboard" create="false">
+                <field name="name"/>
+                <field name="description"/>
+                <field name="icon"/>
+                <templates>
+                    <t t-name="card">
+                        <button type="object" name="action_open"
+                                style="width:100%;height:100%;text-align:center;padding:28px 16px;
+                                       border:1px solid #d9d3e0;border-radius:8px;background:inherit;
+                                       cursor:pointer;">
+                            <div style="font-size:42px;">
+                                <field name="icon"/>
+                            </div>
+                            <div style="font-size:17px;font-weight:bold;margin-top:10px;color:#714B67;">
+                                <field name="name"/>
+                            </div>
+                            <div class="text-muted" style="margin-top:4px;font-size:12px;">
+                                <field name="description"/>
+                            </div>
+                        </button>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <record id="action_kh_ai_dashboard_tiles" model="ir.actions.act_window">
+        <field name="name">AI Project Manager</field>
+        <field name="res_model">kh.ai.dashboard.tile</field>
+        <field name="view_mode">kanban</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'kanban', 'view_id': ref('view_kh_ai_dashboard_tile_kanban')})]"/>
+    </record>
+
+    <!-- بيانات البطاقات الخمسة -->
+    <record id="tile_kh_ai_today" model="kh.ai.dashboard.tile">
+        <field name="name">1️⃣ ملخّص اليوم</field>
+        <field name="description">شو صار بكل مشروع اليوم</field>
+        <field name="icon">📋</field>
+        <field name="sequence">1</field>
+        <field name="action_xmlid">kh_approvals.action_kh_ai_today</field>
+    </record>
+    <record id="tile_kh_ai_collection" model="kh.ai.dashboard.tile">
+        <field name="name">2️⃣ التحصيل</field>
+        <field name="description">المشاريع يلي محتاجة متابعة تحصيل</field>
+        <field name="icon">💰</field>
+        <field name="sequence">2</field>
+        <field name="action_xmlid">kh_approvals.action_kh_ai_collection</field>
+    </record>
+    <record id="tile_kh_ai_alerts" model="kh.ai.dashboard.tile">
+        <field name="name">3️⃣ التنبيهات</field>
+        <field name="description">مشاكل ومتأخرات لازم تتابعها</field>
+        <field name="icon">⚠️</field>
+        <field name="sequence">3</field>
+        <field name="action_xmlid">kh_approvals.action_kh_ai_alerts</field>
+    </record>
+    <record id="tile_kh_ai_next_steps" model="kh.ai.dashboard.tile">
+        <field name="name">4️⃣ الخطوات التالية</field>
+        <field name="description">اقتراحات AI للخطوة الجاية بكل مشروع</field>
+        <field name="icon">➡️</field>
+        <field name="sequence">4</field>
+        <field name="action_xmlid">kh_approvals.action_kh_ai_next_steps</field>
+    </record>
+    <record id="tile_kh_ai_all" model="kh.ai.dashboard.tile">
+        <field name="name">📊 كل المشاريع</field>
+        <field name="description">نظرة شاملة على كل شي</field>
+        <field name="icon">📊</field>
+        <field name="sequence">5</field>
+        <field name="action_xmlid">kh_approvals.action_kh_ai_project_dashboard</field>
+    </record>
+
+</odoo>
