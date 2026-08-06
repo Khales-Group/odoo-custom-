@@ -15,14 +15,20 @@
         'security/ir.model.access.csv',
         'security/kh_approvals_rules.xml',
         'security/wizard_access.xml',
-        'views/menu.xml','views/project_project_views.xml',
+        'views/menu.xml',
+        # project_ai_manager_views.xml لازم يتحمّل أول أي ملف تاني بيعمل
+        # inherit لـ project.edit_project - لأنه Odoo بيتحقق من الأرشيف
+        # المجمّع (كل الـ views الوارثة) وقت أي تحديث، فإذا هذا الملف تحمّل
+        # لأخّر، الملفات التانية بتشوف نسخته القديمة بالداتابيز وقت التحقق
+        # وتطلع "Field does not exist" لحقول تغيّرت أسماءها.
+        'views/project_ai_manager_views.xml',
+        'views/project_project_views.xml',
         'views/approval_request_views.xml',
         'views/approval_rule_views.xml',
         'views/department_views.xml',
         'views/approval_reject_wizard.xml',  # <--- Add this line
         'views/project_email_views.xml',
         'views/project_views.xml',
-        'views/project_ai_manager_views.xml',
         'views/project_ai_manager_kanban_views.xml',
         'views/mail_activity_views.xml',
         'views/dashboard_views.xml',
