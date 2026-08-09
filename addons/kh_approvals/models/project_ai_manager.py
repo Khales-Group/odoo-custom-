@@ -99,6 +99,17 @@ class ProjectAiManager(models.Model):
     # (Cron) أو فوراً لو ضغطت الزر، بدون أي Spam على الشاتر (الشاتر بس
     # بالتقرير الأسبوعي) ----
     x_ai_last_review_date = fields.Datetime(string="آخر مراجعة AI", readonly=True, copy=False)
+    # آخر مرة صار فيها فعلياً تحقق مالي حقيقي عبر mcp_server (حلقة Agentic
+    # مكلفة وبطيئة) - منفصل عن x_ai_last_review_date لأنه هذا الجزء بس
+    # بدنا نخفّف وتيرته لمرة/يوم، بعكس المراجعة الرئيسية (ملخّص/تنبيهات/
+    # خطوات) يلي لازم تبقى كل ساعة.
+    x_ai_last_financial_check_date = fields.Datetime(string="آخر تحقق مالي حقيقي (AI)", readonly=True, copy=False)
+    # "بصمة" الوضع الحالي (تاسكات مفتوحة/متأخرة/أكتفيتيز متأخرة/تاسكات
+    # راكدة/آخر رسالة شاتر/آخر تعديل تاسك/المتبقّي المالي) وقت آخر مراجعة
+    # AI ناجحة - لو نفس البصمة لسا هي هي، يعني ما صار أي جديد حقيقي على
+    # المشروع، فمنتجنّب استدعاء Claude (مكلف وبطيء) بلا فايدة ونحتفظ بنفس
+    # النتيجة القديمة. مجرد نص داخلي (مش معروض بالواجهة).
+    x_ai_change_signature = fields.Char(readonly=True, copy=False)
     x_ai_today_summary = fields.Html(string="ملخّص اليوم (AI)", readonly=True, copy=False, sanitize=False)
     x_ai_collection_note = fields.Html(string="التحصيل مع المحاسب (AI)", readonly=True, copy=False, sanitize=False)
     x_ai_alerts = fields.Html(string="التنبيهات (AI)", readonly=True, copy=False, sanitize=False)
@@ -690,13 +701,44 @@ class ProjectAiManager(models.Model):
         # search_records) - بديل عن منطقنا الحتمي (_kh_ai_compute_financials) يلي
         # ثبت غلطه على بيانات حقيقية. لازم يصير قبل بناء الـ digest عشان الأرقام
         # المصحّحة توصل لبرومبت المراجعة الرئيسي كمان، مش بس تتحدّث بالفورم بعدين.
-        try:
-            mcp_verification = self._kh_ai_verify_financials_via_mcp()
-        except Exception:
-            _logger.exception('KH_AI_MANAGER: financial MCP verification crashed for project %s', self.id)
-            mcp_verification = None
-        if mcp_verification:
-            self._kh_ai_apply_financial_verification(mcp_verification)
+        # هذا الجزء هو الأبطأ (حلقة Agentic كاملة تانية) - الفواتير ما بتتغيّر
+        # كل ساعة، فمنشغّله مرة كل 24 ساعة بس لكل مشروع (مش كل مرة تشتغل
+        # المراجعة الساعية)، عشان نوفّر وقت/تكلفة بدون فايدة حقيقية إضافية.
+        now = fields.Datetime.now()
+        needs_financial_check = (
+            not self.x_ai_last_financial_check_date
+            or (now - self.x_ai_last_financial_check_date).total_seconds() >= 24 * 3600
+        )
+        if needs_financial_check:
+            try:
+                mcp_verification = self._kh_ai_verify_financials_via_mcp()
+            except Exception:
+                _logger.exception('KH_AI_MANAGER: financial MCP verification crashed for project %s', self.id)
+                mcp_verification = None
+            if mcp_verification:
+                self._kh_ai_apply_financial_verification(mcp_verification)
+            self.x_ai_last_financial_check_date = now
+
+        # لو ما صار أي جديد حقيقي على المشروع (نفس عدد التاسكات المفتوحة/
+        # المتأخرة/الأكتفيتيز/الراكدة، آخر رسالة/تعديل تاسك، والمتبقّي المالي)
+        # من آخر مراجعة AI ناجحة - ما في فايدة نعيد استدعاء Claude بلا أي جديد
+        # يحلله. منحتفظ بنفس النتيجة القديمة، وبس منحدّث الأنشطة (رخيصة،
+        # بدون Claude) عشان تبقى متزامنة مع الأرقام الحالية.
+        signature = self._kh_ai_build_change_signature(
+            all_tasks, open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts,
+            stale_tasks, days_since_update, messages)
+        if self.x_ai_last_review_date and signature == self.x_ai_change_signature:
+            _logger.info('KH_AI_MANAGER: skipping AI review for project %s (%s) - nothing changed since last review.',
+                          self.id, self.name)
+            if post_report:
+                report_html = self._kh_ai_build_weekly_report_html(
+                    today_str, open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts,
+                    self.x_ai_today_summary, self.x_ai_collection_note,
+                    self.x_ai_alerts, self.x_ai_next_steps)
+                self.message_post(body=Markup(report_html), message_type='comment', subtype_xmlid='mail.mt_comment')
+            self._kh_ai_notify_pm_if_needed(open_tasks)
+            self._kh_ai_notify_accountant_if_needed(accountant)
+            return True
 
         digest = self._kh_ai_build_digest(
             self.x_ai_work_done, self.x_ai_work_done_tasks, self.x_ai_contract_value,
@@ -733,28 +775,68 @@ class ProjectAiManager(models.Model):
         self.x_ai_alerts_preview = self._kh_ai_truncate(alerts_preview)
         self.x_ai_next_steps_preview = self._kh_ai_truncate(next_steps_preview)
         self.x_ai_last_review_date = fields.Datetime.now()
+        if not error_html:
+            # منسجّل البصمة بس لما ينجح النداء فعلياً - لو صار خطأ عابر
+            # (شبكة/API)، منسيب البصمة القديمة عشان تُعاد المحاولة الساعة
+            # الجاية بدل ما تُعتبر "بلا تغيير" وتتجاهل للأبد.
+            self.x_ai_change_signature = signature
 
         if self.user_id and self.user_id.partner_id:
             self.message_subscribe(partner_ids=self.user_id.partner_id.ids)
 
         if post_report:
-            report_html = (
-                '<div dir="rtl" style="text-align:right;border:2px solid #714B67;border-radius:8px;padding:12px;margin-bottom:10px;">'
-                '<h4 style="margin:0 0 8px;color:#714B67;">🤖 التقرير الأسبوعي - مدير المشاريع الذكي - %s</h4>'
-                '<p style="color:#666;font-size:12px;">تاسكات مفتوحة: %d | متأخرة: %d | أكتفيتيز متأخرة: %d</p>'
-                '<h5 style="color:#714B67;margin:10px 0 4px;">📋 ملخّص</h5>%s'
-                '<h5 style="color:#714B67;margin:10px 0 4px;">💰 التحصيل</h5>%s'
-                '<h5 style="color:#714B67;margin:10px 0 4px;">⚠️ التنبيهات</h5>%s'
-                '<h5 style="color:#714B67;margin:10px 0 4px;">➡️ الخطوات التالية</h5>%s</div>'
-                % (today_str, len(open_tasks), len(overdue_tasks),
-                   len(overdue_proj_acts) + len(overdue_task_acts),
-                   today_html, collection_html, alerts_html, next_steps_html)
-            )
+            report_html = self._kh_ai_build_weekly_report_html(
+                today_str, open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts,
+                today_html, collection_html, alerts_html, next_steps_html)
             self.message_post(body=Markup(report_html), message_type='comment', subtype_xmlid='mail.mt_comment')
 
         self._kh_ai_notify_pm_if_needed(open_tasks)
         self._kh_ai_notify_accountant_if_needed(accountant)
         return True
+
+    # ------------------------------------------------------------------
+    # "بصمة" الوضع الحالي - أي تغيير حقيقي (تاسك جديد/متأخر، رسالة شاتر
+    # جديدة، تعديل تاسك، تغيير حالة المشروع، أو فرق بالمتبقّي المالي)
+    # بيغيّر هذي البصمة، وبالتالي بيلغي تجاهل المراجعة. مقارنة بسيطة كنص
+    # (مش تخزين تفاصيل) - كافية تماماً لسؤال "تغيّر شي ولا لأ؟".
+    # ------------------------------------------------------------------
+    def _kh_ai_build_change_signature(self, all_tasks, open_tasks, overdue_tasks, overdue_proj_acts,
+                                       overdue_task_acts, stale_tasks, days_since_update, messages):
+        # ملاحظة مهمة: ممنوع نستخدم self.write_date هون - كودنا نفسه بيكتب
+        # على x_ai_last_review_date بكل تشغيل ناجح، وهذا لحاله بيرفع
+        # write_date تبع المشروع كل مرة، فبتصير البصمة "تغيّرت" دايماً
+        # حتى لو صفر تغيير خارجي حقيقي - وهيك بتنكسر الفايدة كلها. لهذا
+        # منعتمد بس على حقول مصادرها خارجية (تاسكات/رسائل/مرحلة/أرقام).
+        self.ensure_one()
+        last_task_write = max(all_tasks.mapped('write_date') or [False]) or ''
+        last_message_date = messages[0].date if messages else ''
+        return '|'.join(str(x) for x in [
+            len(open_tasks), len(overdue_tasks),
+            len(overdue_proj_acts) + len(overdue_task_acts), len(stale_tasks),
+            days_since_update, last_message_date, last_task_write,
+            self.stage_id.id,
+            round(self.x_ai_outstanding_amount or 0.0, 2),
+        ])
+
+    # ------------------------------------------------------------------
+    # HTML التقرير الأسبوعي الكامل لمشروع واحد (يستخدم سواء صارت مراجعة
+    # جديدة أو تم تجاهلها لعدم وجود جديد - بالحالة الثانية بيستخدم آخر
+    # نتيجة محفوظة).
+    # ------------------------------------------------------------------
+    def _kh_ai_build_weekly_report_html(self, today_str, open_tasks, overdue_tasks, overdue_proj_acts,
+                                         overdue_task_acts, today_html, collection_html, alerts_html, next_steps_html):
+        return (
+            '<div dir="rtl" style="text-align:right;border:2px solid #714B67;border-radius:8px;padding:12px;margin-bottom:10px;">'
+            '<h4 style="margin:0 0 8px;color:#714B67;">🤖 التقرير الأسبوعي - مدير المشاريع الذكي - %s</h4>'
+            '<p style="color:#666;font-size:12px;">تاسكات مفتوحة: %d | متأخرة: %d | أكتفيتيز متأخرة: %d</p>'
+            '<h5 style="color:#714B67;margin:10px 0 4px;">📋 ملخّص</h5>%s'
+            '<h5 style="color:#714B67;margin:10px 0 4px;">💰 التحصيل</h5>%s'
+            '<h5 style="color:#714B67;margin:10px 0 4px;">⚠️ التنبيهات</h5>%s'
+            '<h5 style="color:#714B67;margin:10px 0 4px;">➡️ الخطوات التالية</h5>%s</div>'
+            % (today_str, len(open_tasks), len(overdue_tasks),
+               len(overdue_proj_acts) + len(overdue_task_acts),
+               today_html or '', collection_html or '', alerts_html or '', next_steps_html or '')
+        )
 
     # ------------------------------------------------------------------
     # تنبيه فوري لمدير المشروع (Activity Odoo قياسية - بتفعّل تذكير إيميل
