@@ -628,6 +628,37 @@ class ProjectAiManager(models.Model):
         )
 
     # ------------------------------------------------------------------
+    # خطوات تالية احتياطية (بدون AI) - مبنية بالكامل من حقائق جاهزة عندنا،
+    # مستخدمة بس لما Claude يرجّع next_steps فاضية رغم تعليمات البرومبت
+    # (يصير مع مشاريع هادية بدون تنبيهات). هدفها ضمان إنه هذا القسم دايماً
+    # مليان بنفس لحظة باقي أقسام المشروع، بدل ما يفضل فاضي بانتظار امتثال
+    # الـ LLM.
+    # ------------------------------------------------------------------
+    def _kh_ai_fallback_next_steps(self, open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts,
+                                    stale_tasks, days_since_update, accountant):
+        steps = []
+        if overdue_tasks:
+            steps.append('تابع مع الفريق التاسكات المتأخرة: %s' % ', '.join(overdue_tasks.mapped('name')[:3]))
+        if overdue_proj_acts or overdue_task_acts:
+            steps.append('راجع الأكتفيتيز المتأخرة وحدّد لها موعد جديد أو أنجزها.')
+        if stale_tasks:
+            steps.append('تواصل مع المسؤولين عن التاسكات الراكدة لتحديث حالتها الفعلية.')
+        unassigned = open_tasks.filtered(lambda t: not t.user_ids)
+        if unassigned:
+            steps.append('حدّد مسؤول للتاسكات المفتوحة بدون مسؤول (%d تاسك).' % len(unassigned))
+        if (self.x_ai_outstanding_amount or 0.0) > 0:
+            who = accountant.name if accountant else 'المحاسب'
+            steps.append('تابع مع %s ملف التحصيل - المتبقّي %.2f.' % (who, self.x_ai_outstanding_amount))
+        if days_since_update is None or (days_since_update or 0) >= 7:
+            steps.append('حدّث سجل المشروع بآخر التطورات مع العميل/الفريق.')
+        if not steps:
+            steps = [
+                'تأكد من متابعة الجدول الزمني للمشروع مع الفريق.',
+                'تواصل مع العميل لتأكيد آخر التطورات إذا لزم.',
+            ]
+        return steps[:5]
+
+    # ------------------------------------------------------------------
     # أداة استكشاف حرّة لـ Claude (Agentic) - قراءة فقط، على النماذج المسموحة
     # (KH_AI_TOOL_MODELS) بس. منفصلة كلياً عن mcp_server - هذا نطاق خاص بمدير
     # المشاريع الذكي بقرار من الإدارة، بدون حظر account.*/purchase.* يلي
@@ -775,6 +806,15 @@ class ProjectAiManager(models.Model):
             today_html = self._kh_ai_render_simple_html(data.get('today_summary'))
             collection_html = self._kh_ai_render_simple_html(data.get('collection_note'))
             alerts_html = self._kh_ai_render_alerts_html(data)
+            # ضمان بالكود (مش تعليمات برومبت بس) إنه next_steps ما تطلع فاضية
+            # أبداً - جرّبنا نطلب من Claude يضمنها بالبرومبت وبقيت أحياناً
+            # فاضية للمشاريع الهادية. هلق لو رجعت فاضية فعلياً، منولّد خطوات
+            # افتراضية معقولة من الحقائق الجاهزة (بدون AI)، عشان القسم هذا
+            # يتحدث مع باقي أقسام المشروع دايماً بنفس اللحظة، مش يفضل فاضي.
+            if not [s for s in self._kh_ai_as_list(data.get('next_steps')) if s and str(s).strip()]:
+                data['next_steps'] = self._kh_ai_fallback_next_steps(
+                    open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts,
+                    stale_tasks, days_since_update, accountant)
             next_steps_html = self._kh_ai_render_next_steps_html(data)
 
         alerts_list = self._kh_ai_as_list(data.get('alerts'))
