@@ -805,6 +805,10 @@ class ProjectAiManager(models.Model):
     # لما يكون في مبلغ متبقّي غير محصّل - مش مجرد ذكر اسمه بالنص، هذا تاسك
     # فعلي بالـ Activities تبعه بـ Odoo. بتحدّث نفس التاسك (مش تكرره) كل
     # مرة تتغيّر فيها الأرقام، وبتحذفه أوتوماتيكياً لو المبلغ تحصّل بالكامل.
+    # بالإنجليزي بالكامل (مش عربي) - Karan ما بيحكي عربي. وبأرقام صافية
+    # بدون أي HTML/CSS (مش عبر html2plaintext على الحقل المنسّق - هذا كان
+    # عم يسرّب نص الـ <style> الخام كنص عادي، لأنه html2plaintext هون ما
+    # بيشيل محتوى وسم style).
     # ------------------------------------------------------------------
     def _kh_ai_notify_accountant_if_needed(self, accountant):
         self.ensure_one()
@@ -816,7 +820,7 @@ class ProjectAiManager(models.Model):
             ('res_model', '=', 'project.project'),
             ('res_id', '=', self.id),
             ('user_id', '=', accountant.id),
-            ('summary', 'like', '💰 تحصيل مطلوب:'),
+            ('summary', 'like', '💰 Collection needed:'),
         ], limit=1)
 
         outstanding = self.x_ai_outstanding_amount or 0.0
@@ -825,11 +829,11 @@ class ProjectAiManager(models.Model):
                 existing.unlink()
             return
 
-        summary = '💰 تحصيل مطلوب: %s - المتبقّي %.2f' % (self.name, outstanding)
+        summary = '💰 Collection needed: %s - Outstanding %.2f' % (self.name, outstanding)
         note = (
-            'المفوتر: %.2f | المحصّل: %.2f | المتبقّي: %.2f\n%s'
-            % (self.x_ai_invoiced_amount or 0.0, self.x_ai_collected_amount or 0.0,
-               outstanding, html2plaintext(self.x_ai_collection_note or '').strip())
+            'Invoiced: %.2f | Collected: %.2f | Outstanding: %.2f\n'
+            'Please follow up on collection for this project.'
+            % (self.x_ai_invoiced_amount or 0.0, self.x_ai_collected_amount or 0.0, outstanding)
         )
         if existing:
             existing.write({'summary': summary, 'note': note, 'date_deadline': today})
