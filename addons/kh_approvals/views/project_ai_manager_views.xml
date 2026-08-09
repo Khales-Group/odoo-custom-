@@ -7,7 +7,7 @@
         <field name="arch" type="xml">
 
             <xpath expr="//div[@name='button_box']" position="inside">
-                <button class="oe_stat_button" icon="fa-bolt" type="object" name="action_run_ai_review">
+                <button class="oe_stat_button" icon="fa-bolt" type="object" name="action_run_ai_review_manual">
                     <div class="o_stat_info">
                         <span class="o_stat_text">مراجعة AI</span>
                         <field name="x_ai_overdue_tasks_count" widget="statinfo" string="متأخرة"/>

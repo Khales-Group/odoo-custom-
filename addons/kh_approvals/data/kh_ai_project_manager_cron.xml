@@ -1,19 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <!-- تحديث صامت كل ساعة (بدون نشر بالشاتر) لكل المشاريع النشطة بمرحلة
+    <!-- تحديث صامت كل ربع ساعة (بدون نشر بالشاتر) لكل المشاريع النشطة بمرحلة
          Under Processing/Sign & Design - بديل عن الضغط اليدوي على الزر.
-         أول تشغيل بعد ساعة من التثبيت، تفادياً لاستدعاء API فوري لحظة
-         تثبيت/تحديث الموديول. -->
+         كل مشروع بياخد وقت حقيقي (استدعاء Claude)، فدفعة واحدة طويلة كل
+         ساعة كانت بتوصل لحد زمني (Worker Timeout) بعد 5-6 مشاريع بس وتوقف.
+         الحل: دفعات أقصر وأكتر تكراراً (كل ربع ساعة، كل دفعة محدودة بـ
+         CRON_BATCH_TIME_BUDGET_SECONDS بالكود) - أربع دفعات قصيرة بالساعة
+         بيغطّوا أكتر مشاريع من دفعة وحدة طويلة، وبأمان (commit لكل مشروع
+         لحاله - _cron_run_ai_review_batch). الترتيب حسب الأقدم مراجعة
+         (_kh_ai_target_projects) بيضمن التوزيع العادل بين الدفعات. -->
     <record id="ir_cron_kh_ai_project_review" model="ir.cron">
-        <field name="name">AI Project Manager: تحديث ساعي تلقائي</field>
+        <field name="name">AI Project Manager: تحديث تلقائي كل ربع ساعة</field>
         <field name="model_id" ref="project.model_project_project"/>
         <field name="state">code</field>
         <field name="code">model._cron_run_ai_review_batch()</field>
-        <field name="interval_number">1</field>
-        <field name="interval_type">hours</field>
+        <field name="interval_number">15</field>
+        <field name="interval_type">minutes</field>
         <field name="active" eval="True"/>
-        <field name="nextcall" eval="(datetime.now() + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')"/>
+        <field name="nextcall" eval="(datetime.now() + timedelta(minutes=15)).strftime('%Y-%m-%d %H:%M:%S')"/>
     </record>
 
     <!-- التقرير الأسبوعي - نفس المراجعة بس بينشر بالشاتر (المكان الوحيد

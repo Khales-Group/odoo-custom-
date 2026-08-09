@@ -38,6 +38,12 @@ DIGEST_DAYS = 60
 DEFAULT_MODEL = 'claude-opus-4-8'
 DONE_STATES = ('03_approved', '1_done', '1_canceled')
 MAX_AGENTIC_ITERATIONS = 9
+# لو دورة الدفعة (كل المشاريع) أخذت أكتر من هذا الوقت، منوقف نفسنا بلطف
+# (commit لكل يلي خلص، ونوقف) بدل ما ننتظر السيرفر يقتلنا هو (Worker
+# Timeout) بمنتصف مشروع - توقف نظيف بمنتصف الدفعة أفضل من قطع قسري بدون
+# أي تحكم. الترتيب حسب الأقدم مراجعة (_kh_ai_target_projects) بيضمن إنه
+# المشاريع يلي ما وصلها الدور هالمرة، هي أول يلي بتاخد الأولوية الدورة الجاية.
+CRON_BATCH_TIME_BUDGET_SECONDS = 240
 
 # نماذج مسموحة للأداة الاستكشافية (Agentic) - قراءة فقط، بدون أي كتابة/حذف.
 # هذا نطاق مخصّص لهذا الفيتشر بس (منفصل بالكامل عن mcp_server وحظره الصارم
@@ -673,7 +679,15 @@ class ProjectAiManager(models.Model):
     # الأسبوعي بس) هو الوقت الوحيد يلي بننشر بالشاتر - تفادياً لـ Spam
     # لو صار التشغيل كل ساعة.
     # ------------------------------------------------------------------
-    def action_run_ai_review(self, post_report=False):
+    def action_run_ai_review_manual(self):
+        # الزر اليدوي وأداة "تشغيل مراجعة AI" الجماعية - لازم يفرضوا مراجعة
+        # فعلية دايماً (force=True)، بعكس الـ Cron التلقائي، لأنه المستخدم
+        # كبس بنفسه توقّعاً لنتيجة جديدة فوراً - مش منطقي "نتجاهلها" لأنه
+        # نفس البصمة القديمة، وبالأخص لو تحسّن البرومبت وبدنا نتأكد إنه
+        # المشروع بياخد فايدة التحسين فوراً بدل ما يستنى تغيير خارجي.
+        return self.action_run_ai_review(force=True)
+
+    def action_run_ai_review(self, post_report=False, force=False):
         self.ensure_one()
         self._compute_ai_financials()  # فريش (store=True بدون depends تلقائي - لازم نطلبه يدوياً)
         today_str = str(fields.Date.context_today(self))
@@ -727,7 +741,7 @@ class ProjectAiManager(models.Model):
         signature = self._kh_ai_build_change_signature(
             all_tasks, open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts,
             stale_tasks, days_since_update, messages)
-        if self.x_ai_last_review_date and signature == self.x_ai_change_signature:
+        if not force and self.x_ai_last_review_date and signature == self.x_ai_change_signature:
             _logger.info('KH_AI_MANAGER: skipping AI review for project %s (%s) - nothing changed since last review.',
                           self.id, self.name)
             if post_report:
@@ -955,11 +969,21 @@ class ProjectAiManager(models.Model):
     # عالتالي - ما بوقف الباقي.
     # ------------------------------------------------------------------
     def _cron_run_ai_review_batch(self):
-        for project in self._kh_ai_target_projects():
+        batch_start = time.time()
+        projects = self._kh_ai_target_projects()
+        done = 0
+        for project in projects:
+            if time.time() - batch_start > CRON_BATCH_TIME_BUDGET_SECONDS:
+                _logger.info(
+                    'KH_AI_MANAGER: hourly batch time budget (%ds) reached after %d/%d projects - '
+                    'stopping cleanly here, the rest have priority next cycle.',
+                    CRON_BATCH_TIME_BUDGET_SECONDS, done, len(projects))
+                break
             start = time.time()
             try:
                 project.action_run_ai_review(post_report=False)
                 self.env.cr.commit()
+                done += 1
                 _logger.info('KH_AI_MANAGER: hourly review OK for project %s (%s) in %.1fs',
                               project.id, project.name, time.time() - start)
             except Exception:
@@ -973,8 +997,15 @@ class ProjectAiManager(models.Model):
     # نفس مبدأ commit()/rollback() لكل مشروع لحاله (شرح فوق).
     # ------------------------------------------------------------------
     def _cron_weekly_report_batch(self):
+        batch_start = time.time()
         projects = self._kh_ai_target_projects()
         for project in projects:
+            if time.time() - batch_start > CRON_BATCH_TIME_BUDGET_SECONDS:
+                _logger.info(
+                    'KH_AI_MANAGER: weekly batch time budget (%ds) reached - stopping cleanly, '
+                    'the rest have priority next cycle. GM digest still uses latest available data.',
+                    CRON_BATCH_TIME_BUDGET_SECONDS)
+                break
             start = time.time()
             try:
                 project.action_run_ai_review(post_report=True)
@@ -990,10 +1021,6 @@ class ProjectAiManager(models.Model):
             self.env.cr.commit()
         except Exception:
             self.env.cr.rollback()
-            _logger.exception('KH_AI_MANAGER: GM weekly digest failed')
-        try:
-            self._kh_ai_send_gm_weekly_digest(projects)
-        except Exception:
             _logger.exception('KH_AI_MANAGER: GM weekly digest failed')
 
     # ------------------------------------------------------------------
@@ -1207,8 +1234,13 @@ class ProjectAiManager(models.Model):
                 'next_steps': {
                     'type': 'array',
                     'items': {'type': 'string'},
+                    'minItems': 2,
                     'description': (
-                        '3 إلى 5 خطوات تالية ملموسة ومباشرة لمدير المشروع، كل واحدة جملة واحدة واضحة. '
+                        '⚠️ إلزامي - ممنوع تكون array فاضية أبداً، حتى لو المشروع هادئ وما في أي '
+                        'تنبيهات: 2 إلى 5 خطوات تالية ملموسة ومباشرة لمدير المشروع، كل واحدة جملة '
+                        'واحدة واضحة. لو المشروع فعلاً ماشي تمام بدون مشاكل، اقترح خطوات متابعة '
+                        'عادية بردو (مثلاً: تأكيد مع الفريق إنه الموعد الجاي واضح، تحديث العميل '
+                        'بالتقدّم، مراجعة التاسكات المفتوحة القريبة من موعدها) - مش تسيبها فاضية. '
                         'لازم تكون array حقيقية (عنصر نص لكل خطوة)، مش نص واحد فيه أقواس/فواصل.'
                     ),
                 },
@@ -1273,7 +1305,10 @@ class ProjectAiManager(models.Model):
             "%s\n"
             "--------------------------------------------------\n\n"
             "لما تخلص استكشاف، استدعِ أداة provide_project_review بمحتوى نصي عادي بس (بدون HTML) بـ 4 "
-            "أقسام: ملخّص اليوم، ملاحظة التحصيل، التنبيهات، الخطوات التالية."
+            "أقسام: ملخّص اليوم، ملاحظة التحصيل، التنبيهات، الخطوات التالية. تنبيه مهم: قسم "
+            "next_steps ممنوع يكون فاضي أبداً، حتى لو المشروع هادئ بدون أي مشاكل - لازم يحتوي على "
+            "الأقل خطوتين متابعة ملموسة (حتى لو كانت خطوات متابعة عادية زي تأكيد الموعد الجاي أو "
+            "تحديث العميل)."
             % (self._kh_ai_build_seed_context(), digest_text)
         )
 

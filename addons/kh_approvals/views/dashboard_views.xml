@@ -31,7 +31,7 @@
         <field name="arch" type="xml">
             <form string="AI Project Manager">
                 <header>
-                    <button name="action_run_ai_review" type="object"
+                    <button name="action_run_ai_review_manual" type="object"
                             string="🤖 تشغيل مراجعة AI" class="btn-primary"/>
                 </header>
                 <sheet>
@@ -147,7 +147,7 @@
         <field name="state">code</field>
         <field name="code">
 for rec in records:
-    rec.action_run_ai_review()
+    rec.action_run_ai_review(force=True)
         </field>
     </record>
 
@@ -175,7 +175,7 @@ for rec in records:
         <field name="arch" type="xml">
             <form string="ملخّص اليوم">
                 <header>
-                    <button name="action_run_ai_review" type="object"
+                    <button name="action_run_ai_review_manual" type="object"
                             string="🤖 تشغيل مراجعة AI" class="btn-primary"/>
                 </header>
                 <sheet>
@@ -224,7 +224,7 @@ for rec in records:
         <field name="arch" type="xml">
             <form string="التحصيل">
                 <header>
-                    <button name="action_run_ai_review" type="object"
+                    <button name="action_run_ai_review_manual" type="object"
                             string="🤖 تشغيل مراجعة AI" class="btn-primary"/>
                 </header>
                 <sheet>
@@ -282,7 +282,7 @@ for rec in records:
         <field name="arch" type="xml">
             <form string="التنبيهات">
                 <header>
-                    <button name="action_run_ai_review" type="object"
+                    <button name="action_run_ai_review_manual" type="object"
                             string="🤖 تشغيل مراجعة AI" class="btn-primary"/>
                 </header>
                 <sheet>
@@ -340,7 +340,7 @@ for rec in records:
         <field name="arch" type="xml">
             <form string="الخطوات التالية">
                 <header>
-                    <button name="action_run_ai_review" type="object"
+                    <button name="action_run_ai_review_manual" type="object"
                             string="🤖 تشغيل مراجعة AI" class="btn-primary"/>
                 </header>
                 <sheet>
