@@ -44,6 +44,12 @@ MAX_AGENTIC_ITERATIONS = 9
 # أي تحكم. الترتيب حسب الأقدم مراجعة (_kh_ai_target_projects) بيضمن إنه
 # المشاريع يلي ما وصلها الدور هالمرة، هي أول يلي بتاخد الأولوية الدورة الجاية.
 CRON_BATCH_TIME_BUDGET_SECONDS = 240
+# جزء من "بصمة" التغيير (_kh_ai_build_change_signature) - لو عدّلنا البرومبت/
+# الـ schema بشكل بيغيّر النتيجة المتوقعة (متل تقوية next_steps هلق)، لازم
+# نرفع هذا الرقم. هيك أي مشروع (حتى لو ما تغيّر عليه أي شي فعلياً) بتتغيّر
+# بصمته تلقائياً وبتاخد مراجعة فعلية جديدة بالـ Cron العادي - بدون ما نحتاج
+# نطلب من المستخدم يفرض (force) المراجعة يدوياً لكل مشروع قديم لحاله.
+_KH_AI_PROMPT_VERSION = 2
 
 # نماذج مسموحة للأداة الاستكشافية (Agentic) - قراءة فقط، بدون أي كتابة/حذف.
 # هذا نطاق مخصّص لهذا الفيتشر بس (منفصل بالكامل عن mcp_server وحظره الصارم
@@ -825,6 +831,7 @@ class ProjectAiManager(models.Model):
         last_task_write = max(all_tasks.mapped('write_date') or [False]) or ''
         last_message_date = messages[0].date if messages else ''
         return '|'.join(str(x) for x in [
+            _KH_AI_PROMPT_VERSION,
             len(open_tasks), len(overdue_tasks),
             len(overdue_proj_acts) + len(overdue_task_acts), len(stale_tasks),
             days_since_update, last_message_date, last_task_write,
