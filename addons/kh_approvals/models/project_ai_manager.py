@@ -323,7 +323,7 @@ class ProjectAiManager(models.Model):
     # حسب اليوزر مش حسب Claude" يلي طلبه صاحب العمل.
     # بيرجع (data_dict, error_message) - وحدة منهم دايماً None/فاضي.
     # ------------------------------------------------------------------
-    def _kh_ai_run_mcp_prompt(self, prompt, result_tool, extra_content_blocks=None, max_iterations=None):
+    def _kh_ai_run_mcp_prompt(self, prompt, result_tool, extra_content_blocks=None, max_iterations=None, exclude_tools=None):
         if not HAS_ANTHROPIC:
             return None, 'مكتبة anthropic غير مثبّتة.'
 
@@ -333,7 +333,11 @@ class ProjectAiManager(models.Model):
         if not api_key:
             return None, 'مفتاح mcp_server.anthropic_api_key غير موجود في إعدادات Odoo.'
 
-        tools = mcp_ai_tools.build_tool_definitions(self.env) + [result_tool]
+        # exclude_tools مش بس تعليمات بالبرومبت - هذا حذف فعلي للأداة من القائمة
+        # يلي Claude شايفها، يعني مستحيل يستخدمها أصلاً (مش بس "ممنوع" بالنص).
+        # مفيد لحالات متل خلق تاسكات جديدة غلط بدل تحديث الموجودة.
+        tools = [t for t in mcp_ai_tools.build_tool_definitions(self.env) if t['name'] not in (exclude_tools or ())]
+        tools.append(result_tool)
         # extra_content_blocks بيسمح بإرفاق صورة/PDF (متل تايم لاين مقاول ممسوح)
         # جنب النص بأول رسالة - نفس آلية Claude Vision/Documents العادية.
         first_content = (list(extra_content_blocks) + [{'type': 'text', 'text': prompt}]) if extra_content_blocks else prompt
@@ -487,6 +491,13 @@ class ProjectAiManager(models.Model):
             "أنت مساعد مدير مشاريع بشركة إنشاءات. عندك تايم لاين (Gantt) مرفق قدّمه "
             "المقاول لمشروع \"%s\" (project_id=%d) - افحصه وطابقه مع تاسكات المشروع "
             "الموجودة فعلياً بـ Odoo. لازم تخلّص هذا بمرة واحدة، بدون ما تحتاج طلب متابعة.\n\n"
+            "⚠️ قاعدة صارمة وممنوع تخالفها: ممنوع منعاً باتاً تستخدم create_record على "
+            "project.task أو تخلق ولا تاسك جديد أبداً، مهما كان شكل تاسكات المشروع "
+            "(checklist مفصّل، عدد كبير، تسمية مختلفة عن أسماء أنشطة المقاول). المطلوب "
+            "بالضبط هو تحديث التواريخ على التاسكات الموجودة فعلياً (write_record) بس - "
+            "المشروع فيه عشرات التاسكات التفصيلية بكل مرحلة (checklist items)، وهذا "
+            "متوقع ومطلوب تتعامل معه، مش سبب لخلق تاسكات بديلة. لو ما لقيت تاسكات "
+            "بمرحلة معيّنة، سجّلها بـ skipped_stages، وما تخلق تاسك بديل.\n\n"
             "الخطوات:\n"
             "1) اقرأ كل نشاط (Bar) بالمرفق وتاريخ بدايته/نهايته التقريبي.\n"
             "2) استخدم search_records على project.task بـ domain "
@@ -515,7 +526,8 @@ class ProjectAiManager(models.Model):
             'source': {'type': 'base64', 'media_type': media_type, 'data': file_b64},
         }
         data, error = self._kh_ai_run_mcp_prompt(
-            prompt, self._KH_AI_TIMELINE_TOOL, extra_content_blocks=[content_block], max_iterations=25)
+            prompt, self._KH_AI_TIMELINE_TOOL, extra_content_blocks=[content_block], max_iterations=25,
+            exclude_tools=['create_record', 'unlink_record'])
         if error:
             raise UserError('فشلت مطابقة تايم لاين المقاول: %s' % error)
 
