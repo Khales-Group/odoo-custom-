@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="kh_approvals.MaintenanceBanner">
+        <div t-if="message and !state.dismissed"
+             dir="rtl"
+             style="position:sticky;top:0;z-index:1060;width:100%;background:#E67E22;color:#fff;
+                    padding:8px 16px;font-size:13px;text-align:center;display:flex;
+                    align-items:center;justify-content:center;gap:10px;">
+            <i class="fa fa-wrench"/>
+            <span t-esc="message"/>
+            <i class="fa fa-times" style="cursor:pointer;margin-inline-start:12px;" t-on-click="dismiss"/>
+        </div>
+    </t>
+
+</templates>

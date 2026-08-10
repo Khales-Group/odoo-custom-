@@ -46,6 +46,8 @@
     'assets': {
         'web.assets_backend': [
             'kh_approvals/static/src/xml/attachment_uploader_info.xml',
+            'kh_approvals/static/src/js/maintenance_banner.js',
+            'kh_approvals/static/src/xml/maintenance_banner.xml',
         ],
     },
     'installable': True,

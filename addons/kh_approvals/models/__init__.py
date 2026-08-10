@@ -1,4 +1,5 @@
 from . import ir_attachment
+from . import ir_http
 from . import boq_submission
 from . import approval_request
 from . import crm_extension
