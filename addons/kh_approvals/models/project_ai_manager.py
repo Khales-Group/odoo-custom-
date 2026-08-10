@@ -14,6 +14,7 @@ from collections import defaultdict
 from markupsafe import Markup, escape
 
 from odoo import api, fields, models
+from odoo.exceptions import UserError
 from odoo.tools import html2plaintext
 from odoo.tools.safe_eval import safe_eval
 
@@ -322,7 +323,7 @@ class ProjectAiManager(models.Model):
     # حسب اليوزر مش حسب Claude" يلي طلبه صاحب العمل.
     # بيرجع (data_dict, error_message) - وحدة منهم دايماً None/فاضي.
     # ------------------------------------------------------------------
-    def _kh_ai_run_mcp_prompt(self, prompt, result_tool):
+    def _kh_ai_run_mcp_prompt(self, prompt, result_tool, extra_content_blocks=None, max_iterations=None):
         if not HAS_ANTHROPIC:
             return None, 'مكتبة anthropic غير مثبّتة.'
 
@@ -333,13 +334,17 @@ class ProjectAiManager(models.Model):
             return None, 'مفتاح mcp_server.anthropic_api_key غير موجود في إعدادات Odoo.'
 
         tools = mcp_ai_tools.build_tool_definitions(self.env) + [result_tool]
-        messages = [{'role': 'user', 'content': prompt}]
+        # extra_content_blocks بيسمح بإرفاق صورة/PDF (متل تايم لاين مقاول ممسوح)
+        # جنب النص بأول رسالة - نفس آلية Claude Vision/Documents العادية.
+        first_content = (list(extra_content_blocks) + [{'type': 'text', 'text': prompt}]) if extra_content_blocks else prompt
+        messages = [{'role': 'user', 'content': first_content}]
+        iterations = max_iterations or MAX_AGENTIC_ITERATIONS
 
         try:
             client = anthropic.Anthropic(api_key=api_key)
-            for _ in range(MAX_AGENTIC_ITERATIONS):
+            for _ in range(iterations):
                 resp = client.messages.create(
-                    model=model, max_tokens=2000, tools=tools, messages=messages)
+                    model=model, max_tokens=3000, tools=tools, messages=messages)
                 messages.append({'role': 'assistant', 'content': resp.content})
 
                 tool_uses = [b for b in (resp.content or []) if getattr(b, 'type', '') == 'tool_use']
@@ -362,7 +367,7 @@ class ProjectAiManager(models.Model):
                     })
                 messages.append({'role': 'user', 'content': tool_results})
 
-            return None, 'وصل الحد الأقصى لعدد التكرارات (%d) بدون نتيجة نهائية.' % MAX_AGENTIC_ITERATIONS
+            return None, 'وصل الحد الأقصى لعدد التكرارات (%d) بدون نتيجة نهائية.' % iterations
         except Exception as e:
             _logger.exception('KH_AI_MANAGER: MCP-based prompt call failed')
             return None, 'فشل استدعاء Claude عبر أدوات mcp_server: %s' % str(e)[:200]
@@ -428,6 +433,115 @@ class ProjectAiManager(models.Model):
                 'KH_AI_MANAGER: financial MCP verification failed for project %s (%s): %s',
                 self.id, self.name, error)
             return None
+        return data
+
+    _KH_AI_TIMELINE_TOOL = {
+        'name': 'report_timeline_integration',
+        'description': (
+            'أرجع ملخّص نهائي لعملية مطابقة تايم لاين المقاول مع تاسكات المشروع. '
+            'استدعِ هذه الأداة فقط بعد ما تتأكد إنه ما في ولا تاسك فاضي بأي مرحلة طابقتها.'
+        ),
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'tasks_updated_count': {'type': 'integer', 'description': 'إجمالي عدد التاسكات يلي حدّثتها.'},
+                'stages_updated': {
+                    'type': 'array',
+                    'items': {
+                        'type': 'object',
+                        'properties': {
+                            'stage_name': {'type': 'string'},
+                            'date_start': {'type': 'string'},
+                            'date_end': {'type': 'string'},
+                            'tasks_count': {'type': 'integer'},
+                        },
+                        'required': ['stage_name', 'date_start', 'date_end', 'tasks_count'],
+                    },
+                    'description': 'كل مرحلة طابقتها بنشاط/أنشطة المقاول، بالنافذة الزمنية وعدد التاسكات.',
+                },
+                'skipped_stages': {
+                    'type': 'array',
+                    'items': {'type': 'string'},
+                    'description': 'أسماء المراحل يلي تركتها بدون تاريخ + السبب (مثلاً: مرحلة تصميم ما بيغطّيها جدول المقاول).',
+                },
+                'summary_note': {
+                    'type': 'string',
+                    'description': 'فقرة قصيرة (عربي) تلخّص العملية - رح تُنشر على شاتر المشروع كما هي.',
+                },
+            },
+            'required': ['tasks_updated_count', 'stages_updated', 'skipped_stages', 'summary_note'],
+        },
+    }
+
+    # ------------------------------------------------------------------
+    # مطابقة تايم لاين المقاول (صورة/PDF) مع تاسكات المشروع - نفس فكرة
+    # التحقق المالي (برومبت مركّز يستخدم أدوات mcp_server)، بس هون مع
+    # مرفق (صورة/PDF) بأول رسالة كمان (Claude Vision/Documents)، مش نص بس.
+    # مهمة أثقل من العادي (بحث + قراءة كل التاسكات + كتابة دفعات لكل
+    # مرحلة) فمنعطيها سقف تكرارات أعلى من الافتراضي.
+    # ------------------------------------------------------------------
+    def _kh_ai_integrate_contractor_timeline(self, file_b64, filename, media_type):
+        self.ensure_one()
+        user = self.env.user
+        prompt = (
+            "أنت مساعد مدير مشاريع بشركة إنشاءات. عندك تايم لاين (Gantt) مرفق قدّمه "
+            "المقاول لمشروع \"%s\" (project_id=%d) - افحصه وطابقه مع تاسكات المشروع "
+            "الموجودة فعلياً بـ Odoo. لازم تخلّص هذا بمرة واحدة، بدون ما تحتاج طلب متابعة.\n\n"
+            "الخطوات:\n"
+            "1) اقرأ كل نشاط (Bar) بالمرفق وتاريخ بدايته/نهايته التقريبي.\n"
+            "2) استخدم search_records على project.task بـ domain "
+            "[[\"project_id\", \"=\", %d]] واطلب الحقول name, stage_id, "
+            "planned_date_begin, date_deadline, user_ids - وتأكد جبت كل التاسكات "
+            "(استخدم limit عالي وكرّر البحث لو في صفحات زيادة)، مجمّعة حسب stage_id.\n"
+            "3) طابق كل نشاط مقاول مع المرحلة (stage) المقابلة بالمشروع. مرحلة واحدة "
+            "ممكن تقابل أكتر من نشاط مقاول (مثلاً Tiling = Floor Tile + Wall Tile) - "
+            "بهذا الحال استخدم أبكر تاريخ بداية وأبعد تاريخ نهاية بين الأنشطة المتطابقة.\n"
+            "4) لكل تاسك جوا كل مرحلة طابقتها - كل التاسكات، مش تاسك واحد قائد بس - "
+            "استدعِ write_record على project.task وحدّد planned_date_begin وdate_deadline "
+            "بنافذة المرحلة (بالصيغة 'YYYY-MM-DD HH:MM:SS'). ممنوع تسيب ولا تاسك فاضي "
+            "بمرحلة طابقتها - قبل ما تنادي report_timeline_integration، أعد البحث "
+            "وتأكد الصفر تاسكات فاضية بالمراحل المطابقة، وصلّح أي فايت.\n"
+            "5) بكل write_record على تاسك، ضيف المستخدم user_id=%d (%s) لحقل user_ids "
+            "- استخدم صيغة الأمر Many2many للإضافة بدون حذف الموجود: "
+            "\"user_ids\": [[4, %d]] - ممنوع ترسل بس لستة IDs عادية لأنها ممكن تستبدل "
+            "المسؤولين الحاليين.\n"
+            "6) المراحل يلي مافيها أي نشاط مطابق بجدول المقاول (عادة مراحل التصميم/"
+            "الموافقات قبل بدء التنفيذ) سيبها بدون تاريخ - سجّلها بـ skipped_stages مع السبب.\n"
+            "7) استدعِ report_timeline_integration بالنتيجة النهائية."
+            % (self.name, self.id, self.id, user.id, user.name, user.id)
+        )
+        content_block = {
+            'type': 'document' if media_type == 'application/pdf' else 'image',
+            'source': {'type': 'base64', 'media_type': media_type, 'data': file_b64},
+        }
+        data, error = self._kh_ai_run_mcp_prompt(
+            prompt, self._KH_AI_TIMELINE_TOOL, extra_content_blocks=[content_block], max_iterations=25)
+        if error:
+            raise UserError('فشلت مطابقة تايم لاين المقاول: %s' % error)
+
+        summary = (data.get('summary_note') or '').strip()
+        stages = data.get('stages_updated') or []
+        skipped = data.get('skipped_stages') or []
+        stages_html = ''.join(
+            '<li>%s: %s → %s (%s تاسك)</li>' % (
+                escape(str(s.get('stage_name', '-'))), escape(str(s.get('date_start', '-'))),
+                escape(str(s.get('date_end', '-'))), escape(str(s.get('tasks_count', '-'))))
+            for s in stages if isinstance(s, dict)
+        )
+        skipped_html = ''.join('<li>%s</li>' % escape(str(s)) for s in skipped)
+        report_html = (
+            '<div dir="rtl" style="text-align:right;">'
+            '<h5 style="color:#714B67;">🗓️ مطابقة تايم لاين المقاول (AI)</h5>'
+            '<p>%s</p>'
+            '<p><strong>إجمالي التاسكات المحدّثة:</strong> %s</p>'
+            '%s'
+            '%s'
+            '</div>'
+            % (escape(summary) if summary else '-', escape(str(data.get('tasks_updated_count', '-'))),
+               ('<p><strong>المراحل المطابقة:</strong></p><ul>%s</ul>' % stages_html) if stages_html else '',
+               ('<p><strong>مراحل تُركت بدون تاريخ:</strong></p><ul>%s</ul>' % skipped_html) if skipped_html else '')
+        )
+        self.message_post(body=Markup(report_html), message_type='comment', subtype_xmlid='mail.mt_comment')
         return data
 
     # ------------------------------------------------------------------
@@ -710,6 +824,17 @@ class ProjectAiManager(models.Model):
         # نفس البصمة القديمة، وبالأخص لو تحسّن البرومبت وبدنا نتأكد إنه
         # المشروع بياخد فايدة التحسين فوراً بدل ما يستنى تغيير خارجي.
         return self.action_run_ai_review(force=True)
+
+    def action_open_timeline_import_wizard(self):
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': '🗓️ مطابقة تايم لاين المقاول',
+            'res_model': 'kh.ai.timeline.import.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {'default_project_id': self.id},
+        }
 
     def action_run_ai_review(self, post_report=False, force=False):
         self.ensure_one()

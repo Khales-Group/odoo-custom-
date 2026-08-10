@@ -22,6 +22,7 @@
         # لأخّر، الملفات التانية بتشوف نسخته القديمة بالداتابيز وقت التحقق
         # وتطلع "Field does not exist" لحقول تغيّرت أسماءها.
         'views/project_ai_manager_views.xml',
+        'views/timeline_import_wizard_views.xml',
         'views/project_project_views.xml',
         'views/approval_request_views.xml',
         'views/approval_rule_views.xml',

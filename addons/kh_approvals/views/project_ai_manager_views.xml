@@ -13,6 +13,11 @@
                         <field name="x_ai_overdue_tasks_count" widget="statinfo" string="متأخرة"/>
                     </div>
                 </button>
+                <button class="oe_stat_button" icon="fa-calendar" type="object" name="action_open_timeline_import_wizard">
+                    <div class="o_stat_info">
+                        <span class="o_stat_text">تايم لاين المقاول</span>
+                    </div>
+                </button>
             </xpath>
 
             <xpath expr="//notebook" position="inside">
