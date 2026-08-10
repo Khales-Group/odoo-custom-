@@ -49,7 +49,7 @@ CRON_BATCH_TIME_BUDGET_SECONDS = 240
 # نرفع هذا الرقم. هيك أي مشروع (حتى لو ما تغيّر عليه أي شي فعلياً) بتتغيّر
 # بصمته تلقائياً وبتاخد مراجعة فعلية جديدة بالـ Cron العادي - بدون ما نحتاج
 # نطلب من المستخدم يفرض (force) المراجعة يدوياً لكل مشروع قديم لحاله.
-_KH_AI_PROMPT_VERSION = 2
+_KH_AI_PROMPT_VERSION = 3
 
 # نماذج مسموحة للأداة الاستكشافية (Agentic) - قراءة فقط، بدون أي كتابة/حذف.
 # هذا نطاق مخصّص لهذا الفيتشر بس (منفصل بالكامل عن mcp_server وحظره الصارم
@@ -600,6 +600,27 @@ class ProjectAiManager(models.Model):
             return ''
         return '<div class="kh_ai_box" dir="rtl">%s<p>%s</p></div>' % (self._KH_AI_STYLE, escape(text))
 
+    # ------------------------------------------------------------------
+    # قسم "ملخّص اليوم" بفقرتين واضحتين ومنفصلتين بصرياً - عام (general_status)
+    # واليوم تحديداً (today_update) - عشان ما يظل القسم قراءته "ملخّص عام"
+    # بس بينما اسمه "اليوم". لو today_update فاضي (Claude ما امتثل)، منعرض
+    # الوضع العام بس بدون قسم يوم فاضي.
+    # ------------------------------------------------------------------
+    def _kh_ai_render_today_html(self, data, today_str):
+        general_status = (data.get('general_status') or '').strip()
+        today_update = (data.get('today_update') or '').strip()
+        if not general_status and not today_update:
+            return ''
+        parts = ['<div class="kh_ai_box" dir="rtl">', self._KH_AI_STYLE]
+        if general_status:
+            parts.append(
+                '<p><strong>📌 الوضع العام:</strong> %s</p>' % escape(general_status))
+        if today_update:
+            parts.append(
+                '<p><strong>📅 اليوم (%s):</strong> %s</p>' % (today_str, escape(today_update)))
+        parts.append('</div>')
+        return ''.join(parts)
+
     def _kh_ai_render_alerts_html(self, data):
         alerts = self._kh_ai_as_list(data.get('alerts'))
         rows = []
@@ -803,7 +824,7 @@ class ProjectAiManager(models.Model):
             data = {}
         else:
             data = data or {}
-            today_html = self._kh_ai_render_simple_html(data.get('today_summary'))
+            today_html = self._kh_ai_render_today_html(data, today_str)
             collection_html = self._kh_ai_render_simple_html(data.get('collection_note'))
             alerts_html = self._kh_ai_render_alerts_html(data)
             # ضمان بالكود (مش تعليمات برومبت بس) إنه next_steps ما تطلع فاضية
@@ -830,7 +851,10 @@ class ProjectAiManager(models.Model):
         self.x_ai_collection_note = collection_html
         self.x_ai_alerts = alerts_html
         self.x_ai_next_steps = next_steps_html
-        self.x_ai_today_summary_preview = self._kh_ai_truncate(data.get('today_summary'))
+        # المعاينة بالقائمة بتركّز على "اليوم" تحديداً (هذا الغرض من البوكس) -
+        # لو ما رجعت today_update لأي سبب (خطأ/امتثال)، ترجع للوضع العام.
+        self.x_ai_today_summary_preview = self._kh_ai_truncate(
+            data.get('today_update') or data.get('general_status'))
         self.x_ai_collection_note_preview = self._kh_ai_truncate(data.get('collection_note'))
         self.x_ai_alerts_preview = self._kh_ai_truncate(alerts_preview)
         self.x_ai_next_steps_preview = self._kh_ai_truncate(next_steps_preview)
@@ -1235,11 +1259,22 @@ class ProjectAiManager(models.Model):
         'input_schema': {
             'type': 'object',
             'properties': {
-                'today_summary': {
+                'general_status': {
                     'type': 'string',
                     'description': (
-                        'فقرة قصيرة (2-4 جمل): شو صار بالمشروع اليوم/آخر تحديث فعلي - بناءً على سجل '
-                        'النشاط الأحدث والتاسكات المتحرّكة. إذا مافي شي جديد اليوم، قول هذا بوضوح.'
+                        'جملة أو جملتين بس: الوضع العام للمشروع بشكل شامل (المرحلة، نسبة الإنجاز '
+                        'التقريبية، الانطباع العام) - مش عن اليوم تحديداً، هذا سياق عام ثابت نسبياً.'
+                    ),
+                },
+                'today_update': {
+                    'type': 'string',
+                    'description': (
+                        '⚠️ هذا القسم لازم يكون فعلياً عن اليوم/آخر 24 ساعة بس - مش تكرار للوضع '
+                        'العام. فقرة قصيرة (2-4 جمل): شو تحرّك بالمشروع تحديداً اليوم أو بآخر '
+                        'تحديث فعلي (رسالة شاتر جديدة، تاسك تحرّك، نشاط استُلم) - استند فقط على '
+                        'التواريخ الفعلية بالبيانات. لو مافي أي حركة اليوم تحديداً، قول هذا بوضوح '
+                        'صراحةً (مثلاً: "لا يوجد أي تحديث اليوم - آخر حركة كانت قبل X أيام") بدل '
+                        'ما تعيد وصف الوضع العام كأنه تحديث جديد.'
                     ),
                 },
                 'collection_note': {
@@ -1292,7 +1327,7 @@ class ProjectAiManager(models.Model):
                     ),
                 },
             },
-            'required': ['today_summary', 'collection_note', 'alerts', 'next_steps'],
+            'required': ['general_status', 'today_update', 'collection_note', 'alerts', 'next_steps'],
         },
     }
 
@@ -1351,11 +1386,12 @@ class ProjectAiManager(models.Model):
             "--------------------------------------------------\n"
             "%s\n"
             "--------------------------------------------------\n\n"
-            "لما تخلص استكشاف، استدعِ أداة provide_project_review بمحتوى نصي عادي بس (بدون HTML) بـ 4 "
-            "أقسام: ملخّص اليوم، ملاحظة التحصيل، التنبيهات، الخطوات التالية. تنبيه مهم: قسم "
-            "next_steps ممنوع يكون فاضي أبداً، حتى لو المشروع هادئ بدون أي مشاكل - لازم يحتوي على "
-            "الأقل خطوتين متابعة ملموسة (حتى لو كانت خطوات متابعة عادية زي تأكيد الموعد الجاي أو "
-            "تحديث العميل)."
+            "لما تخلص استكشاف، استدعِ أداة provide_project_review بمحتوى نصي عادي بس (بدون HTML) بـ 5 "
+            "قيم: general_status (وضع عام مختصر)، today_update (تحديداً اليوم/آخر 24 ساعة - مختلف "
+            "عن general_status، مش تكرار له)، ملاحظة التحصيل، التنبيهات، الخطوات التالية. تنبيه "
+            "مهم: قسم next_steps ممنوع يكون فاضي أبداً، حتى لو المشروع هادئ بدون أي مشاكل - لازم "
+            "يحتوي على الأقل خطوتين متابعة ملموسة (حتى لو كانت خطوات متابعة عادية زي تأكيد الموعد "
+            "الجاي أو تحديث العميل)."
             % (self._kh_ai_build_seed_context(), digest_text)
         )
 

@@ -21,39 +21,23 @@ _logger = logging.getLogger(__name__)
 MAX_LIMIT = 200
 DEFAULT_LIMIT = 20
 
-# Sensitive-data models: create/write/unlink through the AI chat are always
-# blocked here, no matter what an administrator enables under Settings >
-# MCP Server > Enabled Models - a mutating mistake on payroll/banking/ledger
-# data via natural language needs an actual code change to allow, not a
-# checkbox someone could toggle by accident.
+# Every operation (read/create/write/unlink) on every model - including
+# accounting, payroll, and POS - is gated by the SAME two checks: an admin
+# must explicitly enable the model under Settings > MCP Server > Enabled
+# Models, AND the calling user must personally have real Odoo access to it
+# for that operation (see _user_can below). Permissions come from the user's
+# own Odoo access, not from a blanket ban on the assistant - an accountant
+# who can edit invoices in Odoo can do the same through the AI chat.
 #
-# READ is a different story: it is gated by the SAME two checks as any other
-# model - an admin must explicitly enable it under Settings > MCP Server >
-# Enabled Models, AND the calling user must personally have real Odoo read
-# access to it (see _user_can below, which already checks this). There is no
-# separate "am I allowed to even ask" wall for read - permissions come from
-# the user's own Odoo access, not from a blanket ban on the assistant.
-HARD_BLOCKED_MODEL_PREFIXES = (
-    "account.",  # invoices, payments, bank statements, journals, ledgers
-    "hr.payslip",
-    "hr.contract",
-    "hr.version",  # Odoo 17+ renamed hr.contract fields onto hr.version
-    "hr.salary",
-    "sale.",  # sale orders/quotations - customer pricing
-    "purchase.",  # purchase orders/RFQs - vendor cost/pricing
-    "pos.",  # point of sale orders/payments
-)
+# res.partner.bank is the one exception: bank account numbers/IBANs are
+# blocked outright, even for read, regardless of the user's own access.
 HARD_BLOCKED_MODELS = {
     "res.partner.bank",  # partner bank account numbers/IBANs - blocked outright, even for read
 }
 
 
 def is_hard_blocked_model(model_name, operation):
-    if model_name in HARD_BLOCKED_MODELS:
-        return True
-    if not model_name.startswith(HARD_BLOCKED_MODEL_PREFIXES):
-        return False
-    return operation != "read"
+    return model_name in HARD_BLOCKED_MODELS
 
 
 class ToolError(Exception):
@@ -226,17 +210,10 @@ def build_tool_definitions(env):
 def _require_model_operation(env, model_name, operation):
     model_name = utils.sanitize_model_name(model_name)
     if is_hard_blocked_model(model_name, operation):
-        if operation == "read":
-            raise ToolError(
-                f"Model '{model_name}' isn't enabled for the AI chat yet. Ask an "
-                "administrator to enable it under Settings > MCP Server > Enabled "
-                "Models - once enabled, your own Odoo read access decides what "
-                "you can actually see."
-            )
         raise ToolError(
-            f"Operation '{operation}' on model '{model_name}' is permanently "
-            "blocked from the AI chat (accounting, payroll, or banking data). "
-            "This cannot be enabled from Settings - it requires a code change."
+            f"Model '{model_name}' is permanently blocked from the AI chat "
+            "(bank account/IBAN data), even for read. This cannot be enabled "
+            "from Settings - it requires a code change."
         )
     if not utils.check_model_operation_allowed(env, model_name, operation):
         raise ToolError(
@@ -330,7 +307,7 @@ def _tool_list_enabled_models(env, user, tool_input):
             continue
         system_ops = utils.get_model_allowed_operations(env, model_name)
         user_ops = {
-            op: allowed and not is_hard_blocked_model(model_name, op) and _user_can(env, model_name, op)
+            op: allowed and _user_can(env, model_name, op)
             for op, allowed in system_ops.items()
         }
         if any(user_ops.values()):
