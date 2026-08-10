@@ -49,7 +49,7 @@ CRON_BATCH_TIME_BUDGET_SECONDS = 240
 # نرفع هذا الرقم. هيك أي مشروع (حتى لو ما تغيّر عليه أي شي فعلياً) بتتغيّر
 # بصمته تلقائياً وبتاخد مراجعة فعلية جديدة بالـ Cron العادي - بدون ما نحتاج
 # نطلب من المستخدم يفرض (force) المراجعة يدوياً لكل مشروع قديم لحاله.
-_KH_AI_PROMPT_VERSION = 3
+_KH_AI_PROMPT_VERSION = 4
 
 # نماذج مسموحة للأداة الاستكشافية (Agentic) - قراءة فقط، بدون أي كتابة/حذف.
 # هذا نطاق مخصّص لهذا الفيتشر بس (منفصل بالكامل عن mcp_server وحظره الصارم
@@ -74,12 +74,18 @@ class ProjectAiManager(models.Model):
         string="نسبة الإنجاز حسب Odoo (AI)", compute='_compute_ai_financials', store=True)
     x_ai_contract_value = fields.Float(
         string="قيمة العقد (AI)", compute='_compute_ai_financials', store=True)
-    x_ai_invoiced_amount = fields.Float(
-        string="المفوتر (AI)", compute='_compute_ai_financials', store=True)
-    x_ai_collected_amount = fields.Float(
-        string="المحصّل فعلياً (AI)", compute='_compute_ai_financials', store=True)
-    x_ai_outstanding_amount = fields.Float(
-        string="المتبقّي غير المحصّل (AI)", compute='_compute_ai_financials', store=True)
+    # ملاحظة مهمة: هذول التلاتة تحت مش compute fields (عمداً) - قيمتهم
+    # الموثوقة الوحيدة جايّة من التحقق المالي الحقيقي عبر mcp_server
+    # (_kh_ai_apply_financial_verification)، مش من حساب حتمي بالكود (ثبت
+    # غلطه مرات عديدة على بيانات حقيقية - راجع _kh_ai_verify_financials_via_mcp).
+    # لو كانوا compute fields مرتبطين بـ _compute_ai_financials، كل تشغيل
+    # مراجعة (كل ربع ساعة) كان رح "يصفّرهم"/يرجّعهم لتخمين حتمي غلط قبل ما
+    # يُعاد التحقق المالي (المخفّف لمرة كل 24 ساعة) - يعني الرقم الصحيح كان
+    # يظهر لحظة التحقق وبعدها يرجع يتبدّل بالغلط الساعة اللي بعدها. هلق
+    # بيبقوا كما هم بالضبط لحد ما تحقق مالي جديد يعدّلهم فعلياً.
+    x_ai_invoiced_amount = fields.Float(string="المفوتر (AI)", readonly=True, copy=False)
+    x_ai_collected_amount = fields.Float(string="المحصّل فعلياً (AI)", readonly=True, copy=False)
+    x_ai_outstanding_amount = fields.Float(string="المتبقّي غير المحصّل (AI)", readonly=True, copy=False)
     x_ai_financial_data_note = fields.Char(
         string="ملاحظة بيانات مالية", compute='_compute_ai_financials', store=True)
 
@@ -266,54 +272,14 @@ class ProjectAiManager(models.Model):
         for project in self:
             project.x_ai_work_done = project._kh_ai_read_studio_value(work_done_field) or 0.0
             project.x_ai_contract_value = project._kh_ai_read_studio_value(contract_value_field) or 0.0
-            invoiced, collected = project._kh_ai_compute_financials(analytic_field)
-            project.x_ai_invoiced_amount = invoiced
-            project.x_ai_collected_amount = collected
-            project.x_ai_outstanding_amount = invoiced - collected
             project_note = note
             if not project.partner_id and not (analytic_field and project._kh_ai_read_studio_value(analytic_field)):
-                extra = '⚠️ هذا المشروع بدون عميل (partner_id) وبدون حساب تحليلي - ما بقدر ألقى فواتيره.'
+                extra = '⚠️ هذا المشروع بدون عميل (partner_id) وبدون حساب تحليلي - ما بقدر ألقى فواتيره تلقائياً (بس ممكن Claude يلاقيه لحاله عبر find_customer).'
+                project_note = (project_note + ' ' + extra).strip()
+            if not project.x_ai_last_financial_check_date:
+                extra = '⏳ لسا ما انعمل تحقق مالي حقيقي لهذا المشروع - رح يصير بأول مراجعة AI.'
                 project_note = (project_note + ' ' + extra).strip()
             project.x_ai_financial_data_note = project_note or False
-
-    def _kh_ai_compute_financials(self, analytic_field=None):
-        # المصدر الأساسي: فواتير العميل (partner_id) تبع المشروع مباشرة - هذا
-        # فعلياً كيف الفواتير مربوطة بالمشروع بهذا النظام. تطابق حرفي بالضبط
-        # (=) مش child_of - لأنه child_of بيجمع فواتير كل الـ Contacts التابعين
-        # لنفس الشركة الأم، وهذا بيضخّم الأرقام لو نفس العميل عنده أكتر من
-        # مشروع/Contact تحته (جرّبناها فعلياً وطلعت أرقام مبالغ فيها). أي
-        # تطابق تقريبي/مش مؤكد منترك اكتشافه لـ Claude (استكشاف CRM بالنص)
-        # مش نضخّمه بالأرقام الرسمية. الحساب التحليلي (لو موجود) بيتفحص
-        # كمان كـ مصدر إضافي، بدون تكرار (نفس الفاتورة ما تُحسب مرتين).
-        try:
-            Move = self.env['account.move'].sudo()
-            moves = Move.browse()
-
-            if self.partner_id:
-                moves |= Move.search([
-                    ('partner_id', '=', self.partner_id.id),
-                    ('state', '=', 'posted'),
-                    ('move_type', 'in', ['out_invoice', 'out_refund']),
-                ])
-
-            if analytic_field is None:
-                analytic_field = self._kh_ai_analytic_account_field_name()
-            analytic_account = self._kh_ai_read_studio_value(analytic_field) if analytic_field else False
-            if analytic_account:
-                AML = self.env['account.move.line'].sudo()
-                lines = AML.search([
-                    ('analytic_distribution', 'in', [analytic_account.id]),
-                    ('parent_state', '=', 'posted'),
-                    ('move_id.move_type', 'in', ['out_invoice', 'out_refund']),
-                ])
-                moves |= lines.mapped('move_id')
-
-            invoiced = sum(m.amount_total_signed for m in moves)
-            collected = sum(m.amount_total_signed - m.amount_residual_signed for m in moves)
-            return invoiced, collected
-        except Exception:
-            _logger.exception('KH_AI_MANAGER: financial computation failed')
-            return 0.0, 0.0
 
     # ------------------------------------------------------------------
     # لو Claude فعلياً دقّق بفواتير حقيقية (عبر search_odoo_records) ولقى
@@ -427,9 +393,9 @@ class ProjectAiManager(models.Model):
     }
 
     # ------------------------------------------------------------------
-    # البرومبت الجاهز المركّز الأول: التحقق المالي - بديل كامل لمنطقنا
-    # الحتمي (_kh_ai_compute_financials) يلي ثبت غلطه 3 مرات على بيانات
-    # حقيقية. بيستخدم find_customer (لحل اختلاف اسم الـ Contact عن اسم
+    # البرومبت الجاهز المركّز الأول: التحقق المالي - بديل كامل لحسابنا
+    # الحتمي القديم (partner_id مطابقة مباشرة) يلي ثبت غلطه مرات عديدة على
+    # بيانات حقيقية، وتم حذفه بالكامل. بيستخدم find_customer (لحل اختلاف اسم الـ Contact عن اسم
     # العميل بالمشروع) بعدها search_records على account.move.
     # ------------------------------------------------------------------
     def _kh_ai_verify_financials_via_mcp(self):
@@ -770,15 +736,16 @@ class ProjectAiManager(models.Model):
         ], order='date desc', limit=40)
 
         # التحقق المالي عبر برومبت مخصّص يستخدم أدوات mcp_server (find_customer +
-        # search_records) - بديل عن منطقنا الحتمي (_kh_ai_compute_financials) يلي
-        # ثبت غلطه على بيانات حقيقية. لازم يصير قبل بناء الـ digest عشان الأرقام
+        # search_records) - المصدر الوحيد للأرقام المالية هلق (حذفنا الحساب
+        # الحتمي القديم كلياً لأنه ثبت غلطه). لازم يصير قبل بناء الـ digest عشان الأرقام
         # المصحّحة توصل لبرومبت المراجعة الرئيسي كمان، مش بس تتحدّث بالفورم بعدين.
         # هذا الجزء هو الأبطأ (حلقة Agentic كاملة تانية) - الفواتير ما بتتغيّر
         # كل ساعة، فمنشغّله مرة كل 24 ساعة بس لكل مشروع (مش كل مرة تشتغل
         # المراجعة الساعية)، عشان نوفّر وقت/تكلفة بدون فايدة حقيقية إضافية.
         now = fields.Datetime.now()
         needs_financial_check = (
-            not self.x_ai_last_financial_check_date
+            force
+            or not self.x_ai_last_financial_check_date
             or (now - self.x_ai_last_financial_check_date).total_seconds() >= 24 * 3600
         )
         if needs_financial_check:
@@ -826,6 +793,18 @@ class ProjectAiManager(models.Model):
             data = data or {}
             today_html = self._kh_ai_render_today_html(data, today_str)
             collection_html = self._kh_ai_render_simple_html(data.get('collection_note'))
+            # حقيقة جاهزة بالكود (مش معتمدة على ملاحظة Claude) - قيمة العقد
+            # لازم تكون معبّأة، لأنها ضرورية لحساب نسبة التحصيل الحقيقية
+            # ومقارنتها بالإنجاز. منضيفها دايماً لو فاضية، مش نتكل على إنه
+            # Claude يلاحظها لحاله (نفس مبدأ next_steps الاحتياطية فوق).
+            if not self.x_ai_contract_value:
+                data['alerts'] = [{
+                    'type': 'financial',
+                    'message': (
+                        'قيمة العقد (Contract Value) غير معبّأة بسجل المشروع - '
+                        'لازم تُدخل، لأنها ضرورية لحساب نسبة التحصيل الحقيقية ومقارنتها بالإنجاز.'
+                    ),
+                }] + self._kh_ai_as_list(data.get('alerts'))
             alerts_html = self._kh_ai_render_alerts_html(data)
             # ضمان بالكود (مش تعليمات برومبت بس) إنه next_steps ما تطلع فاضية
             # أبداً - جرّبنا نطلب من Claude يضمنها بالبرومبت وبقيت أحياناً
@@ -1190,7 +1169,10 @@ class ProjectAiManager(models.Model):
         lines.append('مدير المشروع: %s' % (self.user_id.name if self.user_id else '-'))
         lines.append('نسبة الإنجاز المسجّلة يدوياً بـ Odoo: %.1f%%' % work_done)
         lines.append('نسبة الإنجاز محسوبة فعلياً من التاسكات (منجز/الكل غير الملغى): %.1f%%' % work_done_tasks)
-        lines.append('قيمة العقد: %.2f' % contract_value)
+        if contract_value:
+            lines.append('قيمة العقد: %.2f' % contract_value)
+        else:
+            lines.append('⚠️ حقيقة مهمة: قيمة العقد (Contract Value) غير معبّأة بسجل المشروع إطلاقاً.')
         lines.append('المفوتر فعلياً (فواتير Odoo حقيقية): %.2f | المحصّل فعلياً (مدفوع): %.2f'
                       % (invoiced_amount, collected_amount))
         lines.append('تاريخ اليوم: %s' % today_str)
