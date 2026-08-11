@@ -1379,14 +1379,17 @@ class ProjectAiManager(models.Model):
     # الوضع العام + آخر تحديث فعلي) و"شو عالق" (من x_ai_alerts المحفوظة).
     # قراءة بس من حقول محفوظة أصلاً - بدون أي استدعاء Claude جديد هون.
     # ------------------------------------------------------------------
-    def _kh_ai_render_digest_project_block(self, project, extra_line=''):
+    def _kh_ai_render_digest_project_block(self, project, extra_lines=None):
         today_text = self._kh_ai_html_to_plain(project.x_ai_today_summary) or 'لا يوجد ملخّص محفوظ بعد.'
         alerts_text = self._kh_ai_html_to_plain(project.x_ai_alerts) or 'لا يوجد تنبيهات.'
         header = '%s (%.0f%% إنجاز' % (project.name, project.x_ai_work_done_tasks)
         if (project.x_ai_outstanding_amount or 0.0) > 0:
             header += ' | متبقّي تحصيل: %.2f' % project.x_ai_outstanding_amount
         header += ')'
-        extra_html = '<p style="margin:4px 0 0;color:#27AE60;">%s</p>' % escape(extra_line) if extra_line else ''
+        extra_html = ''.join(
+            '<p style="margin:4px 0 0;color:%s;">%s</p>' % (color, escape(line))
+            for line, color in (extra_lines or []) if line
+        )
         return (
             '<div style="margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #ddd;">'
             '<p style="margin:0 0 4px;font-weight:bold;color:#714B67;">📌 %s</p>'
@@ -1491,37 +1494,46 @@ class ProjectAiManager(models.Model):
             _logger.exception('KH_AI_MANAGER: sending GM weekly digest email failed')
 
     # ------------------------------------------------------------------
-    # "في المشروع شي فعلي اليوم؟" - 3 حقائق ملموسة وقابلة للتحقق (مش
-    # اعتماد على x_ai_last_review_date/بصمة التغيير الداخلية): (1) تاسك
-    # موعده اليوم بالتحديد، (2) رسالة/تعليق على شاتر المشروع اليوم، (3)
-    # طلب اعتماد (kh.approval.request) مرتبط بهذا المشروع تحرّك اليوم
-    # (أُنشئ أو تغيّرت حالته). لو صفر من الثلاثة، ما في سبب حقيقي نظهر
-    # المشروع بالملخّص اليومي.
+    # "ليش هذا المشروع طالع بالملخّص اليومي؟" - بترجع لستة أسباب نصّية
+    # واضحة (فاضية = ما في سبب حقيقي، يعني المشروع هادئ). 4 حقائق ملموسة
+    # وقابلة للتحقق (مش اعتماد على x_ai_last_review_date/بصمة التغيير
+    # الداخلية): (1) تاسك موعده اليوم بالتحديد، (2) تاسك خلص اليوم، (3)
+    # رسالة/تعليق على شاتر المشروع اليوم، (4) طلب اعتماد (kh.approval.
+    # request) مرتبط بهذا المشروع تحرّك اليوم. منرجّع الأسباب بالنص نفسه
+    # (بقسم "🔍 سبب الظهور") عشان ما نحتاج نخمّن أو نفتّش لوحدنا لاحقاً.
     # ------------------------------------------------------------------
-    def _kh_ai_has_activity_today(self, project, today):
+    def _kh_ai_activity_today_reasons(self, project, today):
         today_str = str(today)
         date_from_str = today_str + ' 00:00:00'
+        reasons = []
 
-        if project.task_ids.filtered(lambda t: t.date_deadline and str(t.date_deadline)[:10] == today_str):
-            return True
+        due_today = project.task_ids.filtered(lambda t: t.date_deadline and str(t.date_deadline)[:10] == today_str)
+        if due_today:
+            reasons.append('تاسك موعده اليوم: %s' % '، '.join(due_today.mapped('name')[:5]))
 
-        if self._kh_ai_tasks_closed_today(project, today_str):
-            return True
+        closed_today = self._kh_ai_tasks_closed_today(project, today_str)
+        if closed_today:
+            reasons.append('%d تاسك خلص اليوم' % len(closed_today))
 
-        if self.env['mail.message'].sudo().search_count([
+        msg_count = self.env['mail.message'].sudo().search_count([
             ('model', '=', 'project.project'),
             ('res_id', '=', project.id),
             ('date', '>=', date_from_str),
-        ]):
-            return True
+        ])
+        if msg_count:
+            reasons.append('%d رسالة/تعليق على شاتر المشروع اليوم' % msg_count)
 
-        if self.env['kh.approval.request'].sudo().search_count([
+        req_count = self.env['kh.approval.request'].sudo().search_count([
             ('project_id', '=', project.id),
             ('write_date', '>=', date_from_str),
-        ]):
-            return True
+        ])
+        if req_count:
+            reasons.append('%d طلب اعتماد تحرّك اليوم' % req_count)
 
-        return False
+        return reasons
+
+    def _kh_ai_has_activity_today(self, project, today):
+        return bool(self._kh_ai_activity_today_reasons(project, today))
 
     # ------------------------------------------------------------------
     # الملخّص اليومي للمدير العام - رسالة واحدة كل يوم، بس فيها تفاصيل
@@ -1554,8 +1566,13 @@ class ProjectAiManager(models.Model):
                 names.append('%s%s' % (t.name, ' (كان متأخر)' if was_overdue else ''))
             return '✅ خلص اليوم: ' + '، '.join(names)
 
+        def _project_extra_lines(project):
+            reasons = self._kh_ai_activity_today_reasons(project, today)
+            reason_line = '🔍 سبب الظهور: ' + ' | '.join(reasons) if reasons else ''
+            return [(reason_line, '#3C6E85'), (_closed_today_line(project), '#27AE60')]
+
         project_blocks = ''.join(
-            self._kh_ai_render_digest_project_block(p, extra_line=_closed_today_line(p)) for p in active_today)
+            self._kh_ai_render_digest_project_block(p, extra_lines=_project_extra_lines(p)) for p in active_today)
         if not project_blocks:
             project_blocks = '<p>لا يوجد أي مشروع فيه تحديث فعلي اليوم.</p>'
         quiet_line = '<p>✅ %d مشروع هادئ اليوم بدون أي جديد.</p>' % quiet_count if quiet_count else ''
