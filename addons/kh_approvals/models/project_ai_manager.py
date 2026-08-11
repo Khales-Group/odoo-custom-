@@ -51,7 +51,7 @@ CRON_BATCH_TIME_BUDGET_SECONDS = 240
 # نرفع هذا الرقم. هيك أي مشروع (حتى لو ما تغيّر عليه أي شي فعلياً) بتتغيّر
 # بصمته تلقائياً وبتاخد مراجعة فعلية جديدة بالـ Cron العادي - بدون ما نحتاج
 # نطلب من المستخدم يفرض (force) المراجعة يدوياً لكل مشروع قديم لحاله.
-_KH_AI_PROMPT_VERSION = 8
+_KH_AI_PROMPT_VERSION = 9
 
 # نماذج مسموحة للأداة الاستكشافية (Agentic) - قراءة فقط، بدون أي كتابة/حذف.
 # هذا نطاق مخصّص لهذا الفيتشر بس (منفصل بالكامل عن mcp_server وحظره الصارم
@@ -211,7 +211,7 @@ class ProjectAiManager(models.Model):
         last_msg = self.env['mail.message'].sudo().search([
             ('model', '=', 'project.project'),
             ('res_id', '=', self.id),
-            ('message_type', 'in', ['comment', 'email']),
+            ('message_type', 'in', ['comment', 'email', 'notification']),
             ('author_id', '!=', self._kh_ai_odoobot_partner_id()),
         ], order='date desc', limit=1)
         days_since_update = None
@@ -1537,11 +1537,11 @@ class ProjectAiManager(models.Model):
             ('model', '=', 'project.project'),
             ('res_id', '=', project.id),
             ('date', '>=', date_from_str),
-            ('message_type', 'in', ['comment', 'email']),
+            ('message_type', 'in', ['comment', 'email', 'notification']),
             ('author_id', '!=', self._kh_ai_odoobot_partner_id()),
         ])
         if msg_count:
-            reasons.append('%d رسالة/تعليق على شاتر المشروع اليوم' % msg_count)
+            reasons.append('%d رسالة/تحديث حقيقي على شاتر المشروع اليوم' % msg_count)
 
         req_count = self.env['kh.approval.request'].sudo().search_count([
             ('project_id', '=', project.id),
