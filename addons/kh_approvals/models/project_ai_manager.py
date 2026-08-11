@@ -800,6 +800,28 @@ class ProjectAiManager(models.Model):
         return (text[:length] + '…') if len(text) > length else text
 
     @staticmethod
+    def _kh_ai_format_tracking_values(message):
+        # رسالة تتبّع تغيير حقل (Odoo بيسجّلها تلقائياً لما حقل متتبّع
+        # يتغيّر - "Field: old → new") - القيم مخزّنة بـ mail.tracking.value
+        # لينكد، مش جوا body الرسالة. بنجرّب كل أنواع الحقول الممكنة (نص/
+        # رقم/تاريخ/...) بدون الاعتماد على اسم نوع واحد بالذات (اختلاف
+        # طفيف محتمل بين نسخ Odoo).
+        parts = []
+        for tv in message.tracking_value_ids:
+            field_label = tv.field_id.field_description if tv.field_id else 'حقل'
+            old_val = new_val = None
+            for suffix in ('char', 'text', 'integer', 'float', 'monetary', 'datetime', 'date', 'boolean'):
+                if hasattr(tv, 'old_value_%s' % suffix):
+                    v_old = getattr(tv, 'old_value_%s' % suffix)
+                    v_new = getattr(tv, 'new_value_%s' % suffix)
+                    if v_old or v_new:
+                        old_val, new_val = v_old, v_new
+                        break
+            if old_val or new_val:
+                parts.append('%s: %s ← %s' % (field_label, new_val or '-', old_val or '-'))
+        return ' | '.join(parts)
+
+    @staticmethod
     def _kh_ai_html_to_plain(html_content):
         # html2plaintext ما بيشيل محتوى وسم <style> (بس التاجات نفسها) -
         # وحقولنا المخزّنة (x_ai_today_summary/x_ai_alerts) فيها _KH_AI_STYLE
@@ -1703,7 +1725,14 @@ class ProjectAiManager(models.Model):
             subj_txt = (m.subject or '').strip()
             content = body_txt or subj_txt
             if not content:
-                continue
+                # رسائل "تتبّع تغيير حقل" التلقائية (متل "Expiration Date: "
+                # None → 28/02/2027") عادةً body فاضي - القيمة القديمة/الجديدة
+                # محفوظة بسجلات tracking_value_ids منفصلة، مش بالـ body نفسه.
+                # لو تجاهلناها، بتضيع بالكامل من كلوود حتى لو صارت اليوم فعلاً
+                # وسبب ظهور المشروع بالملخّص اليومي.
+                content = self._kh_ai_format_tracking_values(m)
+                if not content:
+                    continue
             author = m.author_id.name if m.author_id else '?'
             lines.append('  [%s] %s (%s): %s' % (str(m.date)[:16], author, m.message_type, content[:500]))
 
