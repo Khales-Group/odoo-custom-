@@ -51,7 +51,7 @@ CRON_BATCH_TIME_BUDGET_SECONDS = 240
 # نرفع هذا الرقم. هيك أي مشروع (حتى لو ما تغيّر عليه أي شي فعلياً) بتتغيّر
 # بصمته تلقائياً وبتاخد مراجعة فعلية جديدة بالـ Cron العادي - بدون ما نحتاج
 # نطلب من المستخدم يفرض (force) المراجعة يدوياً لكل مشروع قديم لحاله.
-_KH_AI_PROMPT_VERSION = 6
+_KH_AI_PROMPT_VERSION = 7
 
 # نماذج مسموحة للأداة الاستكشافية (Agentic) - قراءة فقط، بدون أي كتابة/حذف.
 # هذا نطاق مخصّص لهذا الفيتشر بس (منفصل بالكامل عن mcp_server وحظره الصارم
@@ -1165,12 +1165,19 @@ class ProjectAiManager(models.Model):
         # جوا البصمة عشان عبور نسبة 80% ما يفوت لو باقي كل شي ثابت.
         pacing_risk_count = len(self._kh_ai_pacing_risk_tasks(all_tasks, today_str))
 
+        # تاسك موعده اليوم بالضبط (due today) - لسا مش متأخر (متأخر لازم
+        # يفوت موعده)، فما بيغيّر overdue_tasks اليوم، بس هو سبب كافي
+        # يظهر المشروع بالملخّص اليومي (_kh_ai_has_activity_today). لازم
+        # يكون بالبصمة كمان، وإلا المراجعة تتجاهل والنص المحفوظ يفضل قديم
+        # وما بيذكره - نفس التناقض يلي صار فعلياً بمشاريع حقيقية.
+        due_today_count = len(all_tasks.filtered(lambda t: t.date_deadline and str(t.date_deadline)[:10] == today_str))
+
         return '|'.join(str(x) for x in [
             _KH_AI_PROMPT_VERSION,
             len(open_tasks), len(overdue_tasks),
             len(overdue_proj_acts) + len(overdue_task_acts), len(stale_tasks),
             days_since_update, last_message_date, last_task_write,
-            last_task_note_date, last_timesheet_date, pacing_risk_count,
+            last_task_note_date, last_timesheet_date, pacing_risk_count, due_today_count,
             self.stage_id.id,
             round(self.x_ai_outstanding_amount or 0.0, 2),
         ])
@@ -1397,8 +1404,16 @@ class ProjectAiManager(models.Model):
     # لازم تُحسب لصالح الفريق، مش تضيع بين التنبيهات.
     # ------------------------------------------------------------------
     def _kh_ai_tasks_closed_today(self, project, today_str):
+        # مش write_date == اليوم - هاي بتنحرّك بأي تعديل عادي (متل كتابة
+        # تواريخ بالجملة عبر أداة تايم لاين المقاول)، حتى لو التاسك منجز
+        # من زمان وما تغيّرت حالته اليوم إطلاقاً (ثبت هذا فعلياً بمشروع
+        # 00126). الأصح: قارن مع آخر Snapshot محفوظ لـ"مفتوحة" (المدمج من
+        # x_ai_overdue_task_ids/x_ai_next_task_ids وقت آخر مراجعة) - لو
+        # كان بهذا الـ Snapshot (يعني كان مفتوح وقتها) وهلق منجز، هذا
+        # انتقال حقيقي open→done، مش أثر جانبي من تعديل حقل تاريخ.
+        previously_open_ids = set((project.x_ai_overdue_task_ids | project.x_ai_next_task_ids).ids)
         return project.task_ids.filtered(
-            lambda t: t.write_date and str(t.write_date)[:10] == today_str and self._kh_ai_is_task_done(t))
+            lambda t: t.id in previously_open_ids and self._kh_ai_is_task_done(t))
 
     # ------------------------------------------------------------------
     # التقرير الأسبوعي الشامل للمدير العام - مش تقرير مشروع لحاله، إنما
