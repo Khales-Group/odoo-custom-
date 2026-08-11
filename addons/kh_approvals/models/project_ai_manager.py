@@ -50,7 +50,7 @@ CRON_BATCH_TIME_BUDGET_SECONDS = 240
 # نرفع هذا الرقم. هيك أي مشروع (حتى لو ما تغيّر عليه أي شي فعلياً) بتتغيّر
 # بصمته تلقائياً وبتاخد مراجعة فعلية جديدة بالـ Cron العادي - بدون ما نحتاج
 # نطلب من المستخدم يفرض (force) المراجعة يدوياً لكل مشروع قديم لحاله.
-_KH_AI_PROMPT_VERSION = 5
+_KH_AI_PROMPT_VERSION = 6
 
 # نماذج مسموحة للأداة الاستكشافية (Agentic) - قراءة فقط، بدون أي كتابة/حذف.
 # هذا نطاق مخصّص لهذا الفيتشر بس (منفصل بالكامل عن mcp_server وحظره الصارم
@@ -264,6 +264,48 @@ class ProjectAiManager(models.Model):
             extra = '\n  ... و %d تاسك زيادة فيها نشاط مسجّل (مش معروضين لتوفير المساحة).' % (len(rows) - limit)
             rows = rows[:limit]
         return '\n'.join(rows) + extra
+
+    # ------------------------------------------------------------------
+    # تاسكات "جارية" (بلشت وما خلصت، ولسا قبل موعدها - مش متأخرة بالمعنى
+    # المعتاد) بس استهلكت 80%+ من وقتها المخصّص (planned_date_begin →
+    # date_deadline) بدون أي نشاط مسجّل عليها إطلاقاً (لا نوت ولا
+    # تايمشيت) - إشارة مبكرة لخطر تأخر قريب، قبل ما يفوت الموعد فعلياً.
+    # بترجع لستة (task, elapsed_ratio).
+    # ------------------------------------------------------------------
+    def _kh_ai_pacing_risk_tasks(self, all_tasks, today_str):
+        candidates = all_tasks.filtered(
+            lambda t: not self._kh_ai_is_task_done(t) and t.planned_date_begin and t.date_deadline
+            and str(t.planned_date_begin)[:10] <= today_str <= str(t.date_deadline)[:10]
+        )
+        if not candidates:
+            return []
+
+        today_date = fields.Date.from_string(today_str)
+        ratios = {}
+        for t in candidates:
+            begin_date = fields.Date.from_string(str(t.planned_date_begin)[:10])
+            end_date = fields.Date.from_string(str(t.date_deadline)[:10])
+            total_days = (end_date - begin_date).days
+            if total_days <= 0:
+                continue
+            ratio = (today_date - begin_date).days / total_days
+            if ratio >= 0.8:
+                ratios[t.id] = ratio
+        if not ratios:
+            return []
+
+        risky_tasks = candidates.filtered(lambda t: t.id in ratios)
+        has_activity_ids = set(self.env['mail.message'].sudo().search([
+            ('model', '=', 'project.task'),
+            ('res_id', 'in', risky_tasks.ids),
+            ('message_type', 'in', ['comment', 'email']),
+        ]).mapped('res_id'))
+        if 'timesheet_ids' in risky_tasks._fields:
+            has_activity_ids |= set(self.env['account.analytic.line'].sudo().search([
+                ('task_id', 'in', risky_tasks.ids),
+            ]).mapped('task_id.id'))
+
+        return [(t, ratios[t.id]) for t in risky_tasks if t.id not in has_activity_ids]
 
     # ------------------------------------------------------------------
     # هل التاسك منجزة؟ - state وx_custom_state طلعوا فاضيين لمعظم التاسكات
@@ -956,7 +998,7 @@ class ProjectAiManager(models.Model):
         # بدون Claude) عشان تبقى متزامنة مع الأرقام الحالية.
         signature = self._kh_ai_build_change_signature(
             all_tasks, open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts,
-            stale_tasks, days_since_update, messages)
+            stale_tasks, days_since_update, messages, today_str)
         if not force and self.x_ai_last_review_date and signature == self.x_ai_change_signature:
             _logger.info('KH_AI_MANAGER: skipping AI review for project %s (%s) - nothing changed since last review.',
                           self.id, self.name)
@@ -965,7 +1007,11 @@ class ProjectAiManager(models.Model):
                     today_str, open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts,
                     self.x_ai_today_summary, self.x_ai_collection_note,
                     self.x_ai_alerts, self.x_ai_next_steps)
-                self.message_post(body=Markup(report_html), message_type='comment', subtype_xmlid='mail.mt_comment')
+                # mt_note (ملاحظة داخلية) لا mt_comment - نحتفظ بالسجل التاريخي
+                # على شاتر كل مشروع بدون ما ننبّه كل المتابعين (متل المدير
+                # العام لو كان متابع لعشرات المشاريع) - التقرير المجمّع الوحيد
+                # يلي المفروض يوصله فعلياً هو _kh_ai_send_gm_weekly_digest.
+                self.message_post(body=Markup(report_html), message_type='comment', subtype_xmlid='mail.mt_note')
             self._kh_ai_notify_pm_if_needed(open_tasks)
             self._kh_ai_notify_accountant_if_needed(accountant)
             return True
@@ -997,6 +1043,21 @@ class ProjectAiManager(models.Model):
                         'لازم تُدخل، لأنها ضرورية لحساب نسبة التحصيل الحقيقية ومقارنتها بالإنجاز.'
                     ),
                 }] + self._kh_ai_as_list(data.get('alerts'))
+            # حقيقة جاهزة بالكود كمان - تاسك جاري (بلش وما خلص، ولسا قبل
+            # موعده) استهلك 80%+ من وقته المخصّص بدون أي نشاط مسجّل عليه
+            # (نوت/تايمشيت) - إشارة مبكرة لخطر تأخر قريب، قبل ما يفوت
+            # الموعد فعلياً ويصير "متأخر" بالمعنى المعتاد.
+            pacing_risks = self._kh_ai_pacing_risk_tasks(all_tasks, today_str)
+            if pacing_risks:
+                pacing_alerts = [{
+                    'type': 'other',
+                    'message': (
+                        'تاسك "%s" استهلك %.0f%% من وقته المخصّص بدون أي نشاط مسجّل عليه '
+                        '(نوت أو تايمشيت) - خطر تأخر قريب رغم إنه ما فات موعده لسا.'
+                        % (t.name, ratio * 100)
+                    ),
+                } for t, ratio in pacing_risks]
+                data['alerts'] = pacing_alerts + self._kh_ai_as_list(data.get('alerts'))
             alerts_html = self._kh_ai_render_alerts_html(data)
             # ضمان بالكود (مش تعليمات برومبت بس) إنه next_steps ما تطلع فاضية
             # أبداً - جرّبنا نطلب من Claude يضمنها بالبرومبت وبقيت أحياناً
@@ -1043,7 +1104,10 @@ class ProjectAiManager(models.Model):
             report_html = self._kh_ai_build_weekly_report_html(
                 today_str, open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts,
                 today_html, collection_html, alerts_html, next_steps_html)
-            self.message_post(body=Markup(report_html), message_type='comment', subtype_xmlid='mail.mt_comment')
+            # نفس السبب فوق - mt_note بدل mt_comment، تفادياً لإشعار كل
+            # المتابعين (بما فيهم المدير العام لو كان مدير/متابع لعدد كبير
+            # من المشاريع) بكل تقرير أسبوعي لكل مشروع لحاله.
+            self.message_post(body=Markup(report_html), message_type='comment', subtype_xmlid='mail.mt_note')
 
         self._kh_ai_notify_pm_if_needed(open_tasks)
         self._kh_ai_notify_accountant_if_needed(accountant)
@@ -1056,7 +1120,7 @@ class ProjectAiManager(models.Model):
     # (مش تخزين تفاصيل) - كافية تماماً لسؤال "تغيّر شي ولا لأ؟".
     # ------------------------------------------------------------------
     def _kh_ai_build_change_signature(self, all_tasks, open_tasks, overdue_tasks, overdue_proj_acts,
-                                       overdue_task_acts, stale_tasks, days_since_update, messages):
+                                       overdue_task_acts, stale_tasks, days_since_update, messages, today_str):
         # ملاحظة مهمة: ممنوع نستخدم self.write_date هون - كودنا نفسه بيكتب
         # على x_ai_last_review_date بكل تشغيل ناجح، وهذا لحاله بيرفع
         # write_date تبع المشروع كل مرة، فبتصير البصمة "تغيّرت" دايماً
@@ -1085,12 +1149,17 @@ class ProjectAiManager(models.Model):
                 ], order='write_date desc', limit=1)
                 last_timesheet_date = last_ts.write_date if last_ts else ''
 
+        # عدد تاسكات "خطر التأخر القريب" (pacing risk) - بيتغيّر بمرور الوقت
+        # لحاله (بدون أي write حقيقي)، تماماً متل overdue_tasks، فلازم يكون
+        # جوا البصمة عشان عبور نسبة 80% ما يفوت لو باقي كل شي ثابت.
+        pacing_risk_count = len(self._kh_ai_pacing_risk_tasks(all_tasks, today_str))
+
         return '|'.join(str(x) for x in [
             _KH_AI_PROMPT_VERSION,
             len(open_tasks), len(overdue_tasks),
             len(overdue_proj_acts) + len(overdue_task_acts), len(stale_tasks),
             days_since_update, last_message_date, last_task_write,
-            last_task_note_date, last_timesheet_date,
+            last_task_note_date, last_timesheet_date, pacing_risk_count,
             self.stage_id.id,
             round(self.x_ai_outstanding_amount or 0.0, 2),
         ])
@@ -1287,9 +1356,43 @@ class ProjectAiManager(models.Model):
             _logger.exception('KH_AI_MANAGER: GM weekly digest failed')
 
     # ------------------------------------------------------------------
+    # فقرة سردية لمشروع واحد - مستخدمة بالتقرير الأسبوعي والملخّص اليومي
+    # للمدير العام سوا: "شو صار" (من x_ai_today_summary المحفوظ - فيه
+    # الوضع العام + آخر تحديث فعلي) و"شو عالق" (من x_ai_alerts المحفوظة).
+    # قراءة بس من حقول محفوظة أصلاً - بدون أي استدعاء Claude جديد هون.
+    # ------------------------------------------------------------------
+    def _kh_ai_render_digest_project_block(self, project, extra_line=''):
+        today_text = html2plaintext(project.x_ai_today_summary or '').strip() or 'لا يوجد ملخّص محفوظ بعد.'
+        alerts_text = html2plaintext(project.x_ai_alerts or '').strip() or 'لا يوجد تنبيهات.'
+        header = '%s (%.0f%% إنجاز' % (project.name, project.x_ai_work_done_tasks)
+        if (project.x_ai_outstanding_amount or 0.0) > 0:
+            header += ' | متبقّي تحصيل: %.2f' % project.x_ai_outstanding_amount
+        header += ')'
+        extra_html = '<p style="margin:4px 0 0;color:#27AE60;">%s</p>' % escape(extra_line) if extra_line else ''
+        return (
+            '<div style="margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #ddd;">'
+            '<p style="margin:0 0 4px;font-weight:bold;color:#714B67;">📌 %s</p>'
+            '<p style="margin:0 0 4px;">%s</p>'
+            '<p style="margin:0;color:#A8432B;">عالق: %s</p>'
+            '%s'
+            '</div>'
+            % (escape(header), escape(today_text[:600]), escape(alerts_text[:400]), extra_html)
+        )
+
+    # ------------------------------------------------------------------
+    # تاسكات انخلصت "اليوم بالتحديد" (write_date اليوم + stage.fold/منجزة)
+    # - مفيدة بالملخّص اليومي لإظهار الإنجاز الفعلي، مش بس المشاكل. بنميّز
+    # التاسك يلي كان متأخر (deadline فات) قبل ما يخلص - هاي أخبار جيدة
+    # لازم تُحسب لصالح الفريق، مش تضيع بين التنبيهات.
+    # ------------------------------------------------------------------
+    def _kh_ai_tasks_closed_today(self, project, today_str):
+        return project.task_ids.filtered(
+            lambda t: t.write_date and str(t.write_date)[:10] == today_str and self._kh_ai_is_task_done(t))
+
+    # ------------------------------------------------------------------
     # التقرير الأسبوعي الشامل للمدير العام - مش تقرير مشروع لحاله، إنما
     # نظرة عامة على كل المشاريع سوا: حمل الفريق مجمّع (مين شغال عالشو بكل
-    # المشاريع)، وحالة كل مشروع (إنجاز/متأخرات/تحصيل). بيوصله بطريقتين
+    # المشاريع)، وفقرة سردية لكل مشروع (شو صار + شو عالق). بيوصله بطريقتين
     # (Inbox عبر message_notify + إيميل مباشر) عشان نضمن يشوفه أكيد، حسب
     # طلب صاحب العمل تحديداً - بيصير مرة وحدة أسبوعياً بعد ما كل المشاريع
     # تتحدّث (فريش، مش أرقام قديمة).
@@ -1326,16 +1429,10 @@ class ProjectAiManager(models.Model):
             for name, c in sorted(workload.items(), key=lambda kv: -kv[1][0])
         ) or '<tr><td colspan="3" style="text-align:center;color:#999;">لا يوجد تاسكات مفتوحة حالياً.</td></tr>'
 
-        project_rows = ''.join(
-            '<tr><td>%s</td><td>%s</td><td style="text-align:center;">%.0f%%</td>'
-            '<td style="text-align:center;color:%s;">%d</td>'
-            '<td style="text-align:center;">%.2f</td></tr>'
-            % (escape(p.name), escape(p.stage_id.name or '-'), p.x_ai_work_done_tasks,
-               '#E74C3C' if (p.x_ai_overdue_tasks_count or p.x_ai_overdue_activities_count) else '#888',
-               (p.x_ai_overdue_tasks_count or 0) + (p.x_ai_overdue_activities_count or 0),
-               p.x_ai_outstanding_amount or 0.0)
-            for p in projects
-        )
+        # فقرة سردية حقيقية لكل مشروع (شو صار + شو عالق) - مش جدول أرقام بس.
+        # نستخدم آخر ملخّص/تنبيهات محفوظة (فريش أصلاً، بتتحدّث كل ربع ساعة
+        # طول الأسبوع) - بدون أي استدعاء Claude إضافي هون، القراءة بس.
+        project_blocks = ''.join(self._kh_ai_render_digest_project_block(p) for p in projects)
 
         body_html = (
             '%s<div class="kh_ai_box" dir="rtl">'
@@ -1345,13 +1442,10 @@ class ProjectAiManager(models.Model):
             '<table style="width:100%%;border-collapse:collapse;font-size:13px;">'
             '<thead><tr><th style="text-align:right;">الموظف</th><th>مفتوحة</th><th>متأخرة</th></tr></thead>'
             '<tbody>%s</tbody></table>'
-            '<h4 style="color:#714B67;margin-top:14px;">📋 تفاصيل كل مشروع</h4>'
-            '<table style="width:100%%;border-collapse:collapse;font-size:13px;">'
-            '<thead><tr><th style="text-align:right;">المشروع</th><th>المرحلة</th><th>الإنجاز</th>'
-            '<th>متأخرات</th><th>المتبقّي تحصيله</th></tr></thead>'
-            '<tbody>%s</tbody></table></div>'
+            '<h4 style="color:#714B67;margin-top:14px;">📋 شو صار بكل مشروع هذا الأسبوع</h4>'
+            '%s</div>'
             % (self._KH_AI_STYLE, today_str, len(projects), len(overdue_projects),
-               len(collection_projects), total_outstanding, workload_rows, project_rows)
+               len(collection_projects), total_outstanding, workload_rows, project_blocks)
         )
         subject = '🤖 التقرير الأسبوعي الشامل - مدير المشاريع الذكي (%s)' % today_str
 
@@ -1369,6 +1463,112 @@ class ProjectAiManager(models.Model):
             }).send()
         except Exception:
             _logger.exception('KH_AI_MANAGER: sending GM weekly digest email failed')
+
+    # ------------------------------------------------------------------
+    # "في المشروع شي فعلي اليوم؟" - 3 حقائق ملموسة وقابلة للتحقق (مش
+    # اعتماد على x_ai_last_review_date/بصمة التغيير الداخلية): (1) تاسك
+    # موعده اليوم بالتحديد، (2) رسالة/تعليق على شاتر المشروع اليوم، (3)
+    # طلب اعتماد (kh.approval.request) مرتبط بهذا المشروع تحرّك اليوم
+    # (أُنشئ أو تغيّرت حالته). لو صفر من الثلاثة، ما في سبب حقيقي نظهر
+    # المشروع بالملخّص اليومي.
+    # ------------------------------------------------------------------
+    def _kh_ai_has_activity_today(self, project, today):
+        today_str = str(today)
+        date_from_str = today_str + ' 00:00:00'
+
+        if project.task_ids.filtered(lambda t: t.date_deadline and str(t.date_deadline)[:10] == today_str):
+            return True
+
+        if self._kh_ai_tasks_closed_today(project, today_str):
+            return True
+
+        if self.env['mail.message'].sudo().search_count([
+            ('model', '=', 'project.project'),
+            ('res_id', '=', project.id),
+            ('date', '>=', date_from_str),
+        ]):
+            return True
+
+        if self.env['kh.approval.request'].sudo().search_count([
+            ('project_id', '=', project.id),
+            ('write_date', '>=', date_from_str),
+        ]):
+            return True
+
+        return False
+
+    # ------------------------------------------------------------------
+    # الملخّص اليومي للمدير العام - رسالة واحدة كل يوم، بس فيها تفاصيل
+    # المشاريع يلي فيها فعلياً شي جديد اليوم (مراجعة حقيقية صارت اليوم -
+    # مش متجاهلة بآلية "ما تغيّر شي") - الباقي (الهادئ) بسطر واحد مجمّع
+    # بدل ما يتكرر لكل مشروع بلا فايدة. قراءة بس من حقول محفوظة، بدون أي
+    # استدعاء Claude جديد - رخيصة تماماً.
+    # ------------------------------------------------------------------
+    def _kh_ai_send_gm_daily_digest(self, projects):
+        gm = self._kh_ai_find_general_manager()
+        if not gm or not gm.partner_id:
+            _logger.warning('KH_AI_MANAGER: General Manager user not found by name - skipping daily digest.')
+            return
+        if not projects:
+            return
+
+        today = fields.Date.context_today(self)
+        today_str = str(today)
+        active_today = projects.filtered(lambda p: self._kh_ai_has_activity_today(p, today))
+        quiet_count = len(projects) - len(active_today)
+        alert_count = len(projects.filtered(lambda p: p.x_ai_overdue_tasks_count or p.x_ai_overdue_activities_count))
+
+        def _closed_today_line(project):
+            closed = self._kh_ai_tasks_closed_today(project, today_str)
+            if not closed:
+                return ''
+            names = []
+            for t in closed:
+                was_overdue = t.date_deadline and str(t.date_deadline)[:10] < today_str
+                names.append('%s%s' % (t.name, ' (كان متأخر)' if was_overdue else ''))
+            return '✅ خلص اليوم: ' + '، '.join(names)
+
+        project_blocks = ''.join(
+            self._kh_ai_render_digest_project_block(p, extra_line=_closed_today_line(p)) for p in active_today)
+        if not project_blocks:
+            project_blocks = '<p>لا يوجد أي مشروع فيه تحديث فعلي اليوم.</p>'
+        quiet_line = '<p>✅ %d مشروع هادئ اليوم بدون أي جديد.</p>' % quiet_count if quiet_count else ''
+
+        subject = '🤖 ملخّص اليوم - مدير المشاريع الذكي (%s)' % today
+        body_html = (
+            '%s<div class="kh_ai_box" dir="rtl">'
+            '<h3 style="color:#714B67;">🤖 ملخّص اليوم - كل المشاريع - %s</h3>'
+            '<p>📊 من أصل %d مشروع: %d فيها تحديث فعلي اليوم | %d فيهم تنبيهات نشطة</p>'
+            '%s%s</div>'
+            % (self._KH_AI_STYLE, today, len(projects), len(active_today), alert_count,
+               project_blocks, quiet_line)
+        )
+
+        try:
+            self.env['mail.thread'].message_notify(
+                partner_ids=gm.partner_id.ids, subject=subject, body=Markup(body_html))
+        except Exception:
+            _logger.exception('KH_AI_MANAGER: message_notify (daily) to GM failed')
+        try:
+            self.env['mail.mail'].sudo().create({
+                'subject': subject,
+                'body_html': body_html,
+                'recipient_ids': [(6, 0, gm.partner_id.ids)],
+            }).send()
+        except Exception:
+            _logger.exception('KH_AI_MANAGER: sending GM daily digest email failed')
+
+    # ------------------------------------------------------------------
+    # Cron يومي (مرة وحدة باليوم) - بس بيبني ويبعت الملخّص، بدون أي مراجعة
+    # AI جديدة (هذا الجزء تكفّل فيه الـ Cron الساعي كل ربع ساعة أصلاً).
+    # ------------------------------------------------------------------
+    def _cron_daily_digest_batch(self):
+        try:
+            self._kh_ai_send_gm_daily_digest(self._kh_ai_target_projects())
+            self.env.cr.commit()
+        except Exception:
+            self.env.cr.rollback()
+            _logger.exception('KH_AI_MANAGER: GM daily digest failed')
 
     # ------------------------------------------------------------------
     # بناء نص الملخص (Digest) - بيانات فعلية جاهزة، بدون تخمين

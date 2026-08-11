@@ -21,6 +21,21 @@
         <field name="nextcall" eval="(datetime.now() + timedelta(minutes=15)).strftime('%Y-%m-%d %H:%M:%S')"/>
     </record>
 
+    <!-- الملخّص اليومي للمدير العام - رسالة واحدة كل يوم (Inbox + إيميل)،
+         فيها بس المشاريع يلي صار فيها شي فعلي اليوم (شو صار + شو عالق)،
+         والباقي الهادئ بسطر واحد مجمّع. بدون أي استدعاء Claude جديد -
+         قراءة بس من الحقول المحفوظة أصلاً عبر الكرون كل ربع ساعة. -->
+    <record id="ir_cron_kh_ai_daily_digest" model="ir.cron">
+        <field name="name">AI Project Manager: ملخّص يومي للمدير العام</field>
+        <field name="model_id" ref="project.model_project_project"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_daily_digest_batch()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="active" eval="True"/>
+        <field name="nextcall" eval="(datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d 07:00:00')"/>
+    </record>
+
     <!-- التقرير الأسبوعي - نفس المراجعة بس بينشر بالشاتر (المكان الوحيد
          يلي بيتكرر فيه النشر، تفادياً لـ Spam من التشغيل الساعي). أول
          تشغيل يوم الأحد الجاي الساعة 7 صباحاً. -->
