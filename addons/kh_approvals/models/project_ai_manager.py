@@ -8,6 +8,7 @@
 # ============================================================
 import json
 import logging
+import re
 import time
 from collections import defaultdict
 
@@ -782,6 +783,16 @@ class ProjectAiManager(models.Model):
         text = (text or '').strip()
         return (text[:length] + '…') if len(text) > length else text
 
+    @staticmethod
+    def _kh_ai_html_to_plain(html_content):
+        # html2plaintext ما بيشيل محتوى وسم <style> (بس التاجات نفسها) -
+        # وحقولنا المخزّنة (x_ai_today_summary/x_ai_alerts) فيها _KH_AI_STYLE
+        # مدمج بالداخل، فكانت الـ CSS الخام عم تسرّب كنص عادي بالتقارير
+        # (نفس الغلطة يلي صحّحناها قبل بتاسك Karan - هون فاتت لأنه مكان
+        # جديد). الحل: نشيل وسم <style> بالكامل (مع محتواه) قبل التحويل.
+        html_content = re.sub(r'(?is)<style.*?</style>', '', html_content or '')
+        return html2plaintext(html_content).strip()
+
     def _kh_ai_render_simple_html(self, text):
         text = (text or '').strip()
         if not text:
@@ -1362,8 +1373,8 @@ class ProjectAiManager(models.Model):
     # قراءة بس من حقول محفوظة أصلاً - بدون أي استدعاء Claude جديد هون.
     # ------------------------------------------------------------------
     def _kh_ai_render_digest_project_block(self, project, extra_line=''):
-        today_text = html2plaintext(project.x_ai_today_summary or '').strip() or 'لا يوجد ملخّص محفوظ بعد.'
-        alerts_text = html2plaintext(project.x_ai_alerts or '').strip() or 'لا يوجد تنبيهات.'
+        today_text = self._kh_ai_html_to_plain(project.x_ai_today_summary) or 'لا يوجد ملخّص محفوظ بعد.'
+        alerts_text = self._kh_ai_html_to_plain(project.x_ai_alerts) or 'لا يوجد تنبيهات.'
         header = '%s (%.0f%% إنجاز' % (project.name, project.x_ai_work_done_tasks)
         if (project.x_ai_outstanding_amount or 0.0) > 0:
             header += ' | متبقّي تحصيل: %.2f' % project.x_ai_outstanding_amount
