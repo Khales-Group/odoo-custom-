@@ -564,6 +564,114 @@ def _tool_find_customer(env, user, tool_input):
     }
 
 
+# ---------------------------------------------------------------------------
+# Custom tool: apply a contractor's schedule/timeline date window to every
+# EXISTING task in a project's stage, instead of the model improvising with
+# create_record/write_record on its own - which in practice sometimes ended
+# up creating brand-new duplicate "milestone" tasks instead of dating the
+# project's real, already-existing checklist tasks. This tool makes the
+# correct action (bulk-write the real tasks) the easy, obvious path.
+# ---------------------------------------------------------------------------
+
+
+@register_tool(
+    "align_project_tasks_with_stage_dates",
+    (
+        "Apply a start/end date window to ALL existing tasks within one stage "
+        "of a project. Use this whenever asked to integrate/align a "
+        "contractor's schedule, timeline, or Gantt chart with a project's "
+        "task list - it updates the project's real, already-existing tasks "
+        "in bulk (the correct approach when a project's work is broken down "
+        "into per-stage checklist tasks, which is normal here). Prefer this "
+        "over write_record for this use case since it matches the stage by "
+        "name for you and reports exactly how many tasks were updated. It's "
+        "still fine to use create_record separately for a schedule activity "
+        "that has genuinely no matching stage/task in the project at all - "
+        "just don't create a duplicate/summary task when a matching stage "
+        "with real tasks already exists."
+    ),
+    {
+        "type": "object",
+        "properties": {
+            "project_keyword": {
+                "type": "string",
+                "description": "Part of the project's name or reference.",
+            },
+            "stage_name": {
+                "type": "string",
+                "description": "Exact or approximate name of the task stage to update (matched with ilike).",
+            },
+            "date_start": {
+                "type": "string",
+                "description": "Start date for planned_date_begin, e.g. '2026-01-05' or '2026-01-05 08:00:00'.",
+            },
+            "date_end": {
+                "type": "string",
+                "description": "End/deadline date for date_deadline, same format as date_start.",
+            },
+            "assignee_user_id": {
+                "type": "integer",
+                "description": (
+                    "Optional - if given, this user is ADDED (existing assignees are kept) "
+                    "as a responsible user on every task updated."
+                ),
+            },
+        },
+        "required": ["project_keyword", "stage_name", "date_start", "date_end"],
+    },
+)
+def _tool_align_project_tasks_with_stage_dates(env, user, tool_input):
+    keyword = (tool_input.get("project_keyword") or "").strip()
+    stage_name = (tool_input.get("stage_name") or "").strip()
+    date_start = tool_input.get("date_start")
+    date_end = tool_input.get("date_end")
+    if not keyword or not stage_name or not date_start or not date_end:
+        raise ToolError("project_keyword, stage_name, date_start and date_end are all required.")
+
+    _require_model_operation(env, "project.project", "read")
+    projects = _fuzzy_name_search(env, "project.project", keyword, ["name"], limit=5)
+    if not projects:
+        return {"error": f"No project found matching '{keyword}'."}
+    top_score = projects[0]["_match_score"]
+    tied = [p for p in projects if p["_match_score"] == top_score]
+    for p in projects:
+        p.pop("_match_score", None)
+    if len(tied) > 1:
+        return {
+            "ambiguous": True,
+            "candidates": [p["name"] for p in tied],
+            "message": "Multiple projects match equally well - ask the user which one.",
+        }
+    project_id = projects[0]["id"]
+
+    _require_model_operation(env, "project.task", "read")
+    _require_model_operation(env, "project.task", "write")
+    tasks = env["project.task"].search([
+        ("project_id", "=", project_id),
+        ("stage_id.name", "ilike", stage_name),
+    ])
+    if not tasks:
+        return {
+            "error": (
+                f"No existing tasks found in a stage matching '{stage_name}' for this "
+                "project. If this activity genuinely has no corresponding stage/task "
+                "in the project, it's fine to create_record a new task for it instead."
+            )
+        }
+
+    tasks.write({"planned_date_begin": date_start, "date_deadline": date_end})
+    assignee_user_id = tool_input.get("assignee_user_id")
+    if assignee_user_id:
+        tasks.write({"user_ids": [(4, int(assignee_user_id))]})
+
+    return {
+        "updated_count": len(tasks),
+        "task_ids": tasks.ids,
+        "stage_matched": tasks[0].stage_id.name,
+        "project_matched": projects[0]["name"],
+    }
+
+
 _GENERIC_HANDLERS = {
     "list_enabled_models": _tool_list_enabled_models,
     "search_records": _tool_search_records,
