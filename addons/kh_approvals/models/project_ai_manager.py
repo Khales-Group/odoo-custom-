@@ -51,7 +51,7 @@ CRON_BATCH_TIME_BUDGET_SECONDS = 240
 # نرفع هذا الرقم. هيك أي مشروع (حتى لو ما تغيّر عليه أي شي فعلياً) بتتغيّر
 # بصمته تلقائياً وبتاخد مراجعة فعلية جديدة بالـ Cron العادي - بدون ما نحتاج
 # نطلب من المستخدم يفرض (force) المراجعة يدوياً لكل مشروع قديم لحاله.
-_KH_AI_PROMPT_VERSION = 9
+_KH_AI_PROMPT_VERSION = 10
 
 # نماذج مسموحة للأداة الاستكشافية (Agentic) - قراءة فقط، بدون أي كتابة/حذف.
 # هذا نطاق مخصّص لهذا الفيتشر بس (منفصل بالكامل عن mcp_server وحظره الصارم
@@ -1447,16 +1447,32 @@ class ProjectAiManager(models.Model):
     # لازم تُحسب لصالح الفريق، مش تضيع بين التنبيهات.
     # ------------------------------------------------------------------
     def _kh_ai_tasks_closed_today(self, project, today_str):
-        # مش write_date == اليوم - هاي بتنحرّك بأي تعديل عادي (متل كتابة
-        # تواريخ بالجملة عبر أداة تايم لاين المقاول)، حتى لو التاسك منجز
-        # من زمان وما تغيّرت حالته اليوم إطلاقاً (ثبت هذا فعلياً بمشروع
-        # 00126). الأصح: قارن مع آخر Snapshot محفوظ لـ"مفتوحة" (المدمج من
-        # x_ai_overdue_task_ids/x_ai_next_task_ids وقت آخر مراجعة) - لو
-        # كان بهذا الـ Snapshot (يعني كان مفتوح وقتها) وهلق منجز، هذا
-        # انتقال حقيقي open→done، مش أثر جانبي من تعديل حقل تاريخ.
-        previously_open_ids = set((project.x_ai_overdue_task_ids | project.x_ai_next_task_ids).ids)
-        return project.task_ids.filtered(
-            lambda t: t.id in previously_open_ids and self._kh_ai_is_task_done(t))
+        # محاولتين سابقتين غلط: (1) write_date == اليوم - بينحرّك بأي
+        # تعديل عادي (تاريخ، مثلاً)، حتى لو التاسك منجز من زمان. (2)
+        # مقارنة مع x_ai_overdue_task_ids/x_ai_next_task_ids كـ"Snapshot
+        # قديم" - غلط لأنها حقول compute تفاعلية بتتحدّث تلقائياً لحالها
+        # لحظة ما stage_id/state يتغيّر (نفس العملية)، يعني وقت ما منفحصها
+        # هي أصلاً صارت محدّثة للوضع الجديد - مافي "قبل" نقارن معه.
+        # الصحيح: نتحقق من رسالة تتبّع تغيير حقيقية (stage_id/state) اليوم
+        # بالتحديد على التاسك - Odoo بيسجّلها تلقائياً كـ mail.tracking.value
+        # لما هذول الحقول تتغيّر عبر الواجهة، بغض النظر شو التاسك القديم.
+        done_tasks = project.task_ids.filtered(lambda t: self._kh_ai_is_task_done(t))
+        if not done_tasks:
+            return done_tasks
+
+        messages = self.env['mail.message'].sudo().search([
+            ('model', '=', 'project.task'),
+            ('res_id', 'in', done_tasks.ids),
+            ('date', '>=', today_str + ' 00:00:00'),
+        ])
+        closed_today_ids = set()
+        for m in messages:
+            for tv in m.tracking_value_ids:
+                if tv.field_id and tv.field_id.name in ('stage_id', 'state', 'x_custom_state', 'kanban_state'):
+                    closed_today_ids.add(m.res_id)
+                    break
+
+        return done_tasks.filtered(lambda t: t.id in closed_today_ids)
 
     # ------------------------------------------------------------------
     # التقرير الأسبوعي الشامل للمدير العام - مش تقرير مشروع لحاله، إنما
