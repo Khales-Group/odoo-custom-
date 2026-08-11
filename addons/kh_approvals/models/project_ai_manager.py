@@ -51,7 +51,7 @@ CRON_BATCH_TIME_BUDGET_SECONDS = 240
 # نرفع هذا الرقم. هيك أي مشروع (حتى لو ما تغيّر عليه أي شي فعلياً) بتتغيّر
 # بصمته تلقائياً وبتاخد مراجعة فعلية جديدة بالـ Cron العادي - بدون ما نحتاج
 # نطلب من المستخدم يفرض (force) المراجعة يدوياً لكل مشروع قديم لحاله.
-_KH_AI_PROMPT_VERSION = 7
+_KH_AI_PROMPT_VERSION = 8
 
 # نماذج مسموحة للأداة الاستكشافية (Agentic) - قراءة فقط، بدون أي كتابة/حذف.
 # هذا نطاق مخصّص لهذا الفيتشر بس (منفصل بالكامل عن mcp_server وحظره الصارم
@@ -179,6 +179,19 @@ class ProjectAiManager(models.Model):
         return self.env['res.users'].sudo().search([('name', 'ilike', 'karan')], limit=1)
 
     # ------------------------------------------------------------------
+    # أي فحص "صار تحديث/رسالة حقيقية" لازم يستثني رسائل الأتمتة نفسها -
+    # الأنشطة (mail.activity) يلي منشئها كودنا (تنبيه PM/تحصيل المحاسب)
+    # بتترافق برسائل نظام بشاتر المشروع (Created by OdooBot)، وتقرير
+    # الأسبوعي (Log note) نوعه message_type='comment' برضو - لو ما
+    # استثنيناها، النظام بيقرا فعله هو كـ"تحديث حقيقي من حدا" وبيصير
+    # يخدع نفسه (ثبت هذا فعلياً - رسالة "سبب الظهور" طلعت من Activity
+    # تنبيه تحصيل تلقائي، مش رسالة بشرية).
+    # ------------------------------------------------------------------
+    def _kh_ai_odoobot_partner_id(self):
+        root = self.env.ref('base.partner_root', raise_if_not_found=False)
+        return root.id if root else False
+
+    # ------------------------------------------------------------------
     # اكتشاف المدير العام ديناميكياً بالاسم (مش id ثابت) - نفس أسلوب
     # الاكتشاف تبع المحاسب فوق. شرطين (Majed + Alkindi) بدل الاسم الكامل
     # تفادياً لأي فرق بالتشكيل/الترتيب بالاسم المسجّل فعلياً بـ Odoo.
@@ -199,6 +212,7 @@ class ProjectAiManager(models.Model):
             ('model', '=', 'project.project'),
             ('res_id', '=', self.id),
             ('message_type', 'in', ['comment', 'email']),
+            ('author_id', '!=', self._kh_ai_odoobot_partner_id()),
         ], order='date desc', limit=1)
         days_since_update = None
         if last_msg and last_msg.date:
@@ -229,6 +243,7 @@ class ProjectAiManager(models.Model):
             ('model', '=', 'project.task'),
             ('res_id', 'in', candidate_tasks.ids),
             ('message_type', 'in', ['comment', 'email']),
+            ('author_id', '!=', self._kh_ai_odoobot_partner_id()),
         ], order='date desc')
         for m in messages:
             if m.res_id in notes_by_task:
@@ -300,6 +315,7 @@ class ProjectAiManager(models.Model):
             ('model', '=', 'project.task'),
             ('res_id', 'in', risky_tasks.ids),
             ('message_type', 'in', ['comment', 'email']),
+            ('author_id', '!=', self._kh_ai_odoobot_partner_id()),
         ]).mapped('res_id'))
         if 'timesheet_ids' in risky_tasks._fields:
             has_activity_ids |= set(self.env['account.analytic.line'].sudo().search([
@@ -977,6 +993,7 @@ class ProjectAiManager(models.Model):
             ('res_id', '=', self.id),
             ('date', '>=', date_from),
             ('message_type', 'in', ['comment', 'email', 'notification']),
+            ('author_id', '!=', self._kh_ai_odoobot_partner_id()),
         ], order='date desc', limit=40)
 
         # التحقق المالي عبر برومبت مخصّص يستخدم أدوات mcp_server (find_customer +
@@ -1152,6 +1169,7 @@ class ProjectAiManager(models.Model):
                 ('model', '=', 'project.task'),
                 ('res_id', 'in', assigned_task_ids),
                 ('message_type', 'in', ['comment', 'email']),
+                ('author_id', '!=', self._kh_ai_odoobot_partner_id()),
             ], order='date desc', limit=1)
             last_task_note_date = last_note.date if last_note else ''
             if 'timesheet_ids' in all_tasks._fields:
@@ -1519,6 +1537,8 @@ class ProjectAiManager(models.Model):
             ('model', '=', 'project.project'),
             ('res_id', '=', project.id),
             ('date', '>=', date_from_str),
+            ('message_type', 'in', ['comment', 'email']),
+            ('author_id', '!=', self._kh_ai_odoobot_partner_id()),
         ])
         if msg_count:
             reasons.append('%d رسالة/تعليق على شاتر المشروع اليوم' % msg_count)
