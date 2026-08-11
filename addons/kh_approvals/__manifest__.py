@@ -6,7 +6,7 @@
     'website': 'https://khales.ae',
     'category': 'Uncategorized',
     'version': '19.0.1.0.0',
-    'depends': ['base', 'mail', 'hr', 'project', 'purchase', 'hr_payroll', 'account', 'mcp_server'],
+    'depends': ['base', 'mail', 'hr', 'project', 'purchase', 'hr_payroll', 'account', 'mcp_server', 'hr_timesheet'],
     'external_dependencies': {
         'python': ['anthropic'],
     },

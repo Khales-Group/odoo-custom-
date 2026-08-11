@@ -84,13 +84,32 @@ SYSTEM_PROMPT = (
     "phase to the corresponding stage in the project and apply that phase's "
     "date window to ALL existing tasks already in that stage - prefer the "
     "align_project_tasks_with_stage_dates tool for this (it does the bulk "
-    "update for you and reports how many tasks it touched). Do NOT create "
-    "new tasks for phases that have a matching stage with real tasks in it "
-    "- creating a handful of new summary tasks instead of dating the "
-    "project's actual existing tasks is wrong and has caused real mistakes "
-    "before. Only use create_record for a phase that genuinely has no "
-    "corresponding stage/tasks anywhere in the project at all."
+    "update for you, reports how many tasks it touched, and automatically "
+    "adds the requesting user as responsible on every task it updates - "
+    "you don't need to pass a user id or make a separate write_record call "
+    "for that). Do NOT create new tasks for phases that have a matching "
+    "stage with real tasks in it - creating a handful of new summary tasks "
+    "instead of dating the project's actual existing tasks is wrong and has "
+    "caused real mistakes before. Only use create_record for a phase that "
+    "genuinely has no corresponding stage/tasks anywhere in the project at all."
 )
+
+
+def _build_system_prompt(user):
+    # SYSTEM_PROMPT is a shared constant with no idea who's actually typing -
+    # the model then has to guess or ask "who are you", even though the real
+    # authenticated user is right here (env.user) and every tool call is
+    # already scoped to their real permissions. Telling it explicitly closes
+    # that gap: it can resolve "me"/"my tasks" itself instead of asking.
+    return (
+        SYSTEM_PROMPT
+        + "\n\nThe person you are talking to in this conversation is: "
+        + f"{user.name} (login: {user.login}, user_id={user.id}). When they "
+        + "say 'me', 'my', 'I', or the Arabic equivalents (انا/لي/يلي عليّ), "
+        + "that refers to this exact person - use their user_id directly "
+        + f"(e.g. a domain filter like [\"user_ids\", \"=\", {user.id}]) "
+        + "instead of asking who they are or guessing from context."
+    )
 
 
 def _get_client_and_model():
@@ -409,13 +428,14 @@ class McpChatController(http.Controller):
         tool_activity = []
         response_files = []
         response = None
+        system_prompt = _build_system_prompt(user)
 
         try:
             for _ in range(MAX_TOOL_ITERATIONS):
                 response = client.beta.messages.create(
                     model=model,
                     max_tokens=MAX_TOKENS,
-                    system=SYSTEM_PROMPT,
+                    system=system_prompt,
                     tools=tools,
                     messages=history,
                     betas=FILE_GENERATION_BETAS,

@@ -584,11 +584,13 @@ def _tool_find_customer(env, user, tool_input):
         "in bulk (the correct approach when a project's work is broken down "
         "into per-stage checklist tasks, which is normal here). Prefer this "
         "over write_record for this use case since it matches the stage by "
-        "name for you and reports exactly how many tasks were updated. It's "
-        "still fine to use create_record separately for a schedule activity "
-        "that has genuinely no matching stage/task in the project at all - "
-        "just don't create a duplicate/summary task when a matching stage "
-        "with real tasks already exists."
+        "name for you, reports exactly how many tasks were updated, AND "
+        "automatically adds the person who is asking as a responsible user "
+        "on every task it touches (you never need to pass a user id for "
+        "this - it always happens). It's still fine to use create_record "
+        "separately for a schedule activity that has genuinely no matching "
+        "stage/task in the project at all - just don't create a duplicate/"
+        "summary task when a matching stage with real tasks already exists."
     ),
     {
         "type": "object",
@@ -608,13 +610,6 @@ def _tool_find_customer(env, user, tool_input):
             "date_end": {
                 "type": "string",
                 "description": "End/deadline date for date_deadline, same format as date_start.",
-            },
-            "assignee_user_id": {
-                "type": "integer",
-                "description": (
-                    "Optional - if given, this user is ADDED (existing assignees are kept) "
-                    "as a responsible user on every task updated."
-                ),
             },
         },
         "required": ["project_keyword", "stage_name", "date_start", "date_end"],
@@ -660,15 +655,16 @@ def _tool_align_project_tasks_with_stage_dates(env, user, tool_input):
         }
 
     tasks.write({"planned_date_begin": date_start, "date_deadline": date_end})
-    assignee_user_id = tool_input.get("assignee_user_id")
-    if assignee_user_id:
-        tasks.write({"user_ids": [(4, int(assignee_user_id))]})
+    # Always add the real person asking as a responsible user - not left to
+    # the model to remember, and not a replacement of existing assignees.
+    tasks.write({"user_ids": [(4, user.id)]})
 
     return {
         "updated_count": len(tasks),
         "task_ids": tasks.ids,
         "stage_matched": tasks[0].stage_id.name,
         "project_matched": projects[0]["name"],
+        "assigned_user": user.name,
     }
 
 

@@ -50,7 +50,7 @@ CRON_BATCH_TIME_BUDGET_SECONDS = 240
 # نرفع هذا الرقم. هيك أي مشروع (حتى لو ما تغيّر عليه أي شي فعلياً) بتتغيّر
 # بصمته تلقائياً وبتاخد مراجعة فعلية جديدة بالـ Cron العادي - بدون ما نحتاج
 # نطلب من المستخدم يفرض (force) المراجعة يدوياً لكل مشروع قديم لحاله.
-_KH_AI_PROMPT_VERSION = 4
+_KH_AI_PROMPT_VERSION = 5
 
 # نماذج مسموحة للأداة الاستكشافية (Agentic) - قراءة فقط، بدون أي كتابة/حذف.
 # هذا نطاق مخصّص لهذا الفيتشر بس (منفصل بالكامل عن mcp_server وحظره الصارم
@@ -208,6 +208,62 @@ class ProjectAiManager(models.Model):
             lambda t: t.write_date and (now - t.write_date).days >= 14)
 
         return days_since_update, stale_tasks
+
+    # ------------------------------------------------------------------
+    # نشاط فعلي داخل التاسكات - نوتس (شاتر على التاسك نفسه، مش على المشروع)
+    # وساعات تايمشيت مسجّلة. قبل هذا، الديجست كان يقرا شاتر المشروع بس
+    # ويتجاهل كلياً أي نوت/تايمشيت مسجّل جوا تاسك لحاله - فجوة حقيقية (موظف
+    # ممكن يكتب تفاصيل دقيقة جوا التاسك وين النظام "ما بيشوفها"). النطاق:
+    # أي تاسك عليه مسؤول (assign) - بدون شرط مفتوح/مغلق أو مدة زمنية (بطلب
+    # صاحب العمل تحديداً) - وبس التاسكات يلي فعلياً فيها نوت أو ساعات
+    # مسجّلة تظهر بالنص (تاسك مسندة وهادئة تماماً مش مفيدة نكررها هون).
+    # ------------------------------------------------------------------
+    def _kh_ai_build_task_activity_digest(self, all_tasks, limit=60):
+        candidate_tasks = all_tasks.filtered(lambda t: t.user_ids)
+        if not candidate_tasks:
+            return ''
+
+        notes_by_task = {}
+        messages = self.env['mail.message'].sudo().search([
+            ('model', '=', 'project.task'),
+            ('res_id', 'in', candidate_tasks.ids),
+            ('message_type', 'in', ['comment', 'email']),
+        ], order='date desc')
+        for m in messages:
+            if m.res_id in notes_by_task:
+                continue
+            text = html2plaintext(m.body or '').strip()
+            if text:
+                notes_by_task[m.res_id] = (text[:300], str(m.date)[:16])
+
+        hours_by_task = {}
+        if 'timesheet_ids' in candidate_tasks._fields:
+            Timesheet = self.env['account.analytic.line'].sudo()
+            lines = Timesheet.search([('task_id', 'in', candidate_tasks.ids)])
+            for line in lines:
+                hours_by_task[line.task_id.id] = hours_by_task.get(line.task_id.id, 0.0) + line.unit_amount
+
+        rows = []
+        for t in candidate_tasks:
+            note = notes_by_task.get(t.id)
+            hours = hours_by_task.get(t.id)
+            if not note and not hours:
+                continue
+            assignees = ', '.join(t.user_ids.mapped('name'))
+            parts = ['📌 %s | المكلّف: %s' % (t.name, assignees)]
+            if hours:
+                parts.append('ساعات مسجّلة: %.1f' % hours)
+            if note:
+                parts.append('آخر ملاحظة (%s): %s' % (note[1], note[0]))
+            rows.append('  ' + ' | '.join(parts))
+
+        if not rows:
+            return ''
+        extra = ''
+        if len(rows) > limit:
+            extra = '\n  ... و %d تاسك زيادة فيها نشاط مسجّل (مش معروضين لتوفير المساحة).' % (len(rows) - limit)
+            rows = rows[:limit]
+        return '\n'.join(rows) + extra
 
     # ------------------------------------------------------------------
     # هل التاسك منجزة؟ - state وx_custom_state طلعوا فاضيين لمعظم التاسكات
@@ -508,15 +564,16 @@ class ProjectAiManager(models.Model):
             "ممكن تقابل أكتر من نشاط مقاول (مثلاً Tiling = Floor Tile + Wall Tile) - "
             "بهذا الحال استخدم أبكر تاريخ بداية وأبعد تاريخ نهاية بين الأنشطة المتطابقة.\n"
             "4) لكل مرحلة طابقتها - استخدم أداة align_project_tasks_with_stage_dates "
-            "(الأفضل، بتحدّث كل تاسكات المرحلة بنداء واحد وبترجّعلك عدد التاسكات "
-            "المحدّثة فعلياً) بدل write_record لتاسك لتاسك. مرّرلها project_keyword، "
-            "stage_name، date_start، date_end، وassignee_user_id=%d. ممنوع تسيب ولا "
+            "(الأفضل، بتحدّث كل تاسكات المرحلة بنداء واحد، بترجّعلك عدد التاسكات "
+            "المحدّثة فعلياً، وبتعيّن %s (اليوزر الطالب) تلقائياً على كل تاسك حدّثته - "
+            "بدون ما تحتاج تمرر أي user_id) بدل write_record لتاسك لتاسك. مرّرلها "
+            "project_keyword وstage_name وdate_start وdate_end بس. ممنوع تسيب ولا "
             "تاسك فاضي بمرحلة طابقتها - قبل ما تنادي report_timeline_integration، "
             "أعد البحث (search_records) وتأكد الصفر تاسكات فاضية بالمراحل المطابقة.\n"
             "5) المراحل يلي مافيها أي نشاط مطابق بجدول المقاول (عادة مراحل التصميم/"
             "الموافقات قبل بدء التنفيذ) سيبها بدون تاريخ - سجّلها بـ skipped_stages مع السبب.\n"
             "6) استدعِ report_timeline_integration بالنتيجة النهائية."
-            % (self.name, self.id, self.id, user.id)
+            % (self.name, self.id, self.id, user.name)
         )
         content_block = {
             'type': 'document' if media_type == 'application/pdf' else 'image',
@@ -917,7 +974,8 @@ class ProjectAiManager(models.Model):
             self.x_ai_work_done, self.x_ai_work_done_tasks, self.x_ai_contract_value,
             self.x_ai_invoiced_amount, self.x_ai_collected_amount,
             open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts, messages, today_str,
-            days_since_update, stale_tasks, accountant)
+            days_since_update, stale_tasks, accountant,
+            task_activity_text=self._kh_ai_build_task_activity_digest(all_tasks))
 
         data, error_html = self._kh_ai_claude_review(digest)
         if error_html:
@@ -1007,11 +1065,32 @@ class ProjectAiManager(models.Model):
         self.ensure_one()
         last_task_write = max(all_tasks.mapped('write_date') or [False]) or ''
         last_message_date = messages[0].date if messages else ''
+
+        # نوتس/تايمشيت جوا التاسكات ما بتحرّك write_date تبع التاسك نفسه
+        # (سجلات مختلفة كلياً) - لازم فحص منفصل رخيص (limit=1) هون، وإلا
+        # بصمة المشروع ما رح "تحس" بنوت/ساعة جديدة، وبتضل تتجاهل المراجعة.
+        assigned_task_ids = all_tasks.filtered(lambda t: t.user_ids).ids
+        last_task_note_date = ''
+        last_timesheet_date = ''
+        if assigned_task_ids:
+            last_note = self.env['mail.message'].sudo().search([
+                ('model', '=', 'project.task'),
+                ('res_id', 'in', assigned_task_ids),
+                ('message_type', 'in', ['comment', 'email']),
+            ], order='date desc', limit=1)
+            last_task_note_date = last_note.date if last_note else ''
+            if 'timesheet_ids' in all_tasks._fields:
+                last_ts = self.env['account.analytic.line'].sudo().search([
+                    ('task_id', 'in', assigned_task_ids),
+                ], order='write_date desc', limit=1)
+                last_timesheet_date = last_ts.write_date if last_ts else ''
+
         return '|'.join(str(x) for x in [
             _KH_AI_PROMPT_VERSION,
             len(open_tasks), len(overdue_tasks),
             len(overdue_proj_acts) + len(overdue_task_acts), len(stale_tasks),
             days_since_update, last_message_date, last_task_write,
+            last_task_note_date, last_timesheet_date,
             self.stage_id.id,
             round(self.x_ai_outstanding_amount or 0.0, 2),
         ])
@@ -1296,7 +1375,8 @@ class ProjectAiManager(models.Model):
     # ------------------------------------------------------------------
     def _kh_ai_build_digest(self, work_done, work_done_tasks, contract_value, invoiced_amount, collected_amount,
                              open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts,
-                             messages, today_str, days_since_update=None, stale_tasks=None, accountant=None):
+                             messages, today_str, days_since_update=None, stale_tasks=None, accountant=None,
+                             task_activity_text=''):
         lines = []
         lines.append('المشروع: %s' % self.name)
         lines.append('المرحلة الحالية: %s' % (self.stage_id.name if self.stage_id else '-'))
@@ -1363,6 +1443,10 @@ class ProjectAiManager(models.Model):
                 continue
             author = m.author_id.name if m.author_id else '?'
             lines.append('  [%s] %s (%s): %s' % (str(m.date)[:16], author, m.message_type, content[:500]))
+
+        if task_activity_text:
+            lines.append('\n--- نشاط فعلي داخل التاسكات (ملاحظات + ساعات تايمشيت مسجّلة) ---')
+            lines.append(task_activity_text)
 
         return '\n'.join(lines)
 
@@ -1491,6 +1575,9 @@ class ProjectAiManager(models.Model):
             "هاي فجوة مهمة لازم تنبّه عليها بوضوح بقسم collection_note.\n"
             "لو في مشروع بدون أي تحديث حديث بسجل النشاط، أو تاسكات مفتوحة ما تحرّكت من فترة طويلة - هاي "
             "حقائق جاهزة بالبيانات تحت، لازم تظهر بقسم alerts (type: missing_update / stale_task).\n\n"
+            "مهم: قسم 'نشاط فعلي داخل التاسكات' تحت (لو موجود) هو ملاحظات/ساعات تايمشيت مسجّلة "
+            "داخل تاسكات لحالها (مش على شاتر المشروع العام) - هذا غالباً أدق مصدر لـ 'شو صار اليوم' "
+            "فعلياً، خصوصاً لو مافي شي جديد بسجل نشاط المشروع نفسه. اعتمد عليه بقسم today_update.\n\n"
             "بخصوص الفواتير: الرقم المرفق (المفوتر/المحصّل تحت) مُدقّق مسبقاً بفحص مالي منفصل عبر فواتير "
             "حقيقية - اعتمد عليه كما هو، مش مطلوب منك تتحقق منه بنفسك.\n\n"
             "معرّفات مفيدة للاستكشاف:\n%s\n\n"
