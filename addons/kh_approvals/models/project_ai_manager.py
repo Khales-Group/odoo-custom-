@@ -51,7 +51,7 @@ CRON_BATCH_TIME_BUDGET_SECONDS = 240
 # نرفع هذا الرقم. هيك أي مشروع (حتى لو ما تغيّر عليه أي شي فعلياً) بتتغيّر
 # بصمته تلقائياً وبتاخد مراجعة فعلية جديدة بالـ Cron العادي - بدون ما نحتاج
 # نطلب من المستخدم يفرض (force) المراجعة يدوياً لكل مشروع قديم لحاله.
-_KH_AI_PROMPT_VERSION = 12
+_KH_AI_PROMPT_VERSION = 13
 
 # نماذج مسموحة للأداة الاستكشافية (Agentic) - قراءة فقط، بدون أي كتابة/حذف.
 # هذا نطاق مخصّص لهذا الفيتشر بس (منفصل بالكامل عن mcp_server وحظره الصارم
@@ -807,6 +807,26 @@ class ProjectAiManager(models.Model):
         )
 
     # ------------------------------------------------------------------
+    # ملاحظة تحصيل احتياطية (بدون AI) - مبنية مباشرة من "الحالة/التوقيت
+    # المتوقع" (aging_status) المسجّلة يدوياً بجدول التحصيل (kh.collection.
+    # tracker)، مستخدمة بس لما Claude يرجّع collection_note فاضية. هيك
+    # عمود "معاينة التحصيل" بالداشبورد ما يفضل فاضي بينما الجدول نفسه فيه
+    # معلومة واضحة عن حالة كل دفعة.
+    # ------------------------------------------------------------------
+    def _kh_ai_fallback_collection_note(self):
+        self.ensure_one()
+        lines = []
+        for tracker in self.x_ai_collection_tracker_ids:
+            status = (tracker.aging_status or '').strip()
+            if not status:
+                continue
+            label = tracker.reference or tracker.company_name or ''
+            lines.append('%s: %s' % (label, status) if label else status)
+        if not lines:
+            return ''
+        return 'الحالة/التوقيت المتوقع (بحسب كشف المحاسب اليدوي) - ' + ' | '.join(lines)
+
+    # ------------------------------------------------------------------
     # خطوات تالية احتياطية (بدون AI) - مبنية بالكامل من حقائق جاهزة عندنا،
     # مستخدمة بس لما Claude يرجّع next_steps فاضية رغم تعليمات البرومبت
     # (يصير مع مشاريع هادية بدون تنبيهات). هدفها ضمان إنه هذا القسم دايماً
@@ -988,6 +1008,15 @@ class ProjectAiManager(models.Model):
         else:
             data = data or {}
             today_html = self._kh_ai_render_today_html(data, today_str)
+            # ضمان بالكود إنه ملاحظة التحصيل ما تطلع فاضية أبداً لو عنا سطور
+            # بجدول التحصيل اليدوي - لو Claude رجّع ملاحظة فاضية (مشروع هادي
+            # ماليّاً مثلاً)، منبني نص احتياطي مباشرة من "الحالة/التوقيت
+            # المتوقع" (aging_status) المسجّلة يدوياً بالجدول، بدل ما تفضل
+            # فاضية بينما الجدول نفسه فيه معلومة واضحة.
+            if not (data.get('collection_note') and str(data.get('collection_note')).strip()):
+                fallback_note = self._kh_ai_fallback_collection_note()
+                if fallback_note:
+                    data['collection_note'] = fallback_note
             collection_html = self._kh_ai_render_simple_html(data.get('collection_note'))
             # حقيقة جاهزة بالكود (مش معتمدة على ملاحظة Claude) - قيمة العقد
             # لازم تكون معبّأة، لأنها ضرورية لحساب نسبة التحصيل الحقيقية
@@ -1120,6 +1149,15 @@ class ProjectAiManager(models.Model):
         # وما بيذكره - نفس التناقض يلي صار فعلياً بمشاريع حقيقية.
         due_today_count = len(all_tasks.filtered(lambda t: t.date_deadline and str(t.date_deadline)[:10] == today_str))
 
+        # الحالة/التوقيت المتوقع (aging_status) نص حر بيتعدّل بجدول التحصيل
+        # اليدوي بدون ما يغيّر أي رقم (المبلغ/المحصَّل) - لو ما ضمّيناها
+        # بالبصمة، تعديل المحاسب لهذا النص بس ما رح يولّد مراجعة جديدة
+        # وملاحظة التحصيل (بما فيها الاحتياطية) بتفضل قديمة.
+        tracker_signature = '|'.join(
+            '%s:%s' % (tracker.id, tracker.aging_status or '')
+            for tracker in self.x_ai_collection_tracker_ids
+        )
+
         return '|'.join(str(x) for x in [
             _KH_AI_PROMPT_VERSION,
             len(open_tasks), len(overdue_tasks),
@@ -1128,6 +1166,7 @@ class ProjectAiManager(models.Model):
             last_task_note_date, last_timesheet_date, pacing_risk_count, due_today_count,
             self.stage_id.id,
             round(self.x_ai_outstanding_amount or 0.0, 2),
+            tracker_signature,
         ])
 
     # ------------------------------------------------------------------

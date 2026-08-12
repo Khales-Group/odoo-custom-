@@ -209,8 +209,6 @@ for rec in records:
             <list string="التحصيل" default_order="x_ai_outstanding_amount desc">
                 <field name="name"/>
                 <field name="user_id" string="المسؤول"/>
-                <field name="x_ai_work_done_tasks" string="نسبة الإنجاز"/>
-                <field name="x_ai_contract_value" string="قيمة العقد"/>
                 <field name="x_ai_invoiced_amount" string="المفوتر"/>
                 <field name="x_ai_collected_amount" string="المحصّل"/>
                 <field name="x_ai_outstanding_amount" string="المتبقّي"/>
@@ -233,8 +231,6 @@ for rec in records:
                         <h3><field name="stage_id"/> — مدير المشروع: <field name="user_id"/></h3>
                     </div>
                     <group>
-                        <field name="x_ai_work_done_tasks"/>
-                        <field name="x_ai_contract_value"/>
                         <field name="x_ai_invoiced_amount"/>
                         <field name="x_ai_collected_amount"/>
                         <field name="x_ai_outstanding_amount"/>
