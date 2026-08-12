@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- noupdate="1" - بيانات مستوردة مرة واحدة من كشف المحاسب (Excel) بتاريخ
+         2026-08-10. بعد الإدخال، أي تعديل عليها من الواجهة (تحصيل جديد،
+         تحديث حالة) بيضل كما هو ولا يُعاد استيراده أو يُصفَّر عند أي
+         ترقية للموديول لاحقاً. -->
+    <data noupdate="1">
+
+        <!-- ===== Khales Group — Accounts Receivable (Project Payments) ===== -->
+
+        <record id="kh_collection_seed_1" model="kh.collection.tracker">
+            <field name="company_name">Ghanim Abdulla (DU)</field>
+            <field name="reference">Owner Payment</field>
+            <field name="category">project_payment</field>
+            <field name="amount">50000.00</field>
+            <field name="aging_status">2 months</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+        <record id="kh_collection_seed_2" model="kh.collection.tracker">
+            <field name="company_name">Mughal Cont (DU)</field>
+            <field name="reference">Ghanim Abdulla</field>
+            <field name="category">project_payment</field>
+            <field name="amount">75000.00</field>
+            <field name="received_amount">50000.00</field>
+            <field name="aging_status">Still outstanding</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+        <record id="kh_collection_seed_3" model="kh.collection.tracker">
+            <field name="company_name">Saeed Saif Almesmeri (Fuj)</field>
+            <field name="reference">Owner Payment</field>
+            <field name="category">project_payment</field>
+            <field name="amount">10000.00</field>
+            <field name="aging_status">Next Month</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+        <record id="kh_collection_seed_4" model="kh.collection.tracker">
+            <field name="company_name">Saeed Ghasib Almesmeri</field>
+            <field name="reference">Owner Payment</field>
+            <field name="category">project_payment</field>
+            <field name="amount">13000.00</field>
+            <field name="received_amount">13000.00</field>
+            <field name="aging_status">Received</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+        <record id="kh_collection_seed_5" model="kh.collection.tracker">
+            <field name="company_name">Abdulla Alzahmi - Thouban</field>
+            <field name="reference">Owner Payment</field>
+            <field name="category">project_payment</field>
+            <field name="amount">110250.00</field>
+            <field name="received_amount">110250.00</field>
+            <field name="aging_status">This Week</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+        <record id="kh_collection_seed_6" model="kh.collection.tracker">
+            <field name="company_name">Al Alam Cont (Fuj)</field>
+            <field name="reference">Jasem Marshoodi</field>
+            <field name="category">project_payment</field>
+            <field name="amount">19000.00</field>
+            <field name="received_amount">10000.00</field>
+            <field name="balance_amount">9000.00</field>
+            <field name="aging_status">Next Payment</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+        <record id="kh_collection_seed_7" model="kh.collection.tracker">
+            <field name="company_name">Address Cont (Fuj)</field>
+            <field name="reference">Musa Alabdouli</field>
+            <field name="category">project_payment</field>
+            <field name="amount">25000.00</field>
+            <field name="balance_note">Old Pay</field>
+            <field name="aging_status">Jun Month</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+        <record id="kh_collection_seed_8" model="kh.collection.tracker">
+            <field name="company_name">Bin Wasi Cont (Fuj)</field>
+            <field name="reference">Rashed Alkaabi</field>
+            <field name="category">project_payment</field>
+            <field name="amount">20000.00</field>
+            <field name="aging_status">Jun Month</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+        <record id="kh_collection_seed_9" model="kh.collection.tracker">
+            <field name="company_name">Al Nahda Cont (Rak)</field>
+            <field name="reference">Dawood</field>
+            <field name="category">project_payment</field>
+            <field name="amount">32370.00</field>
+            <field name="received_amount">19370.00</field>
+            <field name="balance_note">Dedcution</field>
+            <field name="aging_status">Jun Month</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+        <record id="kh_collection_seed_10" model="kh.collection.tracker">
+            <field name="company_name">Address Cont (Fuj)</field>
+            <field name="reference">Musa Alabdouli</field>
+            <field name="category">project_payment</field>
+            <field name="amount">15840.00</field>
+            <field name="balance_note">Next Pay</field>
+            <field name="aging_status">Next Month</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+        <record id="kh_collection_seed_11" model="kh.collection.tracker">
+            <field name="company_name">Al Alaiwat Cont (Fuj)</field>
+            <field name="reference">Chalil Aasiya</field>
+            <field name="category">project_payment</field>
+            <field name="amount">15000.00</field>
+            <field name="aging_status">Next Month</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+        <record id="kh_collection_seed_12" model="kh.collection.tracker">
+            <field name="company_name">Bin Wasi Cont (Fuj)</field>
+            <field name="reference">Rashed Alkaabi</field>
+            <field name="category">project_payment</field>
+            <field name="amount">21000.00</field>
+            <field name="balance_note">Next Pay</field>
+            <field name="aging_status">Next Month</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+        <record id="kh_collection_seed_13" model="kh.collection.tracker">
+            <field name="company_name">Strong Arms (Fuj)</field>
+            <field name="reference">Saeed Saif Almesmeri</field>
+            <field name="category">project_payment</field>
+            <field name="amount">7200.00</field>
+            <field name="aging_status">Next Month</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+        <record id="kh_collection_seed_14" model="kh.collection.tracker">
+            <field name="company_name">Al Alam Cont (Fuj)</field>
+            <field name="reference">Jasem Marshoodi</field>
+            <field name="category">project_payment</field>
+            <field name="amount">11700.00</field>
+            <field name="aging_status">Next Month</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+        <record id="kh_collection_seed_15" model="kh.collection.tracker">
+            <field name="company_name">Amidat Al Bait Cont</field>
+            <field name="reference">Salem Al Ali Tender</field>
+            <field name="category">project_payment</field>
+            <field name="amount">5885.00</field>
+            <field name="received_amount">5000.00</field>
+            <field name="balance_amount">885.00</field>
+            <field name="aging_status">Received</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+        <!-- ===== Khales Group — Design & Supervision Fees ===== -->
+
+        <record id="kh_collection_seed_16" model="kh.collection.tracker">
+            <field name="company_name">KECD - Owner Pay</field>
+            <field name="reference">Mohamed Obaid Alfalasi</field>
+            <field name="category">design_fee</field>
+            <field name="amount">50000.00</field>
+            <field name="received_amount">15225.00</field>
+            <field name="aging_status">Next Month</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+        <record id="kh_collection_seed_17" model="kh.collection.tracker">
+            <field name="company_name">KECS - Owner Pay</field>
+            <field name="reference">Rashed Alsuwaidi</field>
+            <field name="category">design_fee</field>
+            <field name="amount">9900.00</field>
+            <field name="aging_status">Next Month</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+        <record id="kh_collection_seed_18" model="kh.collection.tracker">
+            <field name="company_name">KECS - Owner Pay</field>
+            <field name="reference">Aalya Obaid Alshamsi</field>
+            <field name="category">design_fee</field>
+            <field name="amount">8662.50</field>
+            <field name="aging_status">Next Month</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+        <record id="kh_collection_seed_19" model="kh.collection.tracker">
+            <field name="company_name">KECS - Owner Pay</field>
+            <field name="reference">Sabir Saeed Alketbi</field>
+            <field name="category">design_fee</field>
+            <field name="amount">11550.00</field>
+            <field name="aging_status">Next Month</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+        <record id="kh_collection_seed_20" model="kh.collection.tracker">
+            <field name="company_name">KECS - Owner Pay</field>
+            <field name="reference">Sulaiman AlShebani (Oman)</field>
+            <field name="category">design_fee</field>
+            <field name="amount">14400.00</field>
+            <field name="aging_status">Next Month</field>
+            <field name="recorded_date">2026-08-10</field>
+            <field name="source_note">Khales Group accountant Excel sheet, prepared 10-08-2026</field>
+        </record>
+
+    </data>
+</odoo>

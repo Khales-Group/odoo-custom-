@@ -47,6 +47,7 @@
         'data/sequence.xml',
         'data/email_categories.xml',
         'data/kh_ai_project_manager_cron.xml',
+        'data/collection_tracker_seed.xml',
     ],
     'assets': {
         'web.assets_backend': [
