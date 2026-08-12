@@ -51,7 +51,7 @@ CRON_BATCH_TIME_BUDGET_SECONDS = 240
 # نرفع هذا الرقم. هيك أي مشروع (حتى لو ما تغيّر عليه أي شي فعلياً) بتتغيّر
 # بصمته تلقائياً وبتاخد مراجعة فعلية جديدة بالـ Cron العادي - بدون ما نحتاج
 # نطلب من المستخدم يفرض (force) المراجعة يدوياً لكل مشروع قديم لحاله.
-_KH_AI_PROMPT_VERSION = 10
+_KH_AI_PROMPT_VERSION = 11
 
 # نماذج مسموحة للأداة الاستكشافية (Agentic) - قراءة فقط، بدون أي كتابة/حذف.
 # هذا نطاق مخصّص لهذا الفيتشر بس (منفصل بالكامل عن mcp_server وحظره الصارم
@@ -76,25 +76,23 @@ class ProjectAiManager(models.Model):
         string="نسبة الإنجاز حسب Odoo (AI)", compute='_compute_ai_financials', store=True)
     x_ai_contract_value = fields.Float(
         string="قيمة العقد (AI)", compute='_compute_ai_financials', store=True)
-    # ملاحظة مهمة: هذول التلاتة تحت مش compute fields (عمداً) - قيمتهم
-    # الموثوقة الوحيدة جايّة من التحقق المالي الحقيقي عبر mcp_server
-    # (_kh_ai_apply_financial_verification)، مش من حساب حتمي بالكود (ثبت
-    # غلطه مرات عديدة على بيانات حقيقية - راجع _kh_ai_verify_financials_via_mcp).
-    # لو كانوا compute fields مرتبطين بـ _compute_ai_financials، كل تشغيل
-    # مراجعة (كل ربع ساعة) كان رح "يصفّرهم"/يرجّعهم لتخمين حتمي غلط قبل ما
-    # يُعاد التحقق المالي (المخفّف لمرة كل 24 ساعة) - يعني الرقم الصحيح كان
-    # يظهر لحظة التحقق وبعدها يرجع يتبدّل بالغلط الساعة اللي بعدها. هلق
-    # بيبقوا كما هم بالضبط لحد ما تحقق مالي جديد يعدّلهم فعلياً.
-    x_ai_invoiced_amount = fields.Float(string="المفوتر (AI)", readonly=True, copy=False)
-    x_ai_collected_amount = fields.Float(string="المحصّل فعلياً (AI)", readonly=True, copy=False)
-    x_ai_outstanding_amount = fields.Float(string="المتبقّي غير المحصّل (AI)", readonly=True, copy=False)
-    x_ai_financial_data_note = fields.Char(
-        string="ملاحظة بيانات مالية", compute='_compute_ai_financials', store=True)
-    # متابعة التحصيل اليدوية (كشف المحاسب Excel) - مصدر موازي/أدق من
-    # فواتير Odoo لما التوفيق البنكي غير مطابق (حالة هذا النظام حالياً) -
-    # راجع kh.collection.tracker.
+    # متابعة التحصيل اليدوية (كشف المحاسب Excel) - هذا هلق المصدر الوحيد
+    # للأرقام المالية (بقرار صاحب العمل)، بعد ما ثبت غلط الحساب الحتمي
+    # القديم (مطابقة partner_id) والتحقق عبر mcp_server كمان عدة مرات على
+    # بيانات حقيقية. راجع kh.collection.tracker.
     x_ai_collection_tracker_ids = fields.One2many(
         'kh.collection.tracker', 'project_id', string="متابعة التحصيل اليدوية (كشف المحاسب)")
+    # الثلاثة هذول compute حقيقي (store=True + depends فعلي) من
+    # x_ai_collection_tracker_ids - بتتحدّث تلقائياً ولحالها لحظة ما
+    # المحاسب يعدّل/يضيف سطر بمتابعة التحصيل، بدون أي استدعاء AI إطلاقاً.
+    x_ai_invoiced_amount = fields.Float(
+        string="المفوتر (كشف المحاسب)", compute='_compute_ai_collection_from_tracker', store=True)
+    x_ai_collected_amount = fields.Float(
+        string="المحصّل فعلياً (كشف المحاسب)", compute='_compute_ai_collection_from_tracker', store=True)
+    x_ai_outstanding_amount = fields.Float(
+        string="المتبقّي غير المحصّل (كشف المحاسب)", compute='_compute_ai_collection_from_tracker', store=True)
+    x_ai_financial_data_note = fields.Char(
+        string="ملاحظة بيانات مالية", compute='_compute_ai_financials', store=True)
 
     x_ai_work_done_tasks = fields.Float(
         string="نسبة الإنجاز حسب التاسكات (AI)", compute='_compute_ai_task_metrics', store=True)
@@ -124,11 +122,6 @@ class ProjectAiManager(models.Model):
     # (Cron) أو فوراً لو ضغطت الزر، بدون أي Spam على الشاتر (الشاتر بس
     # بالتقرير الأسبوعي) ----
     x_ai_last_review_date = fields.Datetime(string="آخر مراجعة AI", readonly=True, copy=False)
-    # آخر مرة صار فيها فعلياً تحقق مالي حقيقي عبر mcp_server (حلقة Agentic
-    # مكلفة وبطيئة) - منفصل عن x_ai_last_review_date لأنه هذا الجزء بس
-    # بدنا نخفّف وتيرته لمرة/يوم، بعكس المراجعة الرئيسية (ملخّص/تنبيهات/
-    # خطوات) يلي لازم تبقى كل ساعة.
-    x_ai_last_financial_check_date = fields.Datetime(string="آخر تحقق مالي حقيقي (AI)", readonly=True, copy=False)
     # "بصمة" الوضع الحالي (تاسكات مفتوحة/متأخرة/أكتفيتيز متأخرة/تاسكات
     # راكدة/آخر رسالة شاتر/آخر تعديل تاسك/المتبقّي المالي) وقت آخر مراجعة
     # AI ناجحة - لو نفس البصمة لسا هي هي، يعني ما صار أي جديد حقيقي على
@@ -394,43 +387,29 @@ class ProjectAiManager(models.Model):
             project.x_ai_work_done = project._kh_ai_read_studio_value(work_done_field) or 0.0
             project.x_ai_contract_value = project._kh_ai_read_studio_value(contract_value_field) or 0.0
             project_note = note
-            if not project.partner_id and not (analytic_field and project._kh_ai_read_studio_value(analytic_field)):
-                extra = '⚠️ هذا المشروع بدون عميل (partner_id) وبدون حساب تحليلي - ما بقدر ألقى فواتيره تلقائياً (بس ممكن Claude يلاقيه لحاله عبر find_customer).'
-                project_note = (project_note + ' ' + extra).strip()
-            if not project.x_ai_last_financial_check_date:
-                extra = '⏳ لسا ما انعمل تحقق مالي حقيقي لهذا المشروع - رح يصير بأول مراجعة AI.'
+            if not project.x_ai_collection_tracker_ids:
+                extra = 'لا يوجد بيانات بمتابعة التحصيل اليدوية (كشف المحاسب) لهذا المشروع بعد.'
                 project_note = (project_note + ' ' + extra).strip()
             project.x_ai_financial_data_note = project_note or False
 
     # ------------------------------------------------------------------
-    # لو Claude فعلياً دقّق بفواتير حقيقية (عبر search_odoo_records) ولقى
-    # أرقام مختلفة عن الحساب الآلي (متل حالة Contact مختلف) - منستبدل
-    # الأرقام الرسمية بالأرقام المؤكّدة، ومنسجّل الملاحظة ليكون واضح إنها
-    # صُحّحت. هذا الاستبدال الوحيد المسموح لـ AI على الأرقام المالية،
-    # وبس لما يقول صراحة "confident".
+    # الأرقام المالية الوحيدة الموثوقة هلق - مجموع بنود متابعة التحصيل
+    # اليدوية (كشف المحاسب Excel) المرتبطة بهذا المشروع. compute حقيقي
+    # (depends فعلي) - بيتحدّث تلقائياً لحاله لحظة ما يتغيّر أي سطر،
+    # بدون أي استدعاء AI أو حساب حتمي من فواتير Odoo (ثبت غلطهم مرات
+    # عديدة على بيانات حقيقية).
     # ------------------------------------------------------------------
-    def _kh_ai_apply_financial_verification(self, verification):
-        if not isinstance(verification, dict) or not verification.get('confident'):
-            return
-        try:
-            invoiced = verification.get('invoiced_amount')
-            collected = verification.get('collected_amount')
-            contract = verification.get('contract_value')
-            source = (verification.get('source_note') or '').strip()
-
-            if invoiced is not None:
-                self.x_ai_invoiced_amount = float(invoiced)
-            if collected is not None:
-                self.x_ai_collected_amount = float(collected)
-            if contract:
-                self.x_ai_contract_value = float(contract)
-            self.x_ai_outstanding_amount = self.x_ai_invoiced_amount - self.x_ai_collected_amount
-
-            note = '✅ صُحّحت الأرقام أعلاه من AI بعد تدقيق حقيقي.' + (' (%s)' % source if source else '')
-            existing = self.x_ai_financial_data_note or ''
-            self.x_ai_financial_data_note = (note + ' ' + existing).strip()
-        except Exception:
-            _logger.exception('KH_AI_MANAGER: applying financial verification failed')
+    @api.depends(
+        'x_ai_collection_tracker_ids.amount',
+        'x_ai_collection_tracker_ids.received_amount',
+    )
+    def _compute_ai_collection_from_tracker(self):
+        for project in self:
+            invoiced = sum(project.x_ai_collection_tracker_ids.mapped('amount'))
+            collected = sum(project.x_ai_collection_tracker_ids.mapped('received_amount'))
+            project.x_ai_invoiced_amount = invoiced
+            project.x_ai_collected_amount = collected
+            project.x_ai_outstanding_amount = invoiced - collected
 
     # ------------------------------------------------------------------
     # حلقة Agentic عامة تعيد استخدام محرّك أدوات mcp_server (نفس الأدوات يلي
@@ -495,69 +474,6 @@ class ProjectAiManager(models.Model):
         except Exception as e:
             _logger.exception('KH_AI_MANAGER: MCP-based prompt call failed')
             return None, 'فشل استدعاء Claude عبر أدوات mcp_server: %s' % str(e)[:200]
-
-    _KH_AI_FINANCIAL_TOOL = {
-        'name': 'report_financials',
-        'description': (
-            'أرجع نتيجة التحقق المالي النهائية بعد التأكد من فواتير حقيقية - '
-            'استدعِ هذه الأداة فقط لما تكون خلصت التحقق (أو تأكدت إنه ما بقدر تتحقق).'
-        ),
-        'input_schema': {
-            'type': 'object',
-            'properties': {
-                'confident': {
-                    'type': 'boolean',
-                    'description': 'true فقط إذا فعلياً جمعت أرقام حقيقية من نتائج search_records على account.move.',
-                },
-                'invoiced_amount': {'type': 'number', 'description': 'إجمالي الفواتير الصحيح (لو confident).'},
-                'collected_amount': {'type': 'number', 'description': 'إجمالي المحصّل فعلياً الصحيح (لو confident).'},
-                'contract_value': {'type': 'number', 'description': 'قيمة العقد الصحيحة لو لقيتها (اختياري).'},
-                'source_note': {
-                    'type': 'string',
-                    'description': 'اسم الـ Contact/العميل الصحيح المستخدم بالتحقق، وملخّص قصير كيف توصلت للرقم.',
-                },
-            },
-            'required': ['confident'],
-        },
-    }
-
-    # ------------------------------------------------------------------
-    # البرومبت الجاهز المركّز الأول: التحقق المالي - بديل كامل لحسابنا
-    # الحتمي القديم (partner_id مطابقة مباشرة) يلي ثبت غلطه مرات عديدة على
-    # بيانات حقيقية، وتم حذفه بالكامل. بيستخدم find_customer (لحل اختلاف اسم الـ Contact عن اسم
-    # العميل بالمشروع) بعدها search_records على account.move.
-    # ------------------------------------------------------------------
-    def _kh_ai_verify_financials_via_mcp(self):
-        self.ensure_one()
-        partner_name = self.partner_id.name if self.partner_id else '-'
-        partner_id = self.partner_id.id if self.partner_id else '-'
-        prompt = (
-            "أنت محاسب مدقّق بشركة إماراتية. مطلوب منك تتحقق من الوضع المالي الحقيقي "
-            "لمشروع اسمه \"%s\". العميل المسجّل بالمشروع بالنظام: \"%s\" (partner_id=%s) - "
-            "بس هذا الاسم ممكن يكون مختلف شوي عن اسم الـ Contact الحقيقي بالمحاسبة (لغة "
-            "مختلفة، أو Contact تابع بس بنفس المجموعة)، فلازم تتأكد بنفسك مش تفترض.\n\n"
-            "الخطوات:\n"
-            "1) استخدم أداة find_customer بالاسم \"%s\" (وجرّب أسماء قريبة لو الأول ما رجّع "
-            "نتيجة واضحة) لتحدّد الـ partner_id الصحيح فعلياً.\n"
-            "2) استخدم أداة search_records على account.move بـ domain يحتوي "
-            "[\"partner_id\", \"=\", <الid الصحيح يلي لقيته>], [\"state\", \"=\", \"posted\"], "
-            "[\"move_type\", \"in\", [\"out_invoice\", \"out_refund\"]] واطلب الحقول "
-            "amount_total_signed وamount_residual_signed.\n"
-            "3) اجمع amount_total_signed لكل الفواتير = المفوتر الكلي. المحصّل فعلياً = "
-            "المفوتر الكلي - مجموع amount_residual_signed.\n"
-            "4) لو الـ partner_id الأول ما طلع منه فواتير، جرّب اسم قريب تاني (شركة أم/فرد "
-            "تابع) قبل ما تستسلم.\n"
-            "5) استدعِ report_financials بالنتيجة. ممنوع تخترع رقم أو تقدّره - لو ما قدرت "
-            "تتأكد فعلياً من فواتير حقيقية، خلّي confident=false وبلاش تعبّي الأرقام."
-            % (self.name, partner_name, partner_id, partner_name or self.name)
-        )
-        data, error = self._kh_ai_run_mcp_prompt(prompt, self._KH_AI_FINANCIAL_TOOL)
-        if error:
-            _logger.warning(
-                'KH_AI_MANAGER: financial MCP verification failed for project %s (%s): %s',
-                self.id, self.name, error)
-            return None
-        return data
 
     _KH_AI_TIMELINE_TOOL = {
         'name': 'report_timeline_integration',
@@ -1023,28 +939,9 @@ class ProjectAiManager(models.Model):
             ('author_id', '!=', self._kh_ai_odoobot_partner_id()),
         ], order='date desc', limit=40)
 
-        # التحقق المالي عبر برومبت مخصّص يستخدم أدوات mcp_server (find_customer +
-        # search_records) - المصدر الوحيد للأرقام المالية هلق (حذفنا الحساب
-        # الحتمي القديم كلياً لأنه ثبت غلطه). لازم يصير قبل بناء الـ digest عشان الأرقام
-        # المصحّحة توصل لبرومبت المراجعة الرئيسي كمان، مش بس تتحدّث بالفورم بعدين.
-        # هذا الجزء هو الأبطأ (حلقة Agentic كاملة تانية) - الفواتير ما بتتغيّر
-        # كل ساعة، فمنشغّله مرة كل 24 ساعة بس لكل مشروع (مش كل مرة تشتغل
-        # المراجعة الساعية)، عشان نوفّر وقت/تكلفة بدون فايدة حقيقية إضافية.
-        now = fields.Datetime.now()
-        needs_financial_check = (
-            force
-            or not self.x_ai_last_financial_check_date
-            or (now - self.x_ai_last_financial_check_date).total_seconds() >= 24 * 3600
-        )
-        if needs_financial_check:
-            try:
-                mcp_verification = self._kh_ai_verify_financials_via_mcp()
-            except Exception:
-                _logger.exception('KH_AI_MANAGER: financial MCP verification crashed for project %s', self.id)
-                mcp_verification = None
-            if mcp_verification:
-                self._kh_ai_apply_financial_verification(mcp_verification)
-            self.x_ai_last_financial_check_date = now
+        # الأرقام المالية (x_ai_invoiced_amount/collected/outstanding) هلق
+        # compute حقيقي من x_ai_collection_tracker_ids (كشف المحاسب اليدوي)
+        # - بتتحدّث لحالها تلقائياً، ما في أي استدعاء AI هون إطلاقاً.
 
         # لو ما صار أي جديد حقيقي على المشروع (نفس عدد التاسكات المفتوحة/
         # المتأخرة/الأكتفيتيز/الراكدة، آخر رسالة/تعديل تاسك، والمتبقّي المالي)
@@ -1355,8 +1252,9 @@ class ProjectAiManager(models.Model):
     # ------------------------------------------------------------------
     # التشغيل التلقائي كل ساعة (ir.cron) - تحديث صامت لكل المشاريع النشطة
     # (بدون نشر بالشاتر، بس تحديث الحقول + تنبيه المدير لو في مشكلة حقيقية).
-    # كل مشروع بحلقتين Agentic كاملتين (مراجعة رئيسية + تحقق مالي) - يعني
-    # ممكن ياخد عشرات الثواني لكل مشروع لحاله. لهذا لازم commit() بعد كل
+    # كل مشروع بحلقة Agentic كاملة (المراجعة الرئيسية - الأرقام المالية هلق
+    # compute بسيط من كشف المحاسب، بدون أي استدعاء AI) - يعني ممكن ياخد
+    # عشرات الثواني لكل مشروع لحاله. لهذا لازم commit() بعد كل
     # مشروع نجح على حدا (مش بانتظار خلاص كل الدفعة) - لو صار قطع اتصال أو
     # الـ worker انقتل بالنص (متل Connection Lost)، المشاريع يلي خلصت قبل
     # القطع بتبقى محفوظة، بدل ما ترجع كلها صفر لأنها كلها كانت transaction
@@ -1693,7 +1591,7 @@ class ProjectAiManager(models.Model):
             lines.append('قيمة العقد: %.2f' % contract_value)
         else:
             lines.append('⚠️ حقيقة مهمة: قيمة العقد (Contract Value) غير معبّأة بسجل المشروع إطلاقاً.')
-        lines.append('المفوتر فعلياً (فواتير Odoo حقيقية): %.2f | المحصّل فعلياً (مدفوع): %.2f'
+        lines.append('المفوتر (من كشف المحاسب اليدوي): %.2f | المحصّل فعلياً (من كشف المحاسب اليدوي): %.2f'
                       % (invoiced_amount, collected_amount))
         lines.append('تاريخ اليوم: %s' % today_str)
 
@@ -1795,9 +1693,9 @@ class ProjectAiManager(models.Model):
                     'description': (
                         'فقرة (2-5 جمل) عن وضع التحصيل المالي: قارن الإنجاز (يدوي وحسب التاسكات) مع '
                         'التحصيل الفعلي، ووضّح أي فجوة. الأرقام المالية المرفقة بالبيانات (المفوتر/'
-                        'المحصّل) مدقّقة مسبقاً بفحص مالي منفصل - اعتمد عليها كما هي، مش مطلوب منك '
-                        'تتحقق منها بنفسك. لو في نقطة يلزم المحاسب يتابعها، وجّهها له بالاسم (موجود '
-                        'بالمعرّفات أعلاه لو موجود بالنظام).'
+                        'المحصّل) جايّة من كشف تحصيل يدوي يحدّثه المحاسب مباشرة - اعتمد عليها كما هي، '
+                        'مش مطلوب منك تتحقق منها بنفسك. لو في نقطة يلزم المحاسب يتابعها، وجّهها له '
+                        'بالاسم (موجود بالمعرّفات أعلاه لو موجود بالنظام).'
                     ),
                 },
                 'alerts': {
@@ -1891,8 +1789,9 @@ class ProjectAiManager(models.Model):
             "مهم: قسم 'نشاط فعلي داخل التاسكات' تحت (لو موجود) هو ملاحظات/ساعات تايمشيت مسجّلة "
             "داخل تاسكات لحالها (مش على شاتر المشروع العام) - هذا غالباً أدق مصدر لـ 'شو صار اليوم' "
             "فعلياً، خصوصاً لو مافي شي جديد بسجل نشاط المشروع نفسه. اعتمد عليه بقسم today_update.\n\n"
-            "بخصوص الفواتير: الرقم المرفق (المفوتر/المحصّل تحت) مُدقّق مسبقاً بفحص مالي منفصل عبر فواتير "
-            "حقيقية - اعتمد عليه كما هو، مش مطلوب منك تتحقق منه بنفسك.\n\n"
+            "بخصوص الأرقام المالية: الرقم المرفق (المفوتر/المحصّل تحت) جاي من كشف تحصيل يدوي "
+            "يحدّثه المحاسب مباشرة (لا فواتير Odoo ولا تحقق AI) - هذا المصدر الوحيد الموثوق حالياً، "
+            "اعتمد عليه كما هو، مش مطلوب منك تتحقق منه أو تدقّقه بنفسك.\n\n"
             "معرّفات مفيدة للاستكشاف:\n%s\n\n"
             "عندك أداة search_odoo_records تقدر تستخدمها (أكتر من مرة إذا لزم) لتتحقق من معلومات إضافية "
             "مرتبطة بهذا المشروع - مثلاً: عروض/فرص CRM لهذا العميل، أوامر شراء (purchase.order) مرتبطة "

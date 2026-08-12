@@ -36,7 +36,7 @@
                             <field name="x_ai_overdue_activities_count" readonly="1"/>
                             <field name="x_ai_last_review_date" readonly="1"/>
                         </group>
-                        <group string="💰 التحصيل المالي (فواتير Odoo فعلية)">
+                        <group string="💰 التحصيل المالي (كشف المحاسب اليدوي)">
                             <field name="x_ai_contract_value" readonly="1"/>
                             <field name="x_ai_invoiced_amount" readonly="1"/>
                             <field name="x_ai_collected_amount" readonly="1"/>
