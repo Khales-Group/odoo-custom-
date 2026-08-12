@@ -20,3 +20,4 @@ from . import project_project
 from . import project_ai_manager
 from . import ai_dashboard_tile
 from . import timeline_import_wizard
+from . import collection_tracker

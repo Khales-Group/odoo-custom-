@@ -36,6 +36,10 @@
         # لأنه هذا الأخير بيربط menuitem بـ action_kh_ai_dashboard_tiles.
         'views/kh_ai_dashboard_tile_views.xml',
         'views/dashboard_views.xml',
+        # collection_tracker_views.xml بيربط menuitem بـ
+        # menu_kh_ai_project_dashboard_root المعرّف بـ dashboard_views.xml،
+        # لازم يتحمّل بعده.
+        'views/collection_tracker_views.xml',
         'views/hr_employee_views_extension.xml',
         'views/payslip_views.xml',
         'views/website_boq_template.xml',

@@ -90,6 +90,11 @@ class ProjectAiManager(models.Model):
     x_ai_outstanding_amount = fields.Float(string="المتبقّي غير المحصّل (AI)", readonly=True, copy=False)
     x_ai_financial_data_note = fields.Char(
         string="ملاحظة بيانات مالية", compute='_compute_ai_financials', store=True)
+    # متابعة التحصيل اليدوية (كشف المحاسب Excel) - مصدر موازي/أدق من
+    # فواتير Odoo لما التوفيق البنكي غير مطابق (حالة هذا النظام حالياً) -
+    # راجع kh.collection.tracker.
+    x_ai_collection_tracker_ids = fields.One2many(
+        'kh.collection.tracker', 'project_id', string="متابعة التحصيل اليدوية (كشف المحاسب)")
 
     x_ai_work_done_tasks = fields.Float(
         string="نسبة الإنجاز حسب التاسكات (AI)", compute='_compute_ai_task_metrics', store=True)

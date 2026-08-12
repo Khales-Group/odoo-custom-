@@ -17,3 +17,4 @@ access_kh_boq_submission_user,kh.boq.submission.user,model_kh_boq_submission,bas
 access_kh_boq_line_user,kh.boq.line.user,model_kh_boq_line,base.group_user,1,1,1,1
 access_kh_ai_dashboard_tile_user,kh.ai.dashboard.tile.user,model_kh_ai_dashboard_tile,base.group_user,1,0,0,0
 access_kh_ai_timeline_import_wizard_user,kh.ai.timeline.import.wizard.user,model_kh_ai_timeline_import_wizard,base.group_user,1,1,1,1
+access_kh_collection_tracker_user,kh.collection.tracker.user,model_kh_collection_tracker,base.group_user,1,1,1,1

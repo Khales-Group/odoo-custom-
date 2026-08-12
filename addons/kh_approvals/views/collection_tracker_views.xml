@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_kh_collection_tracker_list" model="ir.ui.view">
+        <field name="name">kh.collection.tracker.list</field>
+        <field name="model">kh.collection.tracker</field>
+        <field name="arch" type="xml">
+            <list string="متابعة التحصيل اليدوية" editable="bottom">
+                <field name="company_name"/>
+                <field name="reference"/>
+                <field name="project_id"/>
+                <field name="category"/>
+                <field name="amount" sum="الإجمالي"/>
+                <field name="received_amount" sum="الإجمالي"/>
+                <field name="balance_amount" sum="الإجمالي"/>
+                <field name="balance_note"/>
+                <field name="aging_status"/>
+                <field name="recorded_date"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_kh_collection_tracker_form" model="ir.ui.view">
+        <field name="name">kh.collection.tracker.form</field>
+        <field name="model">kh.collection.tracker</field>
+        <field name="arch" type="xml">
+            <form string="متابعة التحصيل اليدوية">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="company_name"/>
+                            <field name="reference"/>
+                            <field name="project_id"/>
+                            <field name="category"/>
+                        </group>
+                        <group>
+                            <field name="amount"/>
+                            <field name="received_amount"/>
+                            <field name="balance_amount"/>
+                            <field name="balance_note"/>
+                            <field name="aging_status"/>
+                            <field name="recorded_date"/>
+                            <field name="source_note"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_kh_collection_tracker" model="ir.actions.act_window">
+        <field name="name">متابعة التحصيل اليدوية</field>
+        <field name="res_model">kh.collection.tracker</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_kh_collection_tracker_list')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('view_kh_collection_tracker_form')})]"/>
+        <field name="help" type="html">
+            <p>سجّل هون بنود كشف المحاسب (Excel) اليدوي - دفعات مشاريع، رسوم تصميم وإشراف.</p>
+        </field>
+    </record>
+
+    <menuitem id="menu_kh_collection_tracker"
+              parent="menu_kh_ai_project_dashboard_root"
+              action="action_kh_collection_tracker"
+              sequence="6"/>
+
+</odoo>
