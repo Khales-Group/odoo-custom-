@@ -51,7 +51,7 @@ CRON_BATCH_TIME_BUDGET_SECONDS = 240
 # نرفع هذا الرقم. هيك أي مشروع (حتى لو ما تغيّر عليه أي شي فعلياً) بتتغيّر
 # بصمته تلقائياً وبتاخد مراجعة فعلية جديدة بالـ Cron العادي - بدون ما نحتاج
 # نطلب من المستخدم يفرض (force) المراجعة يدوياً لكل مشروع قديم لحاله.
-_KH_AI_PROMPT_VERSION = 13
+_KH_AI_PROMPT_VERSION = 14
 
 # نماذج مسموحة للأداة الاستكشافية (Agentic) - قراءة فقط، بدون أي كتابة/حذف.
 # هذا نطاق مخصّص لهذا الفيتشر بس (منفصل بالكامل عن mcp_server وحظره الصارم
@@ -681,17 +681,19 @@ class ProjectAiManager(models.Model):
         '.kh_ai_alert_stale_task{background:#fff3cd;border-color:#E67E22;}'
         '.kh_ai_alert_overdue{background:#fdecea;border-color:#E74C3C;}'
         '.kh_ai_alert_unassigned{background:#fff3cd;border-color:#E67E22;}'
-        '.kh_ai_alert_financial{background:#fff8e6;border-color:#E67E22;}'
         '.kh_ai_alert_other{background:#eef2ff;border-color:#714B67;}'
         '</style>'
     )
 
+    # ملاحظة: ما في نوع تنبيه "financial" قصداً - قسم التنبيهات (alerts) موجّه
+    # لمدير المشروع، وقيمة العقد/التحصيل بقالوا صار نظامها اليدوي المستقل
+    # (كشف المحاسب) بقسم "التحصيل" لحاله - مانبيها تتكرر كتنبيه هون كمان
+    # (طلب صاحب العمل صراحةً).
     _KH_AI_ALERT_ICONS = {
         'missing_update': '📭',
         'stale_task': '🕰️',
         'overdue': '⏰',
         'unassigned': '👤',
-        'financial': '💰',
         'other': '💡',
     }
 
@@ -834,7 +836,7 @@ class ProjectAiManager(models.Model):
     # الـ LLM.
     # ------------------------------------------------------------------
     def _kh_ai_fallback_next_steps(self, open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts,
-                                    stale_tasks, days_since_update, accountant):
+                                    stale_tasks, days_since_update):
         steps = []
         if overdue_tasks:
             steps.append('تابع مع الفريق التاسكات المتأخرة: %s' % ', '.join(overdue_tasks.mapped('name')[:3]))
@@ -845,9 +847,6 @@ class ProjectAiManager(models.Model):
         unassigned = open_tasks.filtered(lambda t: not t.user_ids)
         if unassigned:
             steps.append('حدّد مسؤول للتاسكات المفتوحة بدون مسؤول (%d تاسك).' % len(unassigned))
-        if (self.x_ai_outstanding_amount or 0.0) > 0:
-            who = accountant.name if accountant else 'المحاسب'
-            steps.append('تابع مع %s ملف التحصيل - المتبقّي %.2f.' % (who, self.x_ai_outstanding_amount))
         if days_since_update is None or (days_since_update or 0) >= 7:
             steps.append('حدّث سجل المشروع بآخر التطورات مع العميل/الفريق.')
         if not steps:
@@ -991,7 +990,6 @@ class ProjectAiManager(models.Model):
                 # يلي المفروض يوصله فعلياً هو _kh_ai_send_gm_weekly_digest.
                 self.message_post(body=Markup(report_html), message_type='comment', subtype_xmlid='mail.mt_note')
             self._kh_ai_notify_pm_if_needed(open_tasks)
-            self._kh_ai_notify_accountant_if_needed(accountant)
             return True
 
         digest = self._kh_ai_build_digest(
@@ -1018,19 +1016,12 @@ class ProjectAiManager(models.Model):
                 if fallback_note:
                     data['collection_note'] = fallback_note
             collection_html = self._kh_ai_render_simple_html(data.get('collection_note'))
-            # حقيقة جاهزة بالكود (مش معتمدة على ملاحظة Claude) - قيمة العقد
-            # لازم تكون معبّأة، لأنها ضرورية لحساب نسبة التحصيل الحقيقية
-            # ومقارنتها بالإنجاز. منضيفها دايماً لو فاضية، مش نتكل على إنه
-            # Claude يلاحظها لحاله (نفس مبدأ next_steps الاحتياطية فوق).
-            if not self.x_ai_contract_value:
-                data['alerts'] = [{
-                    'type': 'financial',
-                    'message': (
-                        'قيمة العقد (Contract Value) غير معبّأة بسجل المشروع - '
-                        'لازم تُدخل، لأنها ضرورية لحساب نسبة التحصيل الحقيقية ومقارنتها بالإنجاز.'
-                    ),
-                }] + self._kh_ai_as_list(data.get('alerts'))
-            # حقيقة جاهزة بالكود كمان - تاسك جاري (بلش وما خلص، ولسا قبل
+            # ملاحظة: كان هون تنبيه حتمي بالكود عن "قيمة العقد غير معبّأة"
+            # يظهر لمدير المشروع بقسم alerts بكل مراجعة - شيلناه بطلب صاحب
+            # العمل صراحةً، لأنه موضوع تحصيل/قيمة العقد صار له صفحته/جدوله
+            # اليدوي المستقل (كشف المحاسب)، ومانبي يتكرر كتنبيه تشغيلي لمدير
+            # المشروع هون كمان.
+            # حقيقة جاهزة بالكود - تاسك جاري (بلش وما خلص، ولسا قبل
             # موعده) استهلك 80%+ من وقته المخصّص بدون أي نشاط مسجّل عليه
             # (نوت/تايمشيت) - إشارة مبكرة لخطر تأخر قريب، قبل ما يفوت
             # الموعد فعلياً ويصير "متأخر" بالمعنى المعتاد.
@@ -1054,7 +1045,7 @@ class ProjectAiManager(models.Model):
             if not [s for s in self._kh_ai_as_list(data.get('next_steps')) if s and str(s).strip()]:
                 data['next_steps'] = self._kh_ai_fallback_next_steps(
                     open_tasks, overdue_tasks, overdue_proj_acts, overdue_task_acts,
-                    stale_tasks, days_since_update, accountant)
+                    stale_tasks, days_since_update)
             next_steps_html = self._kh_ai_render_next_steps_html(data)
 
         alerts_list = self._kh_ai_as_list(data.get('alerts'))
@@ -1097,7 +1088,6 @@ class ProjectAiManager(models.Model):
             self.message_post(body=Markup(report_html), message_type='comment', subtype_xmlid='mail.mt_note')
 
         self._kh_ai_notify_pm_if_needed(open_tasks)
-        self._kh_ai_notify_accountant_if_needed(accountant)
         return True
 
     # ------------------------------------------------------------------
@@ -1230,52 +1220,6 @@ class ProjectAiManager(models.Model):
                 summary=summary,
                 note=self.x_ai_alerts or self.x_ai_today_summary or '',
                 user_id=self.user_id.id,
-                date_deadline=today,
-            )
-
-    # ------------------------------------------------------------------
-    # تاسك حقيقي (mail.activity) للمحاسب (Karan) على هذا المشروع بالتحديد
-    # لما يكون في مبلغ متبقّي غير محصّل - مش مجرد ذكر اسمه بالنص، هذا تاسك
-    # فعلي بالـ Activities تبعه بـ Odoo. بتحدّث نفس التاسك (مش تكرره) كل
-    # مرة تتغيّر فيها الأرقام، وبتحذفه أوتوماتيكياً لو المبلغ تحصّل بالكامل.
-    # بالإنجليزي بالكامل (مش عربي) - Karan ما بيحكي عربي. وبأرقام صافية
-    # بدون أي HTML/CSS (مش عبر html2plaintext على الحقل المنسّق - هذا كان
-    # عم يسرّب نص الـ <style> الخام كنص عادي، لأنه html2plaintext هون ما
-    # بيشيل محتوى وسم style).
-    # ------------------------------------------------------------------
-    def _kh_ai_notify_accountant_if_needed(self, accountant):
-        self.ensure_one()
-        if not accountant:
-            return
-
-        today = fields.Date.context_today(self)
-        existing = self.env['mail.activity'].search([
-            ('res_model', '=', 'project.project'),
-            ('res_id', '=', self.id),
-            ('user_id', '=', accountant.id),
-            ('summary', 'like', '💰 Collection needed:'),
-        ], limit=1)
-
-        outstanding = self.x_ai_outstanding_amount or 0.0
-        if outstanding <= 0:
-            if existing:
-                existing.unlink()
-            return
-
-        summary = '💰 Collection needed: %s - Outstanding %.2f' % (self.name, outstanding)
-        note = (
-            'Invoiced: %.2f | Collected: %.2f | Outstanding: %.2f\n'
-            'Please follow up on collection for this project.'
-            % (self.x_ai_invoiced_amount or 0.0, self.x_ai_collected_amount or 0.0, outstanding)
-        )
-        if existing:
-            existing.write({'summary': summary, 'note': note, 'date_deadline': today})
-        else:
-            self.activity_schedule(
-                'mail.mail_activity_data_todo',
-                summary=summary,
-                note=note,
-                user_id=accountant.id,
                 date_deadline=today,
             )
 
@@ -1750,11 +1694,11 @@ class ProjectAiManager(models.Model):
                         'properties': {
                             'type': {
                                 'type': 'string',
-                                'enum': ['missing_update', 'stale_task', 'overdue', 'unassigned', 'financial', 'other'],
+                                'enum': ['missing_update', 'stale_task', 'overdue', 'unassigned', 'other'],
                                 'description': (
                                     'نوع التنبيه: missing_update (مافي تحديث بالسجل)، stale_task '
                                     '(تاسك ما تحرّك)، overdue (متأخر)، unassigned (بدون مسؤول)، '
-                                    'financial (فجوة مالية)، other (أي ملاحظة ذكية تانية لاحظتها انت '
+                                    'other (أي ملاحظة ذكية تانية لاحظتها انت '
                                     'وما بتنطبق على الأنواع فوق - هذا القسم يلي بيخليك تفكّر مش بس تعدّ).'
                                 ),
                             },
@@ -1766,7 +1710,9 @@ class ProjectAiManager(models.Model):
                         'كل التنبيهات المهمة - لازم تشمل حقائق "مهمة" المذكورة بالبيانات (مافي تحديث/'
                         'تاسكات ما تحرّكت) إذا موجودة، بالإضافة لأي مشكلة حقيقية تانية تلاحظها انت '
                         '(نوع other) - فكّر متل مدير مشاريع حقيقي بيحاول يحل مشاكل الموقع، مش بس عداد. '
-                        'لو ما في أي تنبيه فعلي، رجّع array فاضية [].'
+                        '⚠️ ممنوع تذكر هون أي شي عن قيمة العقد أو التحصيل/الفواتير أو أي فجوة مالية - '
+                        'هذا موضوعه بقسم collection_note لحاله بس، مانبي يتكرر هون كتنبيه لمدير المشروع. '
+                        'لو ما في أي تنبيه فعلي (غير مالي)، رجّع array فاضية [].'
                     ),
                 },
                 'next_steps': {
