@@ -51,7 +51,7 @@ CRON_BATCH_TIME_BUDGET_SECONDS = 240
 # نرفع هذا الرقم. هيك أي مشروع (حتى لو ما تغيّر عليه أي شي فعلياً) بتتغيّر
 # بصمته تلقائياً وبتاخد مراجعة فعلية جديدة بالـ Cron العادي - بدون ما نحتاج
 # نطلب من المستخدم يفرض (force) المراجعة يدوياً لكل مشروع قديم لحاله.
-_KH_AI_PROMPT_VERSION = 11
+_KH_AI_PROMPT_VERSION = 12
 
 # نماذج مسموحة للأداة الاستكشافية (Agentic) - قراءة فقط، بدون أي كتابة/حذف.
 # هذا نطاق مخصّص لهذا الفيتشر بس (منفصل بالكامل عن mcp_server وحظره الصارم
@@ -917,6 +917,12 @@ class ProjectAiManager(models.Model):
     def action_run_ai_review(self, post_report=False, force=False):
         self.ensure_one()
         self._compute_ai_financials()  # فريش (store=True بدون depends تلقائي - لازم نطلبه يدوياً)
+        # فرض تحديث فوري لأرقام التحصيل من الجدول اليدوي - بدون هذا، مشروع
+        # ما تغيّر عليه أي سطر بالجدول (متل كل المشاريع يلي ما عندها بيانات
+        # يدوية بعد) بيضل عرضان عليه الأرقام القديمة المخزّنة من نظام
+        # التحقق المالي القديم (المحذوف)، لأنه Odoo ما بيعيد حساب compute
+        # field مخزّن تلقائياً إلا لما الاعتماديات نفسها تتغيّر فعلياً.
+        self._compute_ai_collection_from_tracker()
         today_str = str(fields.Date.context_today(self))
         date_from = fields.Datetime.to_string(
             fields.Datetime.subtract(fields.Datetime.now(), days=DIGEST_DAYS)
