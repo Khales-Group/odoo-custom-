@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_project_khales_sign_inherit_form" model="ir.ui.view">
+        <field name="name">project.project.form.khales.sign</field>
+        <field name="model">project.project</field>
+        <field name="inherit_id" ref="project.edit_project"/>
+        <field name="arch" type="xml">
+
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button class="oe_stat_button" icon="fa-pencil-square-o" type="object"
+                        name="action_view_sign_requests">
+                    <div class="o_stat_info">
+                        <field name="sign_request_count" class="o_stat_value"/>
+                        <span class="o_stat_text">Signatures</span>
+                    </div>
+                </button>
+                <button class="oe_stat_button" icon="fa-upload" type="object"
+                        name="action_new_sign_document">
+                    <div class="o_stat_info">
+                        <span class="o_stat_text">New Document</span>
+                        <span class="o_stat_text">for Signature</span>
+                    </div>
+                </button>
+            </xpath>
+
+        </field>
+    </record>
+</odoo>
