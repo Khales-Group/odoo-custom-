@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="kh_sign_project.SignTemplateHeaderTagsProjectPatch"
+       t-inherit="sign.SignTemplateHeaderTags" t-inherit-mode="extension">
+        <xpath expr="//div[hasclass('o_sign_template_tags_and_save')]" position="inside">
+            <span>Project:</span>
+            <div class="o_field_widget o_field_many2one w-100">
+                <Many2OneField t-props="getMany2OneProps(record, 'project_id')"/>
+            </div>
+        </xpath>
+    </t>
+</templates>

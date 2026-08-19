@@ -30,8 +30,8 @@ class Project(models.Model):
         return {
             "type": "ir.actions.act_window",
             "name": _("Upload Document for Signature"),
-            "res_model": "sign.template",
-            "view_mode": "kanban,list,form",
-            "domain": [("project_id", "=", self.id)],
+            "res_model": "kh.sign.upload.wizard",
+            "view_mode": "form",
+            "target": "new",
             "context": {"default_project_id": self.id},
         }
