@@ -118,6 +118,7 @@ class Project(models.Model):
 
     def _generate_site_report(self, period_start, period_end, period_label, requesting_user_id):
         self.ensure_one()
+        _logger.info("Site report [%s / %s]: starting", self.name, period_label)
 
         try:
             from ..lib import claude_synthesis, docx_report, google_drive
@@ -136,11 +137,13 @@ class Project(models.Model):
                 raise ValueError("Missing system parameter mcp_server.anthropic_api_key.")
             anthropic_model = ICP.get_param("mcp_server.anthropic_model") or DEFAULT_ANTHROPIC_MODEL
 
+            _logger.info("Site report [%s / %s]: authenticating with Google Drive", self.name, period_label)
             drive = google_drive.build_drive_client(service_account_json)
             folders = google_drive.resolve_project_folders(
                 drive, self.x_studio_all_files_drive_, self.name
             )
 
+            _logger.info("Site report [%s / %s]: listing site-visit folders", self.name, period_label)
             subfolders = google_drive.list_subfolders(drive, folders["site_photos_id"])
             dated = sorted(
                 (
@@ -165,6 +168,7 @@ class Project(models.Model):
             visits_for_report = []
             skipped = []
             for folder, visit_date in visits_in_period:
+                _logger.info("Site report [%s / %s]: processing visit folder %s", self.name, period_label, folder["name"])
                 image_files = google_drive.list_image_files(drive, folder["id"])
                 if not image_files:
                     skipped.append(f"{folder['name']} (no photos)")
@@ -201,7 +205,8 @@ class Project(models.Model):
 
             visit_dates_label = ", ".join(v["date"].isoformat() for v in visits_for_report)
 
-            client = anthropic.Anthropic(api_key=anthropic_api_key)
+            _logger.info("Site report [%s / %s]: synthesizing with Claude", self.name, period_label)
+            client = anthropic.Anthropic(api_key=anthropic_api_key, timeout=60.0)
             synthesis = claude_synthesis.synthesize_monthly_report(
                 client, anthropic_model, self.name, visits_for_report
             )
@@ -217,6 +222,7 @@ class Project(models.Model):
                 "manager_name": self.user_id.name if self.user_id else "",
             }
 
+            _logger.info("Site report [%s / %s]: building .docx", self.name, period_label)
             docx_bytes = docx_report.build_report_docx(
                 project_meta,
                 period_label,

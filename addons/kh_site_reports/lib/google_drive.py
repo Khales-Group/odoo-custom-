@@ -3,11 +3,16 @@ import io
 import json
 import re
 
+import httplib2
 from google.oauth2 import service_account
+from google_auth_httplib2 import AuthorizedHttp
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+# httplib2 has no default timeout — without one, a stalled connection (e.g. during
+# the service-account token refresh) hangs forever instead of raising an error.
+REQUEST_TIMEOUT_SECONDS = 30
 
 _FOLDER_LINK_RE = re.compile(r'href="([^"]+)"[^>]*>([^<]+)<', re.IGNORECASE)
 _FOLDER_ID_RE = re.compile(r"/folders/([a-zA-Z0-9_-]+)")
@@ -26,7 +31,8 @@ def build_drive_client(service_account_json):
     """
     info = json.loads(service_account_json)
     credentials = service_account.Credentials.from_service_account_info(info, scopes=DRIVE_SCOPES)
-    return build("drive", "v3", credentials=credentials, cache_discovery=False)
+    authorized_http = AuthorizedHttp(credentials, http=httplib2.Http(timeout=REQUEST_TIMEOUT_SECONDS))
+    return build("drive", "v3", http=authorized_http, cache_discovery=False)
 
 
 def extract_folder_by_label(html, label):
