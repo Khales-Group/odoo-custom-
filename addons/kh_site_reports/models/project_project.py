@@ -105,7 +105,7 @@ class Project(models.Model):
         return "\n\n".join(parts[start:end]).strip() or body
 
     def _get_logo_path(self):
-        path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "img", "khales_logo.png")
+        path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "img", "khales-logo.png")
         return path if os.path.exists(path) else None
 
     def _notify_done(self, requesting_user_id, body):
@@ -166,6 +166,7 @@ class Project(models.Model):
                 return
 
             visits_for_report = []
+            no_note = []
             skipped = []
             for folder, visit_date in visits_in_period:
                 _logger.info("Site report [%s / %s]: processing visit folder %s", self.name, period_label, folder["name"])
@@ -176,14 +177,17 @@ class Project(models.Model):
 
                 narrative = self._fetch_visit_note(folder["name"])
                 if not narrative:
-                    skipped.append(f"{folder['name']} (no site-visit note found in Odoo)")
-                    continue
+                    no_note.append(folder["name"])
 
                 sampled = google_drive.sample_across(image_files, PHOTOS_PER_VISIT)
                 photos = [google_drive.download_file_bytes(drive, f["id"]) for f in sampled]
 
                 weekday = visit_date.strftime("%A")
                 date_label = f"Site Visit — {visit_date.strftime('%d %B %Y')} ({weekday})"
+                # A visit is included in the report (photos always shown) as long as it has
+                # photos — a missing chatter note (project-watcher.js hasn't caught up yet)
+                # only means that visit contributes nothing to the written summary below,
+                # it does not exclude the visit's photos from the report.
                 visits_for_report.append(
                     {
                         "date": visit_date,
@@ -194,22 +198,33 @@ class Project(models.Model):
                 )
 
             if not visits_for_report:
-                error = "No visit in this period had both photos and a matching Odoo note.\n" + "\n".join(skipped)
+                error = "No visit folder in this period had any photos.\n" + "\n".join(skipped)
                 self.write({"kh_site_report_state": "error", "kh_site_report_error": error})
                 self._notify_done(
                     requesting_user_id,
-                    _("Site report for %s failed: none of the visit folders had both photos and a "
-                      "matching note: %s") % (period_label, ", ".join(skipped)),
+                    _("Site report for %s failed: no visit folders in this period had photos: %s")
+                    % (period_label, ", ".join(skipped)),
                 )
                 return
 
             visit_dates_label = ", ".join(v["date"].isoformat() for v in visits_for_report)
+            narrated_visits = [v for v in visits_for_report if v["narrative"]]
 
-            _logger.info("Site report [%s / %s]: synthesizing with Claude", self.name, period_label)
-            client = anthropic.Anthropic(api_key=anthropic_api_key, timeout=60.0)
-            synthesis = claude_synthesis.synthesize_monthly_report(
-                client, anthropic_model, self.name, visits_for_report
-            )
+            if narrated_visits:
+                _logger.info("Site report [%s / %s]: synthesizing with Claude", self.name, period_label)
+                client = anthropic.Anthropic(api_key=anthropic_api_key, timeout=60.0)
+                synthesis = claude_synthesis.synthesize_monthly_report(
+                    client, anthropic_model, self.name, narrated_visits
+                )
+            else:
+                synthesis = {
+                    "site_update_summary": (
+                        "No written visit notes were available for this period — see the attached "
+                        "site photos below for this month's progress."
+                    ),
+                    "planned_activities": [],
+                    "recommendations": "No visit notes were available to review for owner actions this period.",
+                }
 
             project_meta = {
                 "project_no": str(self.id),
@@ -248,7 +263,12 @@ class Project(models.Model):
                 attachment_ids=[attachment.id],
             )
             if skipped:
-                self.message_post(body=_("Skipped visit folder(s): %s") % ", ".join(skipped))
+                self.message_post(body=_("Skipped visit folder(s) with no photos: %s") % ", ".join(skipped))
+            if no_note:
+                self.message_post(
+                    body=_("Visit folder(s) included with photos only (no chatter note found, so not "
+                           "reflected in the written summary): %s") % ", ".join(no_note)
+                )
             self._notify_done(
                 requesting_user_id,
                 _('Monthly site report for %s is ready — see the "%s" attachment on this project.')
