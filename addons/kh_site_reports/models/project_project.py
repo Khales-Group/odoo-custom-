@@ -2,11 +2,8 @@ import base64
 import logging
 import os
 import re
-import threading
 
-import odoo
-from odoo import _, api, fields, models
-from odoo.exceptions import UserError
+from odoo import _, fields, models
 
 _logger = logging.getLogger(__name__)
 
@@ -48,35 +45,18 @@ class Project(models.Model):
         }
 
     def action_generate_site_report(self, period_start, period_end, period_label):
-        """Kicks off generation right away, in a background thread — not a
-        scheduled action. The HTTP request returns immediately; the thread
-        opens its own DB cursor and posts a chatter notification (to the
-        requesting user) once it's done or if it fails.
+        """Runs generation synchronously, right in this request — no thread,
+        no scheduled action. Takes roughly 15-30s depending on the number of
+        visits; the button just shows a loading spinner until it returns
+        with either the attached report or a clear error.
         """
         self.ensure_one()
-        if self.kh_site_report_state == "processing":
-            raise UserError(_("A site report is already being generated for this project."))
-
         self.write({"kh_site_report_state": "processing", "kh_site_report_error": False})
         self.message_post(
-            body=_("Monthly site report for %s requested by %s — generating now in the background.")
+            body=_("Monthly site report for %s requested by %s — generating now.")
             % (period_label, self.env.user.name)
         )
-        self.env.cr.commit()
-
-        threading.Thread(
-            target=self._run_site_report_thread,
-            args=(self.env.cr.dbname, self.env.uid, self.id, period_start, period_end, period_label, self.env.user.id),
-            daemon=True,
-        ).start()
-
-    @api.model
-    def _run_site_report_thread(self, dbname, uid, project_id, period_start, period_end, period_label, requesting_user_id):
-        registry = odoo.registry(dbname)
-        with registry.cursor() as cr:
-            env = api.Environment(cr, uid, {})
-            project = env["project.project"].browse(project_id)
-            project._generate_site_report(period_start, period_end, period_label, requesting_user_id)
+        self._generate_site_report(period_start, period_end, period_label, self.env.user.id)
 
     def _fetch_visit_note(self, folder_date_label):
         self.ensure_one()
