@@ -1,3 +1,8 @@
 google-genai
 PyPDF2
 anthropic
+python-docx
+google-api-python-client
+google-auth
+google-auth-httplib2
+Pillow

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_project_khales_site_report_inherit_form" model="ir.ui.view">
+        <field name="name">project.project.form.khales.site.report</field>
+        <field name="model">project.project</field>
+        <field name="inherit_id" ref="project.edit_project"/>
+        <field name="arch" type="xml">
+
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button class="oe_stat_button" icon="fa-file-word-o" type="object"
+                        name="action_request_site_report"
+                        invisible="kh_site_report_state == 'processing'">
+                    <div class="o_stat_info">
+                        <span class="o_stat_text">Request Site</span>
+                        <span class="o_stat_text">Report</span>
+                    </div>
+                </button>
+                <button class="oe_stat_button" icon="fa-spinner" type="object"
+                        name="action_request_site_report"
+                        invisible="kh_site_report_state != 'processing'">
+                    <div class="o_stat_info">
+                        <field name="kh_site_report_state" widget="badge"/>
+                        <span class="o_stat_text">Site Report</span>
+                    </div>
+                </button>
+            </xpath>
+
+            <xpath expr="//sheet" position="inside">
+                <div class="alert alert-danger mt-2" role="alert"
+                     invisible="kh_site_report_state != 'error'">
+                    <strong>Site report generation failed:</strong>
+                    <field name="kh_site_report_error" nolabel="1" readonly="1"/>
+                </div>
+            </xpath>
+
+        </field>
+    </record>
+</odoo>
