@@ -12,6 +12,7 @@
                         <field name="month"/>
                         <field name="year"/>
                     </div>
+                    <field name="language" widget="radio"/>
                 </group>
                 <footer>
                     <button string="Generate" type="object" name="action_generate" class="btn-primary"/>

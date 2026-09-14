@@ -36,18 +36,29 @@ MONTHLY_SYNTHESIS_SCHEMA = {
 }
 
 
-def synthesize_monthly_report(client, model, project_name, visits):
+def synthesize_monthly_report(client, model, project_name, visits, language="en"):
     """visits: list of {"date_label": str, "narrative": str}.
     Mirrors site-report-generator.js's synthesizeMonthlyReport: one cheap
     text-only Claude call combining the already-AI-written per-visit notes
     (posted by project-watcher.js) into a client-facing synthesis.
+
+    language: "en" or "ar" — controls the language of the generated text
+    (the JSON field names stay fixed per MONTHLY_SYNTHESIS_SCHEMA either way).
     """
     combined = "\n\n".join(f"{v['date_label']}:\n{v['narrative']}" for v in visits)
+    if language == "ar":
+        language_instruction = (
+            "Write your entire response in formal Modern Standard Arabic, in a client-facing "
+            "construction-report tone. Keep the JSON field names in English exactly as given by the "
+            "schema — only the text VALUES must be in Arabic."
+        )
+    else:
+        language_instruction = "Write your entire response in English."
     prompt = (
         f'Here are the site-visit update notes already written for "{project_name}" this reporting period '
         f"(one per visit, already AI-summarized from site photos):\n\n{combined}\n\n"
         "Produce a client-facing monthly report synthesis from these notes only — do not assume anything "
-        "not stated in them."
+        f"not stated in them. {language_instruction}"
     )
     resp = client.messages.create(
         model=model or DEFAULT_MODEL,

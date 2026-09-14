@@ -16,6 +16,15 @@ except ImportError:
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
 PHOTOS_PER_VISIT = 4
 
+ARABIC_MONTHS = [
+    "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+    "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر",
+]
+ARABIC_WEEKDAYS = {
+    "Monday": "الاثنين", "Tuesday": "الثلاثاء", "Wednesday": "الأربعاء",
+    "Thursday": "الخميس", "Friday": "الجمعة", "Saturday": "السبت", "Sunday": "الأحد",
+}
+
 
 class Project(models.Model):
     _inherit = "project.project"
@@ -44,7 +53,7 @@ class Project(models.Model):
             "context": {"default_project_id": self.id},
         }
 
-    def action_generate_site_report(self, period_start, period_end, period_label):
+    def action_generate_site_report(self, period_start, period_end, period_label, language="en"):
         """Runs generation synchronously, right in this request — no thread,
         no scheduled action. Takes roughly 15-30s depending on the number of
         visits; the button just shows a loading spinner until it returns
@@ -56,7 +65,7 @@ class Project(models.Model):
             body=_("Monthly site report for %s requested by %s — generating now.")
             % (period_label, self.env.user.name)
         )
-        self._generate_site_report(period_start, period_end, period_label, self.env.user.id)
+        self._generate_site_report(period_start, period_end, period_label, self.env.user.id, language)
 
     def _fetch_visit_note(self, folder_date_label):
         self.ensure_one()
@@ -96,7 +105,7 @@ class Project(models.Model):
                 partner_ids = [user.partner_id.id]
         self.message_post(body=body, partner_ids=partner_ids)
 
-    def _generate_site_report(self, period_start, period_end, period_label, requesting_user_id):
+    def _generate_site_report(self, period_start, period_end, period_label, requesting_user_id, language="en"):
         self.ensure_one()
         _logger.info("Site report [%s / %s]: starting", self.name, period_label)
 
@@ -163,7 +172,13 @@ class Project(models.Model):
                 photos = [google_drive.download_file_bytes(drive, f["id"]) for f in sampled]
 
                 weekday = visit_date.strftime("%A")
-                date_label = f"Site Visit — {visit_date.strftime('%d %B %Y')} ({weekday})"
+                if language == "ar":
+                    date_label = (
+                        f"زيارة ميدانية — {visit_date.day:02d} {ARABIC_MONTHS[visit_date.month - 1]} "
+                        f"{visit_date.year} ({ARABIC_WEEKDAYS[weekday]})"
+                    )
+                else:
+                    date_label = f"Site Visit — {visit_date.strftime('%d %B %Y')} ({weekday})"
                 # A visit is included in the report (photos always shown) as long as it has
                 # photos — a missing chatter note (project-watcher.js hasn't caught up yet)
                 # only means that visit contributes nothing to the written summary below,
@@ -194,8 +209,17 @@ class Project(models.Model):
                 _logger.info("Site report [%s / %s]: synthesizing with Claude", self.name, period_label)
                 client = anthropic.Anthropic(api_key=anthropic_api_key, timeout=60.0)
                 synthesis = claude_synthesis.synthesize_monthly_report(
-                    client, anthropic_model, self.name, narrated_visits
+                    client, anthropic_model, self.name, narrated_visits, language
                 )
+            elif language == "ar":
+                synthesis = {
+                    "site_update_summary": (
+                        "لم تتوفر ملاحظات مكتوبة للزيارات خلال هذه الفترة — يُرجى مراجعة صور الموقع "
+                        "المرفقة أدناه للاطلاع على سير العمل هذا الشهر."
+                    ),
+                    "planned_activities": [],
+                    "recommendations": "لا توجد ملاحظات زيارة متاحة لمراجعة أي إجراءات مطلوبة من المالك خلال هذه الفترة.",
+                }
             else:
                 synthesis = {
                     "site_update_summary": (
@@ -225,6 +249,7 @@ class Project(models.Model):
                 visits_for_report,
                 synthesis,
                 logo_path=self._get_logo_path(),
+                language=language,
             )
 
             filename = f"{self.name} - Monthly Report - {period_label}.docx".replace("/", "-")

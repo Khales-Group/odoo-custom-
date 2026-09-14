@@ -18,12 +18,95 @@ from PIL import Image
 
 FONT_SERIF = "Times New Roman"
 FONT_SANS = "Calibri"
+FONT_ARABIC = "Arial"  # broadly available complex-script font with solid Arabic glyph coverage
 COLOR_TEXT = "252525"
 COLOR_GRAY = "808080"
 COLOR_BORDER = "D9D9D9"
 COLOR_ACCENT = "AF8D56"
 
 EMU_PER_PIXEL = 9525  # 96 DPI, matches docx.js's pixel-based transformation
+
+LABELS = {
+    "en": {
+        "monthly_report": "Monthly Report",
+        "company": "Khales Engineering Consultancy",
+        "prepared_for": "Prepared For",
+        "prepared_for_value": "Mr. {name}",
+        "project_location": "Project Location",
+        "plot_number": "Plot Number",
+        "document_ref": "Document Ref",
+        "project_name": "Project Name",
+        "location": "Location",
+        "contractor": "Contractor",
+        "consultant": "Consultant",
+        "disclaimer": (
+            "This report was generated automatically: site-visit photographs and their AI-written summaries "
+            "were pulled from the project's records, and this month's planned activities/recommendations "
+            "were drafted by AI from those summaries. Please verify before formal client issue."
+        ),
+        "heading_1": "1. EXECUTIVE SUMMARY",
+        "heading_2": "2. SITE UPDATE - WORKS COMPLETED THIS MONTH",
+        "heading_3": "3. SITE PHOTOS",
+        "heading_4": "4. PLANNED ACTIVITIES — NEXT MONTH",
+        "heading_5": "5. RECOMMENDATIONS / OWNER ACTION REQUIRED",
+        "summary_line": (
+            "This report covers {count} site visit(s) for {project} during {period} ({dates})."
+        ),
+        "date_prefix": "Date: {label}",
+        "prepared_by": "Prepared By",
+        "manager_title": "{name} / Project Manager",
+        "name_title_sig": "[Name / Title / Signature]",
+        "reviewed_by": "Reviewed / Approved By",
+        "footer_confidential": "Confidential - Prepared for Owner Use Only",
+        "footer_page": "Page ",
+        "footer_of": " of ",
+    },
+    "ar": {
+        "monthly_report": "التقرير الشهري",
+        "company": "خالص للاستشارات الهندسية",
+        "prepared_for": "مُعد لـ",
+        "prepared_for_value": "السيد {name}",
+        "project_location": "موقع المشروع",
+        "plot_number": "رقم القطعة",
+        "document_ref": "المرجع",
+        "project_name": "اسم المشروع",
+        "location": "الموقع",
+        "contractor": "المقاول",
+        "consultant": "الاستشاري",
+        "disclaimer": (
+            "تم إعداد هذا التقرير تلقائيًا: تم استخراج صور الزيارات الميدانية وملخصاتها المكتوبة بواسطة الذكاء "
+            "الاصطناعي من سجلات المشروع، كما تمت صياغة الأنشطة المخطط لها والتوصيات لهذا الشهر بواسطة الذكاء "
+            "الاصطناعي استنادًا إلى تلك الملخصات. يُرجى المراجعة قبل الإصدار الرسمي للعميل."
+        ),
+        "heading_1": "1. الملخص التنفيذي",
+        "heading_2": "2. تحديث الموقع - الأعمال المنجزة هذا الشهر",
+        "heading_3": "3. صور الموقع",
+        "heading_4": "4. الأنشطة المخطط لها - الشهر القادم",
+        "heading_5": "5. التوصيات / الإجراءات المطلوبة من المالك",
+        "summary_line": (
+            "يغطي هذا التقرير {count} زيارة/زيارات ميدانية لمشروع {project} خلال {period} ({dates})."
+        ),
+        "date_prefix": "التاريخ: {label}",
+        "prepared_by": "أُعد بواسطة",
+        "manager_title": "{name} / مدير المشروع",
+        "name_title_sig": "[الاسم / المسمى الوظيفي / التوقيع]",
+        "reviewed_by": "روجع / اعتمد بواسطة",
+        "footer_confidential": "سري - مُعد لاستخدام المالك فقط",
+        "footer_page": "صفحة ",
+        "footer_of": " من ",
+    },
+}
+
+
+def _t(lang, key, **kwargs):
+    text = LABELS[lang][key]
+    return text.format(**kwargs) if kwargs else text
+
+
+def _font_for(lang, serif=False):
+    if lang == "ar":
+        return FONT_ARABIC
+    return FONT_SERIF if serif else FONT_SANS
 
 
 def _hp(half_points):
@@ -73,6 +156,37 @@ def _set_paragraph_top_border(paragraph, hex_color, size=4, space=4):
     pPr.append(pBdr)
 
 
+def _set_paragraph_rtl(paragraph, keep_alignment=False):
+    """Mark a paragraph right-to-left and, unless it's deliberately centered,
+    switch its alignment to the right so it reads naturally in Arabic.
+    """
+    pPr = paragraph._p.get_or_add_pPr()
+    pPr.append(OxmlElement("w:bidi"))
+    if not keep_alignment and paragraph.alignment != WD_ALIGN_PARAGRAPH.CENTER:
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+
+def _set_run_rtl(run, font_name):
+    rPr = run._r.get_or_add_rPr()
+    rFonts = rPr.find(qn("w:rFonts"))
+    if rFonts is None:
+        rFonts = OxmlElement("w:rFonts")
+        rPr.insert(0, rFonts)
+    rFonts.set(qn("w:cs"), font_name)
+    rPr.append(OxmlElement("w:rtl"))
+
+
+def _apply_rtl(paragraph, font_name, keep_alignment=False):
+    _set_paragraph_rtl(paragraph, keep_alignment=keep_alignment)
+    for run in paragraph.runs:
+        _set_run_rtl(run, font_name)
+
+
+def _set_table_rtl(table):
+    tblPr = table._tbl.tblPr
+    tblPr.append(OxmlElement("w:bidiVisual"))
+
+
 def _add_field(paragraph, field_code):
     """Insert a Word field (e.g. PAGE / NUMPAGES) as a run."""
     run = paragraph.add_run()
@@ -109,44 +223,52 @@ def prepare_embedded_photo(raw_bytes, max_width=300, max_height=220):
     }
 
 
-def _add_heading(document, text, with_rule=False):
+def _add_heading(document, text, with_rule=False, lang="en"):
     p = document.add_paragraph()
     p.paragraph_format.space_before = _dxa(300)
     p.paragraph_format.space_after = _dxa(120)
     run = p.add_run(text)
     run.bold = True
-    run.font.name = FONT_SANS
+    run.font.name = _font_for(lang)
     run.font.size = _hp(24)
     run.font.color.rgb = _color(COLOR_TEXT)
     if with_rule:
         _set_paragraph_bottom_border(p, COLOR_ACCENT, size=6, space=4)
+    if lang == "ar":
+        _apply_rtl(p, FONT_ARABIC)
     return p
 
 
-def _add_body_paragraph(document, text, gray=False, italic=False):
+def _add_body_paragraph(document, text, gray=False, italic=False, lang="en"):
     p = document.add_paragraph()
     p.paragraph_format.space_after = _dxa(120)
     run = p.add_run(text or "")
-    run.font.name = FONT_SANS
+    run.font.name = _font_for(lang)
     run.font.size = _hp(20)
     run.font.color.rgb = _color(COLOR_GRAY if gray else COLOR_TEXT)
     run.italic = italic
+    if lang == "ar":
+        _apply_rtl(p, FONT_ARABIC)
     return p
 
 
-def _add_bullet(document, text):
+def _add_bullet(document, text, lang="en"):
     p = document.add_paragraph(style="List Bullet")
     p.paragraph_format.space_after = _dxa(80)
     run = p.add_run(text)
-    run.font.name = FONT_SANS
+    run.font.name = _font_for(lang)
     run.font.size = _hp(20)
     run.font.color.rgb = _color(COLOR_TEXT)
+    if lang == "ar":
+        _apply_rtl(p, FONT_ARABIC)
     return p
 
 
-def _add_info_table(document, rows):
+def _add_info_table(document, rows, lang="en"):
     table = document.add_table(rows=0, cols=2)
     table.autofit = True
+    if lang == "ar":
+        _set_table_rtl(table)
     for label, value in rows:
         row = table.add_row()
         label_cell, value_cell = row.cells
@@ -155,20 +277,24 @@ def _add_info_table(document, rows):
         p = label_cell.paragraphs[0]
         run = p.add_run(label)
         run.bold = True
-        run.font.name = FONT_SANS
+        run.font.name = _font_for(lang)
         run.font.size = _hp(20)
         run.font.color.rgb = _color(COLOR_TEXT)
+        if lang == "ar":
+            _apply_rtl(p, FONT_ARABIC)
 
         value_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
         p = value_cell.paragraphs[0]
         run = p.add_run(value or "")
-        run.font.name = FONT_SANS
+        run.font.name = _font_for(lang)
         run.font.size = _hp(20)
         run.font.color.rgb = _color(COLOR_TEXT)
+        if lang == "ar":
+            _apply_rtl(p, FONT_ARABIC)
     return table
 
 
-def _add_photo_grid(document, photos):
+def _add_photo_grid(document, photos, lang="en"):
     """2-column photo grid for one site visit. No per-photo captions — the
     narrative text already covers what happened at that visit.
     """
@@ -176,6 +302,8 @@ def _add_photo_grid(document, photos):
     rows = [prepared[i : i + 2] for i in range(0, len(prepared), 2)]
 
     table = document.add_table(rows=0, cols=2)
+    if lang == "ar":
+        _set_table_rtl(table)
     for row_photos in rows:
         row = table.add_row()
         for i, cell in enumerate(row.cells):
@@ -193,19 +321,21 @@ def _add_photo_grid(document, photos):
     return table
 
 
-def _add_date_line(document, label):
+def _add_date_line(document, label, lang="en"):
     p = document.add_paragraph()
     p.paragraph_format.space_before = _dxa(100)
     p.paragraph_format.space_after = _dxa(200)
-    run = p.add_run(f"Date: {label}")
+    run = p.add_run(_t(lang, "date_prefix", label=label))
     run.italic = True
-    run.font.name = FONT_SANS
+    run.font.name = _font_for(lang)
     run.font.size = _hp(18)
     run.font.color.rgb = _color(COLOR_GRAY)
+    if lang == "ar":
+        _apply_rtl(p, FONT_ARABIC)
     return p
 
 
-def _add_footer(document, logo_path=None):
+def _add_footer(document, logo_path=None, lang="en"):
     section = document.sections[0]
     footer = section.footer
     p = footer.paragraphs[0]
@@ -214,24 +344,30 @@ def _add_footer(document, logo_path=None):
 
     def run_of(text=""):
         r = p.add_run(text)
-        r.font.name = FONT_SANS
+        r.font.name = _font_for(lang)
         r.font.size = _hp(14)
         r.font.color.rgb = _color(COLOR_GRAY)
         return r
 
-    run_of("Confidential - Prepared for Owner Use Only")
-    run_of("\tPage ")
+    run_of(_t(lang, "footer_confidential"))
+    run_of("\t" + _t(lang, "footer_page"))
     _add_field(p, "PAGE")
-    run_of(" of ")
+    run_of(_t(lang, "footer_of"))
     _add_field(p, "NUMPAGES")
+    if lang == "ar":
+        _apply_rtl(p, FONT_ARABIC, keep_alignment=True)
 
 
-def _add_cover_page(document, project, period_label, logo_path):
+def _add_cover_page(document, project, period_label, logo_path, lang="en"):
+    font = _font_for(lang, serif=True)
+
     p = document.add_paragraph()
     run = p.add_run(period_label)
-    run.font.name = FONT_SERIF
+    run.font.name = font
     run.font.size = _hp(24)
     run.font.color.rgb = _color(COLOR_TEXT)
+    if lang == "ar":
+        _apply_rtl(p, FONT_ARABIC)
 
     spacer = document.add_paragraph()
     spacer.paragraph_format.space_before = _dxa(1600)
@@ -244,103 +380,124 @@ def _add_cover_page(document, project, period_label, logo_path):
     title_p = document.add_paragraph()
     title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title_p.paragraph_format.space_before = _dxa(500)
-    run = title_p.add_run("Monthly Report")
-    run.font.name = FONT_SERIF
+    run = title_p.add_run(_t(lang, "monthly_report"))
+    run.font.name = font
     run.font.size = _hp(72)
+    if lang == "ar":
+        _apply_rtl(title_p, FONT_ARABIC, keep_alignment=True)
 
     sub_p = document.add_paragraph()
     sub_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     sub_p.paragraph_format.space_before = _dxa(150)
-    run = sub_p.add_run("Khales Engineering Consultancy")
-    run.font.name = FONT_SERIF
+    run = sub_p.add_run(_t(lang, "company"))
+    run.font.name = font
     run.font.size = _hp(24)
+    if lang == "ar":
+        _apply_rtl(sub_p, FONT_ARABIC, keep_alignment=True)
 
     gap = document.add_paragraph()
     gap.paragraph_format.space_before = _dxa(3200)
 
     for label, value in [
-        ("Prepared For", f"Mr. {project.get('client_name') or ''}"),
-        ("Project Location", project.get("location") or ""),
-        ("Plot Number", project.get("plot_number") or ""),
-        ("Document Ref", project.get("project_no") or ""),
+        (_t(lang, "prepared_for"), _t(lang, "prepared_for_value", name=project.get("client_name") or "")),
+        (_t(lang, "project_location"), project.get("location") or ""),
+        (_t(lang, "plot_number"), project.get("plot_number") or ""),
+        (_t(lang, "document_ref"), project.get("project_no") or ""),
     ]:
         line = document.add_paragraph()
         run = line.add_run(f"{label}: {value}")
-        run.font.name = FONT_SERIF
+        run.font.name = font
         run.font.size = _hp(20)
         run.font.color.rgb = _color(COLOR_TEXT)
+        if lang == "ar":
+            _apply_rtl(line, FONT_ARABIC)
 
     document.add_page_break()
 
 
-def build_report_docx(project, period_label, visit_dates_label, visits, synthesis, logo_path=None):
+def build_report_docx(project, period_label, visit_dates_label, visits, synthesis, logo_path=None, language="en"):
     """project: dict with project_no, project_name, location, contractor,
     consultant, client_name, plot_number, manager_name.
     visits: list of {"date_label": str, "narrative": str, "photos": [bytes, ...]}.
     synthesis: dict from claude_synthesis.synthesize_monthly_report.
+    language: "en" or "ar" — controls all static labels and right-to-left layout.
     Returns the .docx file content as bytes.
     """
+    lang = language if language in LABELS else "en"
     document = Document()
-    _add_footer(document, logo_path)
-    _add_cover_page(document, project, period_label, logo_path)
+    _add_footer(document, logo_path, lang=lang)
+    _add_cover_page(document, project, period_label, logo_path, lang=lang)
 
     _add_info_table(
         document,
         [
-            ("Project Name", project.get("project_name")),
-            ("Location", project.get("location") or ""),
-            ("Contractor", project.get("contractor") or ""),
-            ("Consultant", project.get("consultant") or ""),
+            (_t(lang, "project_name"), project.get("project_name")),
+            (_t(lang, "location"), project.get("location") or ""),
+            (_t(lang, "contractor"), project.get("contractor") or ""),
+            (_t(lang, "consultant"), project.get("consultant") or ""),
         ],
+        lang=lang,
     )
+    _add_body_paragraph(document, _t(lang, "disclaimer"), gray=True, italic=True, lang=lang)
+
+    _add_heading(document, _t(lang, "heading_1"), lang=lang)
     _add_body_paragraph(
         document,
-        (
-            "This report was generated automatically: site-visit photographs and their AI-written summaries "
-            "were pulled from the project's records, and this month's planned activities/recommendations "
-            "were drafted by AI from those summaries. Please verify before formal client issue."
+        _t(
+            lang, "summary_line",
+            count=len(visits), project=project.get("project_name"),
+            period=period_label, dates=visit_dates_label,
         ),
-        gray=True,
-        italic=True,
+        lang=lang,
     )
 
-    _add_heading(document, "1. EXECUTIVE SUMMARY")
-    _add_body_paragraph(
-        document,
-        f"This report covers {len(visits)} site visit(s) for {project.get('project_name')} during "
-        f"{period_label} ({visit_dates_label}).",
-    )
-
-    _add_heading(document, "2. SITE UPDATE - WORKS COMPLETED THIS MONTH", with_rule=True)
+    _add_heading(document, _t(lang, "heading_2"), with_rule=True, lang=lang)
     for para in synthesis["site_update_summary"].split("\n\n"):
         if para.strip():
-            _add_body_paragraph(document, para.strip())
+            _add_body_paragraph(document, para.strip(), lang=lang)
 
-    _add_heading(document, "3. SITE PHOTOS")
+    _add_heading(document, _t(lang, "heading_3"), lang=lang)
     for visit in visits:
         if visit["photos"]:
-            _add_photo_grid(document, visit["photos"])
-        _add_date_line(document, visit["date_label"])
+            _add_photo_grid(document, visit["photos"], lang=lang)
+        _add_date_line(document, visit["date_label"], lang=lang)
 
-    _add_heading(document, "4. PLANNED ACTIVITIES — NEXT MONTH", with_rule=True)
+    _add_heading(document, _t(lang, "heading_4"), with_rule=True, lang=lang)
     for item in synthesis["planned_activities"]:
-        _add_bullet(document, item)
+        _add_bullet(document, item, lang=lang)
 
-    _add_heading(document, "5. RECOMMENDATIONS / OWNER ACTION REQUIRED")
-    _add_body_paragraph(document, synthesis["recommendations"])
+    _add_heading(document, _t(lang, "heading_5"), lang=lang)
+    _add_body_paragraph(document, synthesis["recommendations"], lang=lang)
 
     sign_table = document.add_table(rows=1, cols=2)
-    sign_table.rows[0].cells[0].paragraphs[0].add_run("Prepared By").bold = True
-    p = sign_table.rows[0].cells[0].add_paragraph()
-    run = p.add_run(f"{project.get('manager_name')} / Project Manager" if project.get("manager_name") else "[Name / Title / Signature]")
-    run.italic = True
-    run.font.color.rgb = _color(COLOR_GRAY)
+    if lang == "ar":
+        _set_table_rtl(sign_table)
+    font = _font_for(lang)
 
-    sign_table.rows[0].cells[1].paragraphs[0].add_run("Reviewed / Approved By").bold = True
-    p = sign_table.rows[0].cells[1].add_paragraph()
-    run = p.add_run("[Name / Title / Signature]")
+    prepared_p = sign_table.rows[0].cells[0].paragraphs[0]
+    prepared_p.add_run(_t(lang, "prepared_by")).bold = True
+    if lang == "ar":
+        _apply_rtl(prepared_p, FONT_ARABIC)
+    p = sign_table.rows[0].cells[0].add_paragraph()
+    manager_name = project.get("manager_name")
+    run = p.add_run(_t(lang, "manager_title", name=manager_name) if manager_name else _t(lang, "name_title_sig"))
     run.italic = True
+    run.font.name = font
     run.font.color.rgb = _color(COLOR_GRAY)
+    if lang == "ar":
+        _apply_rtl(p, FONT_ARABIC)
+
+    reviewed_p = sign_table.rows[0].cells[1].paragraphs[0]
+    reviewed_p.add_run(_t(lang, "reviewed_by")).bold = True
+    if lang == "ar":
+        _apply_rtl(reviewed_p, FONT_ARABIC)
+    p = sign_table.rows[0].cells[1].add_paragraph()
+    run = p.add_run(_t(lang, "name_title_sig"))
+    run.italic = True
+    run.font.name = font
+    run.font.color.rgb = _color(COLOR_GRAY)
+    if lang == "ar":
+        _apply_rtl(p, FONT_ARABIC)
 
     buf = io.BytesIO()
     document.save(buf)
