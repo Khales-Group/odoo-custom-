@@ -204,10 +204,10 @@ class Project(models.Model):
 
             visit_dates_label = ", ".join(v["date"].isoformat() for v in visits_for_report)
             narrated_visits = [v for v in visits_for_report if v["narrative"]]
+            client = genai.Client(api_key=gemini_api_key)
 
             if narrated_visits:
                 _logger.info("Site report [%s / %s]: synthesizing with Gemini", self.name, period_label)
-                client = genai.Client(api_key=gemini_api_key)
                 synthesis = gemini_synthesis.synthesize_monthly_report(
                     client, gemini_model, self.name, narrated_visits, language
                 )
@@ -240,6 +240,16 @@ class Project(models.Model):
                 "plot_number": getattr(self, "x_studio_plot_number", "") or "",
                 "manager_name": self.user_id.name if self.user_id else "",
             }
+
+            if language == "ar":
+                try:
+                    _logger.info("Site report [%s / %s]: localizing project details with Gemini", self.name, period_label)
+                    project_meta = gemini_synthesis.localize_project_meta(client, gemini_model, project_meta)
+                except Exception:
+                    _logger.exception(
+                        "Site report [%s / %s]: Arabic localization of project details failed, "
+                        "falling back to the raw values", self.name, period_label,
+                    )
 
             _logger.info("Site report [%s / %s]: building .docx", self.name, period_label)
             docx_bytes = docx_report.build_report_docx(

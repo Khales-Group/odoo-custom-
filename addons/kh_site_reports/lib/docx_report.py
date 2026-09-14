@@ -64,7 +64,7 @@ LABELS = {
     "ar": {
         "monthly_report": "التقرير الشهري",
         "company": "خالص للاستشارات الهندسية",
-        "prepared_for": "مُعد لـ",
+        "prepared_for": "معدّ إلى",
         "prepared_for_value": "السيد {name}",
         "project_location": "موقع المشروع",
         "plot_number": "رقم القطعة",
