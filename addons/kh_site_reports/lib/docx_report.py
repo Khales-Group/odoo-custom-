@@ -123,6 +123,45 @@ def _color(hex_str):
     return RGBColor.from_string(hex_str)
 
 
+# w:pPr children must appear in this schema order (ECMA-376 CT_PPrBase) or
+# some renderers (Word is lenient; several web/LibreOffice-based docx
+# previewers are not) silently drop the out-of-order properties — notably
+# bidi/right-alignment, which is why paragraphs built up piecemeal (spacing
+# set before bidi, border set after spacing, etc.) must be inserted through
+# _insert_pPr_child rather than a plain pPr.append().
+_PPR_ORDER = [
+    "w:pStyle", "w:keepNext", "w:keepLines", "w:pageBreakBefore", "w:framePr",
+    "w:widowControl", "w:numPr", "w:suppressLineNumbers", "w:pBdr", "w:shd",
+    "w:tabs", "w:suppressAutoHyphens", "w:kinsoku", "w:wordWrap", "w:overflowPunct",
+    "w:topLinePunct", "w:autoSpaceDE", "w:autoSpaceDN", "w:bidi", "w:adjustRightInd",
+    "w:snapToGrid", "w:spacing", "w:ind", "w:contextualSpacing", "w:mirrorIndents",
+    "w:suppressOverlap", "w:jc", "w:textDirection", "w:textAlignment",
+    "w:textboxTightWrap", "w:outlineLvl", "w:divId", "w:cnfStyle", "w:rPr",
+    "w:sectPr", "w:pPrChange",
+]
+
+
+def _insert_pPr_child(pPr, element, tag):
+    successors = _PPR_ORDER[_PPR_ORDER.index(tag) + 1 :]
+    pPr.insert_element_before(element, *successors)
+
+
+# Same schema-order requirement as _PPR_ORDER, for w:tblPr (CT_TblPrBase):
+# bidiVisual must precede tblW/tblLayout/tblLook, which python-docx's
+# table.autofit and default tblLook already add before we get here.
+_TBLPR_ORDER = [
+    "w:tblStyle", "w:tblpPr", "w:tblOverlap", "w:bidiVisual",
+    "w:tblStyleRowBandSize", "w:tblStyleColBandSize", "w:tblW", "w:jc",
+    "w:tblCellSpacing", "w:tblInd", "w:tblBorders", "w:shd", "w:tblLayout",
+    "w:tblCellMar", "w:tblLook", "w:tblCaption", "w:tblDescription", "w:tblPrChange",
+]
+
+
+def _insert_tblPr_child(tblPr, element, tag):
+    successors = _TBLPR_ORDER[_TBLPR_ORDER.index(tag) + 1 :]
+    tblPr.insert_element_before(element, *successors)
+
+
 def _set_cell_shading(cell, hex_color):
     tcPr = cell._tc.get_or_add_tcPr()
     shd = OxmlElement("w:shd")
@@ -141,7 +180,7 @@ def _set_paragraph_bottom_border(paragraph, hex_color, size=6, space=4):
     bottom.set(qn("w:space"), str(space))
     bottom.set(qn("w:color"), hex_color)
     pBdr.append(bottom)
-    pPr.append(pBdr)
+    _insert_pPr_child(pPr, pBdr, "w:pBdr")
 
 
 def _set_paragraph_top_border(paragraph, hex_color, size=4, space=4):
@@ -153,7 +192,7 @@ def _set_paragraph_top_border(paragraph, hex_color, size=4, space=4):
     top.set(qn("w:space"), str(space))
     top.set(qn("w:color"), hex_color)
     pBdr.append(top)
-    pPr.append(pBdr)
+    _insert_pPr_child(pPr, pBdr, "w:pBdr")
 
 
 def _set_paragraph_rtl(paragraph, keep_alignment=False):
@@ -161,7 +200,7 @@ def _set_paragraph_rtl(paragraph, keep_alignment=False):
     switch its alignment to the right so it reads naturally in Arabic.
     """
     pPr = paragraph._p.get_or_add_pPr()
-    pPr.append(OxmlElement("w:bidi"))
+    _insert_pPr_child(pPr, OxmlElement("w:bidi"), "w:bidi")
     if not keep_alignment and paragraph.alignment != WD_ALIGN_PARAGRAPH.CENTER:
         paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
@@ -184,7 +223,7 @@ def _apply_rtl(paragraph, font_name, keep_alignment=False):
 
 def _set_table_rtl(table):
     tblPr = table._tbl.tblPr
-    tblPr.append(OxmlElement("w:bidiVisual"))
+    _insert_tblPr_child(tblPr, OxmlElement("w:bidiVisual"), "w:bidiVisual")
 
 
 def _add_field(paragraph, field_code):
