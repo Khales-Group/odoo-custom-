@@ -419,7 +419,7 @@ def build_report_docx(project, period_label, visit_dates_label, visits, synthesi
     """project: dict with project_no, project_name, location, contractor,
     consultant, client_name, plot_number, manager_name.
     visits: list of {"date_label": str, "narrative": str, "photos": [bytes, ...]}.
-    synthesis: dict from claude_synthesis.synthesize_monthly_report.
+    synthesis: dict from gemini_synthesis.synthesize_monthly_report.
     language: "en" or "ar" — controls all static labels and right-to-left layout.
     Returns the .docx file content as bytes.
     """

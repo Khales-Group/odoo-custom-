@@ -16,18 +16,21 @@ request):
 - Finds dated site-visit subfolders that fall within the picked month.
 - Reuses the AI-written visit note already posted on the project's chatter
   (by the external site-visit watcher) as that visit's narrative — no new
-  photo analysis, just a single cheap text-only Claude call to synthesize
+  photo analysis, just a single cheap text-only Gemini call to synthesize
   the month's notes into a summary, planned activities, and
   recommendations.
 - Builds a .docx matching the Khales "Monthly Report" template and attaches
   it directly to the project's chatter, then notifies the requesting user.
+- The wizard lets the requester pick the report language (English or
+  Arabic); the Arabic report is fully right-to-left.
 
 Setup required before use:
 - System Parameter "kh_site_reports.google_service_account_json": paste the
   JSON key of a Google Service Account that has been shared (Viewer) on the
   project's Drive "Site Supervision" folder.
-- System Parameter "mcp_server.anthropic_api_key" (reused from the existing
-  AI Project Manager setup) must be configured.
+- System Parameter "gemini.api.key" (reused from the existing Gemini
+  integrations in this codebase) must be configured. Optional System
+  Parameter "gemini.model" overrides the default model.
 - Optionally place the company logo at
   static/img/khales_logo.png inside this module for it to appear on the
   report's cover page.
@@ -36,7 +39,7 @@ Setup required before use:
     "category": "Project",
     "depends": ["project", "mail"],
     "external_dependencies": {
-        "python": ["anthropic", "docx", "googleapiclient", "google", "PIL"],
+        "python": ["google-genai", "docx", "googleapiclient", "google", "PIL"],
     },
     "data": [
         "security/ir.model.access.csv",

@@ -8,12 +8,12 @@ from odoo import _, fields, models
 _logger = logging.getLogger(__name__)
 
 try:
-    import anthropic
-    HAS_ANTHROPIC = True
+    from google import genai
+    HAS_GENAI = True
 except ImportError:
-    HAS_ANTHROPIC = False
+    HAS_GENAI = False
 
-DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
+DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
 PHOTOS_PER_VISIT = 4
 
 ARABIC_MONTHS = [
@@ -110,7 +110,7 @@ class Project(models.Model):
         _logger.info("Site report [%s / %s]: starting", self.name, period_label)
 
         try:
-            from ..lib import claude_synthesis, docx_report, google_drive
+            from ..lib import docx_report, gemini_synthesis, google_drive
 
             ICP = self.env["ir.config_parameter"].sudo()
             service_account_json = ICP.get_param("kh_site_reports.google_service_account_json")
@@ -119,12 +119,12 @@ class Project(models.Model):
                     "Missing system parameter kh_site_reports.google_service_account_json "
                     "(paste the Google Service Account JSON key there)."
                 )
-            if not HAS_ANTHROPIC:
-                raise ValueError("The 'anthropic' Python package is not installed.")
-            anthropic_api_key = ICP.get_param("mcp_server.anthropic_api_key")
-            if not anthropic_api_key:
-                raise ValueError("Missing system parameter mcp_server.anthropic_api_key.")
-            anthropic_model = ICP.get_param("mcp_server.anthropic_model") or DEFAULT_ANTHROPIC_MODEL
+            if not HAS_GENAI:
+                raise ValueError("The 'google-genai' Python package is not installed.")
+            gemini_api_key = ICP.get_param("gemini.api.key")
+            if not gemini_api_key:
+                raise ValueError("Missing system parameter gemini.api.key.")
+            gemini_model = ICP.get_param("gemini.model") or DEFAULT_GEMINI_MODEL
 
             _logger.info("Site report [%s / %s]: authenticating with Google Drive", self.name, period_label)
             drive = google_drive.build_drive_client(service_account_json)
@@ -206,10 +206,10 @@ class Project(models.Model):
             narrated_visits = [v for v in visits_for_report if v["narrative"]]
 
             if narrated_visits:
-                _logger.info("Site report [%s / %s]: synthesizing with Claude", self.name, period_label)
-                client = anthropic.Anthropic(api_key=anthropic_api_key, timeout=60.0)
-                synthesis = claude_synthesis.synthesize_monthly_report(
-                    client, anthropic_model, self.name, narrated_visits, language
+                _logger.info("Site report [%s / %s]: synthesizing with Gemini", self.name, period_label)
+                client = genai.Client(api_key=gemini_api_key)
+                synthesis = gemini_synthesis.synthesize_monthly_report(
+                    client, gemini_model, self.name, narrated_visits, language
                 )
             elif language == "ar":
                 synthesis = {
