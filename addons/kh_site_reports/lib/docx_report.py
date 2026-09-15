@@ -2,7 +2,8 @@
 
 Python port of the `docx` (JS) rendering section of the original
 site-report-generator.js script — same layout, fonts and colors (matching
-the Khales "Monthly Report" Word template), rebuilt with python-docx.
+the Khales "Monthly Report" Word template), rebuilt with python-docx so it
+can run inside Odoo instead of Node.
 """
 
 import io
@@ -77,15 +78,15 @@ LABELS = {
             "الاصطناعي من سجلات المشروع، كما تمت صياغة الأنشطة المخطط لها والتوصيات لهذا الشهر بواسطة الذكاء "
             "الاصطناعي استنادًا إلى تلك الملخصات. يُرجى المراجعة قبل الإصدار الرسمي للعميل."
         ),
-        "heading_1": "1. الملخص التنفيذي",
-        "heading_2": "2. تحديث الموقع - الأعمال المنجزة هذا الشهر",
-        "heading_3": "3. صور الموقع",
-        "heading_4": "4. الأنشطة المخطط لها - الشهر القادم",
-        "heading_5": "5. التوصيات / الإجراءات المطلوبة من المالك",
+        "heading_1": "\u200F1. الملخص التنفيذي",
+        "heading_2": "\u200F2. تحديث الموقع - الأعمال المنجزة هذا الشهر",
+        "heading_3": "\u200F3. صور الموقع",
+        "heading_4": "\u200F4. الأنشطة المخطط لها - الشهر القادم",
+        "heading_5": "\u200F5. التوصيات / الإجراءات المطلوبة من المالك",
         "summary_line": (
-            "يغطي هذا التقرير {count} زيارة/زيارات ميدانية لمشروع {project} خلال {period} ({dates})."
+            "\u200Fيغطي هذا التقرير {count} زيارة/زيارات ميدانية لمشروع {project} خلال {period} ({dates})."
         ),
-        "date_prefix": "التاريخ: {label}",
+        "date_prefix": "\u200Fالتاريخ: {label}",
         "prepared_by": "أُعد بواسطة",
         "manager_title": "{name} / مدير المشروع",
         "name_title_sig": "[الاسم / المسمى الوظيفي / التوقيع]",
@@ -120,6 +121,7 @@ def _color(hex_str):
     return RGBColor.from_string(hex_str)
 
 
+# Schema order tables
 _PPR_ORDER = [
     "w:pStyle", "w:keepNext", "w:keepLines", "w:pageBreakBefore", "w:framePr",
     "w:widowControl", "w:numPr", "w:suppressLineNumbers", "w:pBdr", "w:shd",
@@ -131,12 +133,6 @@ _PPR_ORDER = [
     "w:sectPr", "w:pPrChange",
 ]
 
-
-def _insert_pPr_child(pPr, element, tag):
-    successors = _PPR_ORDER[_PPR_ORDER.index(tag) + 1 :]
-    pPr.insert_element_before(element, *successors)
-
-
 _TBLPR_ORDER = [
     "w:tblStyle", "w:tblpPr", "w:tblOverlap", "w:bidiVisual",
     "w:tblStyleRowBandSize", "w:tblStyleColBandSize", "w:tblW", "w:jc",
@@ -144,14 +140,32 @@ _TBLPR_ORDER = [
     "w:tblCellMar", "w:tblLook", "w:tblCaption", "w:tblDescription", "w:tblPrChange",
 ]
 
+_RPR_ORDER = [
+    "w:rStyle", "w:rFonts", "w:b", "w:bCs", "w:i", "w:iCs", "w:caps", "w:smallCaps",
+    "w:strike", "w:dstrike", "w:outline", "w:shadow", "w:emboss", "w:imprint",
+    "w:noProof", "w:snapToGrid", "w:vanish", "w:webHidden", "w:color", "w:spacing",
+    "w:w", "w:kerning", "w:position", "w:sz", "w:szCs", "w:highlight", "w:u",
+    "w:effect", "w:bdr", "w:shd", "w:fitText", "w:vertAlign", "w:rtl", "w:cs",
+    "w:em", "w:lang", "w:eastAsianLayout", "w:specVanish", "w:oMath", "w:rPrChange"
+]
+
+
+def _insert_pPr_child(pPr, element, tag):
+    successors = _PPR_ORDER[_PPR_ORDER.index(tag) + 1 :]
+    pPr.insert_element_before(element, *successors)
+
 
 def _insert_tblPr_child(tblPr, element, tag):
     successors = _TBLPR_ORDER[_TBLPR_ORDER.index(tag) + 1 :]
     tblPr.insert_element_before(element, *successors)
 
 
+def _insert_rPr_child(rPr, element, tag):
+    successors = _RPR_ORDER[_RPR_ORDER.index(tag) + 1 :]
+    rPr.insert_element_before(element, *successors)
+
+
 def _set_paragraph_alignment(paragraph, align_val):
-    """Inserts w:jc in strict schema order to prevent layout breaking."""
     pPr = paragraph._p.get_or_add_pPr()
     existing_jc = pPr.find(qn("w:jc"))
     if existing_jc is not None:
@@ -220,18 +234,39 @@ def _set_paragraph_rtl(paragraph, keep_alignment=False):
 
 def _set_run_rtl(run, font_name):
     rPr = run._r.get_or_add_rPr()
+
+    # Set fonts
     rFonts = rPr.find(qn("w:rFonts"))
     if rFonts is None:
         rFonts = OxmlElement("w:rFonts")
-        rPr.insert(0, rFonts)
+        _insert_rPr_child(rPr, rFonts, "w:rFonts")
     rFonts.set(qn("w:cs"), font_name)
     rFonts.set(qn("w:ascii"), font_name)
     rFonts.set(qn("w:hAnsi"), font_name)
 
+    if run.bold:
+        bCs = OxmlElement("w:bCs")
+        _insert_rPr_child(rPr, bCs, "w:bCs")
+
+    if run.italic:
+        iCs = OxmlElement("w:iCs")
+        _insert_rPr_child(rPr, iCs, "w:iCs")
+
+    sz = rPr.find(qn("w:sz"))
+    if sz is not None:
+        szCs = OxmlElement("w:szCs")
+        szCs.set(qn("w:val"), sz.get(qn("w:val")))
+        _insert_rPr_child(rPr, szCs, "w:szCs")
+
     if rPr.find(qn("w:rtl")) is None:
         rtl = OxmlElement("w:rtl")
         rtl.set(qn("w:val"), "1")
-        rPr.append(rtl)
+        _insert_rPr_child(rPr, rtl, "w:rtl")
+
+    if rPr.find(qn("w:lang")) is None:
+        lang_elem = OxmlElement("w:lang")
+        lang_elem.set(qn("w:bidi"), "ar-SA")
+        _insert_rPr_child(rPr, lang_elem, "w:lang")
 
 
 def _apply_rtl(paragraph, font_name, keep_alignment=False):
@@ -338,24 +373,25 @@ def _add_info_table(document, rows, lang="en"):
         row = table.add_row()
         label_cell, value_cell = row.cells
         _set_cell_shading(label_cell, COLOR_BORDER)
+
         label_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-        p = label_cell.paragraphs[0]
-        run = p.add_run(label)
+        p_label = label_cell.paragraphs[0]
+        run = p_label.add_run(label)
         run.bold = True
         run.font.name = _font_for(lang)
         run.font.size = _hp(20)
         run.font.color.rgb = _color(COLOR_TEXT)
         if lang == "ar":
-            _apply_rtl(p, FONT_ARABIC)
+            _apply_rtl(p_label, FONT_ARABIC)
 
         value_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-        p = value_cell.paragraphs[0]
-        run = p.add_run(value or "")
+        p_value = value_cell.paragraphs[0]
+        run = p_value.add_run(value or "")
         run.font.name = _font_for(lang)
         run.font.size = _hp(20)
         run.font.color.rgb = _color(COLOR_TEXT)
         if lang == "ar":
-            _apply_rtl(p, FONT_ARABIC)
+            _apply_rtl(p_value, FONT_ARABIC)
     return table
 
 
@@ -472,7 +508,8 @@ def _add_cover_page(document, project, period_label, logo_path, lang="en"):
         (_t(lang, "document_ref"), project.get("project_no") or ""),
     ]:
         line = document.add_paragraph()
-        run = line.add_run(f"{label}: {value}")
+        text_val = f"\u200F{label}: {value}" if lang == "ar" else f"{label}: {value}"
+        run = line.add_run(text_val)
         run.font.name = font
         run.font.size = _hp(20)
         run.font.color.rgb = _color(COLOR_TEXT)
