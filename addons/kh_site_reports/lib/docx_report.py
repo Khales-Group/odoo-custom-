@@ -261,7 +261,12 @@ def _set_paragraph_rtl(paragraph, keep_alignment=False):
         bidi.set(qn("w:val"), "1")
         _insert_pPr_child(pPr, bidi, "w:bidi")
     if not keep_alignment:
-        _set_paragraph_alignment(paragraph, "right")
+        # Confirmed empirically against real Word (COM automation + rendered
+        # PDF): for a w:bidi paragraph, Word inverts literal "left"/"right" jc
+        # values (jc="right" renders at the physical LEFT). The direction-aware
+        # "start" value is the one that actually renders at the physical right
+        # for an RTL paragraph — use that instead of "right".
+        _set_paragraph_alignment(paragraph, "start")
 
 
 def _set_run_rtl(run, font_name):
@@ -411,6 +416,12 @@ def _add_bullet(document, text, lang="en"):
 def _add_info_table(document, rows, lang="en"):
     table = document.add_table(rows=0, cols=2)
     table.autofit = False
+    # Set column widths on the table (not per-cell after add_row) so python-docx
+    # updates tblGrid to match — setting cell.width alone leaves tblGrid at its
+    # stale equal-column default, and that grid/cell mismatch is what was making
+    # Word misplace "right"-aligned text in the wider (value) column.
+    table.columns[0].width = Inches(1.8)
+    table.columns[1].width = Inches(4.7)
     if lang == "ar":
         _set_table_rtl(table)
 
@@ -488,7 +499,7 @@ def _add_footer(document, logo_path=None, lang="en"):
     _set_paragraph_top_border(p, COLOR_BORDER, size=4, space=4)
 
     if lang == "ar":
-        _set_paragraph_alignment(p, "right")
+        _set_paragraph_alignment(p, "start")
 
         r1 = p.add_run(_t(lang, "footer_confidential"))
         r1.font.name = FONT_ARABIC
@@ -583,7 +594,7 @@ def _add_cover_page(document, project, period_label, logo_path, lang="en"):
         run.font.size = _hp(20)
         run.font.color.rgb = _color(COLOR_TEXT)
         if lang == "ar":
-            _set_paragraph_alignment(line, "right")
+            _set_paragraph_alignment(line, "start")
             _apply_rtl(line, FONT_ARABIC, keep_alignment=True)
 
     document.add_page_break()
