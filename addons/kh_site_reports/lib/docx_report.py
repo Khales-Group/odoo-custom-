@@ -2,8 +2,7 @@
 
 Python port of the `docx` (JS) rendering section of the original
 site-report-generator.js script — same layout, fonts and colors (matching
-the Khales "Monthly Report" Word template), rebuilt with python-docx so it
-can run inside Odoo instead of Node.
+the Khales "Monthly Report" Word template), rebuilt with python-docx.
 """
 
 import io
@@ -18,13 +17,13 @@ from PIL import Image
 
 FONT_SERIF = "Times New Roman"
 FONT_SANS = "Calibri"
-FONT_ARABIC = "Arial"  # broadly available complex-script font with solid Arabic glyph coverage
+FONT_ARABIC = "Arial"
 COLOR_TEXT = "252525"
 COLOR_GRAY = "808080"
 COLOR_BORDER = "D9D9D9"
 COLOR_ACCENT = "AF8D56"
 
-EMU_PER_PIXEL = 9525  # 96 DPI, matches docx.js's pixel-based transformation
+EMU_PER_PIXEL = 9525
 
 LABELS = {
     "en": {
@@ -110,12 +109,10 @@ def _font_for(lang, serif=False):
 
 
 def _hp(half_points):
-    """OOXML run size is in half-points."""
     return Pt(half_points / 2)
 
 
 def _dxa(dxa):
-    """OOXML spacing is in twentieths of a point (dxa)."""
     return Pt(dxa / 20)
 
 
@@ -123,12 +120,6 @@ def _color(hex_str):
     return RGBColor.from_string(hex_str)
 
 
-# w:pPr children must appear in this schema order (ECMA-376 CT_PPrBase) or
-# some renderers (Word is lenient; several web/LibreOffice-based docx
-# previewers are not) silently drop the out-of-order properties — notably
-# bidi/right-alignment, which is why paragraphs built up piecemeal (spacing
-# set before bidi, border set after spacing, etc.) must be inserted through
-# _insert_pPr_child rather than a plain pPr.append().
 _PPR_ORDER = [
     "w:pStyle", "w:keepNext", "w:keepLines", "w:pageBreakBefore", "w:framePr",
     "w:widowControl", "w:numPr", "w:suppressLineNumbers", "w:pBdr", "w:shd",
@@ -146,9 +137,6 @@ def _insert_pPr_child(pPr, element, tag):
     pPr.insert_element_before(element, *successors)
 
 
-# Same schema-order requirement as _PPR_ORDER, for w:tblPr (CT_TblPrBase):
-# bidiVisual must precede tblW/tblLayout/tblLook, which python-docx's
-# table.autofit and default tblLook already add before we get here.
 _TBLPR_ORDER = [
     "w:tblStyle", "w:tblpPr", "w:tblOverlap", "w:bidiVisual",
     "w:tblStyleRowBandSize", "w:tblStyleColBandSize", "w:tblW", "w:jc",
@@ -162,16 +150,29 @@ def _insert_tblPr_child(tblPr, element, tag):
     tblPr.insert_element_before(element, *successors)
 
 
+def _set_paragraph_alignment(paragraph, align_val):
+    """Inserts w:jc in strict schema order to prevent layout breaking."""
+    pPr = paragraph._p.get_or_add_pPr()
+    existing_jc = pPr.find(qn("w:jc"))
+    if existing_jc is not None:
+        pPr.remove(existing_jc)
+    jc = OxmlElement("w:jc")
+    jc.set(qn("w:val"), align_val)
+    _insert_pPr_child(pPr, jc, "w:jc")
+
+
 def _set_section_rtl(section):
-    """Flip the whole page/section to right-to-left. Per-paragraph w:bidi
-    controls each paragraph's own text flow, but several renderers key off
-    this section-level flag for the document's overall reading direction
-    (which margin is the "start" side, etc.) — without it some viewers keep
-    treating the page as LTR even though every paragraph is individually
-    marked bidi.
-    """
     sectPr = section._sectPr
-    sectPr.insert_element_before(OxmlElement("w:bidi"), "w:rtlGutter", "w:docGrid", "w:printerSettings", "w:sectPrChange")
+    if sectPr.find(qn("w:bidi")) is None:
+        bidi = OxmlElement("w:bidi")
+        bidi.set(qn("w:val"), "1")
+        sectPr.insert_element_before(
+            bidi,
+            "w:rtlGutter",
+            "w:docGrid",
+            "w:printerSettings",
+            "w:sectPrChange",
+        )
 
 
 def _set_cell_shading(cell, hex_color):
@@ -208,13 +209,13 @@ def _set_paragraph_top_border(paragraph, hex_color, size=4, space=4):
 
 
 def _set_paragraph_rtl(paragraph, keep_alignment=False):
-    """Mark a paragraph right-to-left and, unless it's deliberately centered,
-    switch its alignment to the right so it reads naturally in Arabic.
-    """
     pPr = paragraph._p.get_or_add_pPr()
-    _insert_pPr_child(pPr, OxmlElement("w:bidi"), "w:bidi")
-    if not keep_alignment and paragraph.alignment != WD_ALIGN_PARAGRAPH.CENTER:
-        paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    if pPr.find(qn("w:bidi")) is None:
+        bidi = OxmlElement("w:bidi")
+        bidi.set(qn("w:val"), "1")
+        _insert_pPr_child(pPr, bidi, "w:bidi")
+    if not keep_alignment:
+        _set_paragraph_alignment(paragraph, "right")
 
 
 def _set_run_rtl(run, font_name):
@@ -224,7 +225,13 @@ def _set_run_rtl(run, font_name):
         rFonts = OxmlElement("w:rFonts")
         rPr.insert(0, rFonts)
     rFonts.set(qn("w:cs"), font_name)
-    rPr.append(OxmlElement("w:rtl"))
+    rFonts.set(qn("w:ascii"), font_name)
+    rFonts.set(qn("w:hAnsi"), font_name)
+
+    if rPr.find(qn("w:rtl")) is None:
+        rtl = OxmlElement("w:rtl")
+        rtl.set(qn("w:val"), "1")
+        rPr.append(rtl)
 
 
 def _apply_rtl(paragraph, font_name, keep_alignment=False):
@@ -235,11 +242,13 @@ def _apply_rtl(paragraph, font_name, keep_alignment=False):
 
 def _set_table_rtl(table):
     tblPr = table._tbl.tblPr
-    _insert_tblPr_child(tblPr, OxmlElement("w:bidiVisual"), "w:bidiVisual")
+    if tblPr.find(qn("w:bidiVisual")) is None:
+        bidi = OxmlElement("w:bidiVisual")
+        bidi.set(qn("w:val"), "1")
+        _insert_tblPr_child(tblPr, bidi, "w:bidiVisual")
 
 
 def _add_field(paragraph, field_code):
-    """Insert a Word field (e.g. PAGE / NUMPAGES) as a run."""
     run = paragraph.add_run()
     r = run._r
     fld_begin = OxmlElement("w:fldChar")
@@ -256,9 +265,6 @@ def _add_field(paragraph, field_code):
 
 
 def prepare_embedded_photo(raw_bytes, max_width=300, max_height=220):
-    """Downscale a photo to a sane embed size (JPEG q=80, capped 900x900),
-    returning the box (in pixels, aspect preserved) to render it at.
-    """
     with Image.open(io.BytesIO(raw_bytes)) as img:
         img = img.convert("RGB")
         img.thumbnail((900, 900))
@@ -312,6 +318,14 @@ def _add_bullet(document, text, lang="en"):
     run.font.color.rgb = _color(COLOR_TEXT)
     if lang == "ar":
         _apply_rtl(p, FONT_ARABIC)
+        pPr = p._p.get_or_add_pPr()
+        ind = pPr.find(qn("w:ind"))
+        if ind is not None:
+            pPr.remove(ind)
+        new_ind = OxmlElement("w:ind")
+        new_ind.set(qn("w:right"), "720")
+        new_ind.set(qn("w:hanging"), "360")
+        _insert_pPr_child(pPr, new_ind, "w:ind")
     return p
 
 
@@ -346,9 +360,6 @@ def _add_info_table(document, rows, lang="en"):
 
 
 def _add_photo_grid(document, photos, lang="en"):
-    """2-column photo grid for one site visit. No per-photo captions — the
-    narrative text already covers what happened at that visit.
-    """
     prepared = [prepare_embedded_photo(p) for p in photos]
     rows = [prepared[i : i + 2] for i in range(0, len(prepared), 2)]
 
@@ -362,7 +373,7 @@ def _add_photo_grid(document, photos, lang="en"):
                 continue
             photo = row_photos[i]
             p = cell.paragraphs[0]
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            _set_paragraph_alignment(p, "center")
             run = p.add_run()
             run.add_picture(
                 io.BytesIO(photo["data"]),
@@ -390,7 +401,12 @@ def _add_footer(document, logo_path=None, lang="en"):
     section = document.sections[0]
     footer = section.footer
     p = footer.paragraphs[0]
-    p.paragraph_format.tab_stops.add_tab_stop(Pt(468), WD_TAB_ALIGNMENT.RIGHT)
+    if lang == "ar":
+        _set_paragraph_alignment(p, "right")
+        p.paragraph_format.tab_stops.add_tab_stop(Pt(0), WD_TAB_ALIGNMENT.LEFT)
+    else:
+        p.paragraph_format.tab_stops.add_tab_stop(Pt(468), WD_TAB_ALIGNMENT.RIGHT)
+
     _set_paragraph_top_border(p, COLOR_BORDER, size=4, space=4)
 
     def run_of(text=""):
@@ -424,12 +440,12 @@ def _add_cover_page(document, project, period_label, logo_path, lang="en"):
     spacer.paragraph_format.space_before = _dxa(1600)
 
     logo_p = document.add_paragraph()
-    logo_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _set_paragraph_alignment(logo_p, "center")
     if logo_path:
         logo_p.add_run().add_picture(logo_path, width=Emu(150 * EMU_PER_PIXEL), height=Emu(71 * EMU_PER_PIXEL))
 
     title_p = document.add_paragraph()
-    title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _set_paragraph_alignment(title_p, "center")
     title_p.paragraph_format.space_before = _dxa(500)
     run = title_p.add_run(_t(lang, "monthly_report"))
     run.font.name = font
@@ -438,7 +454,7 @@ def _add_cover_page(document, project, period_label, logo_path, lang="en"):
         _apply_rtl(title_p, FONT_ARABIC, keep_alignment=True)
 
     sub_p = document.add_paragraph()
-    sub_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _set_paragraph_alignment(sub_p, "center")
     sub_p.paragraph_format.space_before = _dxa(150)
     run = sub_p.add_run(_t(lang, "company"))
     run.font.name = font
@@ -467,13 +483,6 @@ def _add_cover_page(document, project, period_label, logo_path, lang="en"):
 
 
 def build_report_docx(project, period_label, visit_dates_label, visits, synthesis, logo_path=None, language="en"):
-    """project: dict with project_no, project_name, location, contractor,
-    consultant, client_name, plot_number, manager_name.
-    visits: list of {"date_label": str, "narrative": str, "photos": [bytes, ...]}.
-    synthesis: dict from gemini_synthesis.synthesize_monthly_report.
-    language: "en" or "ar" — controls all static labels and right-to-left layout.
-    Returns the .docx file content as bytes.
-    """
     lang = language if language in LABELS else "en"
     document = Document()
     if lang == "ar":
@@ -531,6 +540,7 @@ def build_report_docx(project, period_label, visit_dates_label, visits, synthesi
     prepared_p.add_run(_t(lang, "prepared_by")).bold = True
     if lang == "ar":
         _apply_rtl(prepared_p, FONT_ARABIC)
+
     p = sign_table.rows[0].cells[0].add_paragraph()
     manager_name = project.get("manager_name")
     run = p.add_run(_t(lang, "manager_title", name=manager_name) if manager_name else _t(lang, "name_title_sig"))
@@ -544,6 +554,7 @@ def build_report_docx(project, period_label, visit_dates_label, visits, synthesi
     reviewed_p.add_run(_t(lang, "reviewed_by")).bold = True
     if lang == "ar":
         _apply_rtl(reviewed_p, FONT_ARABIC)
+
     p = sign_table.rows[0].cells[1].add_paragraph()
     run = p.add_run(_t(lang, "name_title_sig"))
     run.italic = True
