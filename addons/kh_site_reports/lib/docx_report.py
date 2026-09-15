@@ -173,6 +173,40 @@ def _set_paragraph_alignment(paragraph, align_val):
     _insert_pPr_child(pPr, jc, "w:jc")
 
 
+def _modernize_compat_mode(document):
+    """python-docx's bundled default template flags the document as Word-2010
+    compatibility mode (compatibilityMode=14) and never sets a complex-script
+    theme language. Word's legacy (pre-2013) compatibility layout engine has a
+    known first-paint bug with bidi paragraphs in documents it didn't author
+    itself: the paragraph's RTL state is correctly recorded (the ribbon's
+    right-to-left toggle shows active) but the visual layout stays LTR until
+    the user manually flips that toggle off and back on, forcing a relayout.
+    Bumping compatibilityMode to 15 (Word 2013+) switches to the modern
+    layout engine, which paints bidi paragraphs correctly on first open.
+    """
+    settings = document.settings.element
+
+    compat = settings.find(qn("w:compat"))
+    if compat is None:
+        compat = OxmlElement("w:compat")
+        settings.insert(0, compat)
+    compat_setting = None
+    for cs in compat.findall(qn("w:compatSetting")):
+        if cs.get(qn("w:name")) == "compatibilityMode":
+            compat_setting = cs
+            break
+    if compat_setting is None:
+        compat_setting = OxmlElement("w:compatSetting")
+        compat_setting.set(qn("w:name"), "compatibilityMode")
+        compat_setting.set(qn("w:uri"), "http://schemas.microsoft.com/office/word")
+        compat.append(compat_setting)
+    compat_setting.set(qn("w:val"), "15")
+
+    theme_font_lang = settings.find(qn("w:themeFontLang"))
+    if theme_font_lang is not None:
+        theme_font_lang.set(qn("w:bidi"), "ar-SA")
+
+
 def _set_section_rtl(section):
     sectPr = section._sectPr
     if sectPr.find(qn("w:bidi")) is None:
@@ -559,6 +593,7 @@ def build_report_docx(project, period_label, visit_dates_label, visits, synthesi
     lang = language if language in LABELS else "en"
     document = Document()
     if lang == "ar":
+        _modernize_compat_mode(document)
         _set_section_rtl(document.sections[0])
     _add_footer(document, logo_path, lang=lang)
     _add_cover_page(document, project, period_label, logo_path, lang=lang)
