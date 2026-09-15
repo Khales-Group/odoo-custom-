@@ -1,9 +1,7 @@
 """Builds the site-progress Monthly Report .docx.
 
-Python port of the `docx` (JS) rendering section of the original
-site-report-generator.js script — same layout, fonts and colors (matching
-the Khales "Monthly Report" Word template), rebuilt with python-docx so it
-can run inside Odoo instead of Node.
+Python script to build Khales Monthly Report Word documents with full RTL,
+proper Arabic bullet points, table alignment, and bidirectional text handling.
 """
 
 import io
@@ -13,7 +11,7 @@ from docx.enum.table import WD_ALIGN_VERTICAL
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Emu, Pt, RGBColor
+from docx.shared import Emu, Pt, RGBColor, Inches
 from PIL import Image
 
 FONT_SERIF = "Times New Roman"
@@ -121,7 +119,7 @@ def _color(hex_str):
     return RGBColor.from_string(hex_str)
 
 
-# Schema order tables
+# ECMA-376 Schema Order Tables
 _PPR_ORDER = [
     "w:pStyle", "w:keepNext", "w:keepLines", "w:pageBreakBefore", "w:framePr",
     "w:widowControl", "w:numPr", "w:suppressLineNumbers", "w:pBdr", "w:shd",
@@ -235,7 +233,6 @@ def _set_paragraph_rtl(paragraph, keep_alignment=False):
 def _set_run_rtl(run, font_name):
     rPr = run._r.get_or_add_rPr()
 
-    # Set fonts
     rFonts = rPr.find(qn("w:rFonts"))
     if rFonts is None:
         rFonts = OxmlElement("w:rFonts")
@@ -345,33 +342,50 @@ def _add_body_paragraph(document, text, gray=False, italic=False, lang="en"):
 
 
 def _add_bullet(document, text, lang="en"):
-    p = document.add_paragraph(style="List Bullet")
+    p = document.add_paragraph()
     p.paragraph_format.space_after = _dxa(80)
-    run = p.add_run(text)
-    run.font.name = _font_for(lang)
-    run.font.size = _hp(20)
-    run.font.color.rgb = _color(COLOR_TEXT)
+
     if lang == "ar":
-        _apply_rtl(p, FONT_ARABIC)
+        # Custom XML hanging indent for Arabic bullet points to avoid Word's LTR List Bullet bugs
         pPr = p._p.get_or_add_pPr()
-        ind = pPr.find(qn("w:ind"))
-        if ind is not None:
-            pPr.remove(ind)
-        new_ind = OxmlElement("w:ind")
-        new_ind.set(qn("w:right"), "720")
-        new_ind.set(qn("w:hanging"), "360")
-        _insert_pPr_child(pPr, new_ind, "w:ind")
+        ind = OxmlElement("w:ind")
+        ind.set(qn("w:right"), "500")
+        ind.set(qn("w:hanging"), "260")
+        _insert_pPr_child(pPr, ind, "w:ind")
+
+        run_bullet = p.add_run("\u200F•\t")
+        run_bullet.font.name = FONT_ARABIC
+        run_bullet.font.size = _hp(20)
+        run_bullet.font.color.rgb = _color(COLOR_TEXT)
+
+        run_text = p.add_run(text)
+        run_text.font.name = FONT_ARABIC
+        run_text.font.size = _hp(20)
+        run_text.font.color.rgb = _color(COLOR_TEXT)
+
+        _apply_rtl(p, FONT_ARABIC)
+    else:
+        p.style = "List Bullet"
+        run = p.add_run(text)
+        run.font.name = FONT_SANS
+        run.font.size = _hp(20)
+        run.font.color.rgb = _color(COLOR_TEXT)
+
     return p
 
 
 def _add_info_table(document, rows, lang="en"):
     table = document.add_table(rows=0, cols=2)
-    table.autofit = True
+    table.autofit = False
     if lang == "ar":
         _set_table_rtl(table)
+
     for label, value in rows:
         row = table.add_row()
         label_cell, value_cell = row.cells
+        label_cell.width = Inches(1.8)
+        value_cell.width = Inches(4.7)
+
         _set_cell_shading(label_cell, COLOR_BORDER)
 
         label_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
@@ -437,28 +451,49 @@ def _add_footer(document, logo_path=None, lang="en"):
     section = document.sections[0]
     footer = section.footer
     p = footer.paragraphs[0]
+    _set_paragraph_top_border(p, COLOR_BORDER, size=4, space=4)
+
     if lang == "ar":
         _set_paragraph_alignment(p, "right")
-        p.paragraph_format.tab_stops.add_tab_stop(Pt(0), WD_TAB_ALIGNMENT.LEFT)
+
+        r1 = p.add_run(_t(lang, "footer_confidential"))
+        r1.font.name = FONT_ARABIC
+        r1.font.size = _hp(14)
+        r1.font.color.rgb = _color(COLOR_GRAY)
+
+        r_tab = p.add_run("\t")
+
+        r2 = p.add_run(_t(lang, "footer_page"))
+        r2.font.name = FONT_ARABIC
+        r2.font.size = _hp(14)
+        r2.font.color.rgb = _color(COLOR_GRAY)
+
+        r_p = _add_field(p, "PAGE")
+
+        r3 = p.add_run(_t(lang, "footer_of"))
+        r3.font.name = FONT_ARABIC
+        r3.font.size = _hp(14)
+        r3.font.color.rgb = _color(COLOR_GRAY)
+
+        r_np = _add_field(p, "NUMPAGES")
+
+        p.paragraph_format.tab_stops.add_tab_stop(Pt(468), WD_TAB_ALIGNMENT.LEFT)
+        _apply_rtl(p, FONT_ARABIC, keep_alignment=True)
     else:
         p.paragraph_format.tab_stops.add_tab_stop(Pt(468), WD_TAB_ALIGNMENT.RIGHT)
 
-    _set_paragraph_top_border(p, COLOR_BORDER, size=4, space=4)
+        def run_of(text=""):
+            r = p.add_run(text)
+            r.font.name = FONT_SANS
+            r.font.size = _hp(14)
+            r.font.color.rgb = _color(COLOR_GRAY)
+            return r
 
-    def run_of(text=""):
-        r = p.add_run(text)
-        r.font.name = _font_for(lang)
-        r.font.size = _hp(14)
-        r.font.color.rgb = _color(COLOR_GRAY)
-        return r
-
-    run_of(_t(lang, "footer_confidential"))
-    run_of("\t" + _t(lang, "footer_page"))
-    _add_field(p, "PAGE")
-    run_of(_t(lang, "footer_of"))
-    _add_field(p, "NUMPAGES")
-    if lang == "ar":
-        _apply_rtl(p, FONT_ARABIC, keep_alignment=True)
+        run_of(_t(lang, "footer_confidential"))
+        run_of("\t" + _t(lang, "footer_page"))
+        _add_field(p, "PAGE")
+        run_of(_t(lang, "footer_of"))
+        _add_field(p, "NUMPAGES")
 
 
 def _add_cover_page(document, project, period_label, logo_path, lang="en"):
@@ -514,7 +549,8 @@ def _add_cover_page(document, project, period_label, logo_path, lang="en"):
         run.font.size = _hp(20)
         run.font.color.rgb = _color(COLOR_TEXT)
         if lang == "ar":
-            _apply_rtl(line, FONT_ARABIC)
+            _set_paragraph_alignment(line, "right")
+            _apply_rtl(line, FONT_ARABIC, keep_alignment=True)
 
     document.add_page_break()
 
