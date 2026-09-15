@@ -162,6 +162,18 @@ def _insert_tblPr_child(tblPr, element, tag):
     tblPr.insert_element_before(element, *successors)
 
 
+def _set_section_rtl(section):
+    """Flip the whole page/section to right-to-left. Per-paragraph w:bidi
+    controls each paragraph's own text flow, but several renderers key off
+    this section-level flag for the document's overall reading direction
+    (which margin is the "start" side, etc.) — without it some viewers keep
+    treating the page as LTR even though every paragraph is individually
+    marked bidi.
+    """
+    sectPr = section._sectPr
+    sectPr.insert_element_before(OxmlElement("w:bidi"), "w:rtlGutter", "w:docGrid", "w:printerSettings", "w:sectPrChange")
+
+
 def _set_cell_shading(cell, hex_color):
     tcPr = cell._tc.get_or_add_tcPr()
     shd = OxmlElement("w:shd")
@@ -464,6 +476,8 @@ def build_report_docx(project, period_label, visit_dates_label, visits, synthesi
     """
     lang = language if language in LABELS else "en"
     document = Document()
+    if lang == "ar":
+        _set_section_rtl(document.sections[0])
     _add_footer(document, logo_path, lang=lang)
     _add_cover_page(document, project, period_label, logo_path, lang=lang)
 
