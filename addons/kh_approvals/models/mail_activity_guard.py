@@ -28,8 +28,8 @@ class MailActivity(models.Model):
         user = self.env.user
         if self.env.is_superuser():
             return
-        # Majid (369) and his delegate (409) can manage any activity
-        if user.id in {369, 409}:
+        # Majid (369) can manage any activity
+        if user.id == 369:
             return
         excluded = self._kh_guard_excluded_models()
 
