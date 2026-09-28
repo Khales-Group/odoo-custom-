@@ -8,7 +8,10 @@ Khales Law & PRO
 
 The Law model (x_reports) and its stages (x_reports_stage) were built with
 Odoo Studio. This module takes ownership of both in code, under the same
-technical names and field names, so existing records keep working, and adds:
+technical names, so existing records keep working. The Studio fields
+themselves (x_studio_type, x_studio_company_id, ...) are left untouched and
+Studio-managed; only the stage field is redefined. The department of a file
+is its Studio field x_studio_type (Law / PRO). The module adds:
 
 - A department dashboard (Legal Affairs / PRO) as the app's entry screen.
 - Separate stages per department (Legal: Open > Preparation > Hearings >

@@ -2,8 +2,6 @@ from datetime import timedelta
 
 from odoo import api, fields, models
 
-from .x_reports_stage import DEPARTMENTS
-
 # A legal file with no update/message for this many days is flagged as stale.
 STALE_DAYS = 14
 
@@ -20,28 +18,17 @@ def _positive_boolean_search(operator, value):
 
 class LawReport(models.Model):
     # Same technical name as the Studio model, so existing data is kept.
-    # Field names/attributes of the Studio fields below mirror the Studio
-    # definitions exactly; do not rename them without a migration.
+    # The Studio fields (x_name, x_studio_type, x_studio_company_id, ...) are
+    # deliberately NOT redefined here: they stay Studio-managed and Odoo still
+    # loads them onto this class, with their exact Studio definitions. Only
+    # the stage is redefined, for the per-department columns and statusbar.
     _name = "x_reports"
     _description = "Law"
     _inherit = ["mail.thread", "mail.activity.mixin"]
     _rec_name = "x_name"
     _active_name = "x_active"
-    _order = "kh_priority desc, x_studio_sequence, id desc"
+    _order = "kh_priority desc, id desc"
 
-    # ------------------------------------------------------------------
-    # Studio fields (kept as they are)
-    # ------------------------------------------------------------------
-    x_name = fields.Char(string="Description", required=True, translate=True)
-    x_active = fields.Boolean(string="Active", default=True)
-    x_color = fields.Integer(string="Color")
-    x_studio_sequence = fields.Integer(string="Sequence")
-    x_studio_priority = fields.Boolean(string="High Priority")
-    x_studio_kanban_state = fields.Selection(
-        [("normal", "In Progress"), ("done", "Ready"), ("blocked", "Blocked")],
-        string="Kanban State",
-    )
-    x_studio_type = fields.Selection(DEPARTMENTS, string="Type", required=True, tracking=True)
     x_studio_stage_id = fields.Many2one(
         "x_reports_stage",
         string="Stage",
@@ -51,42 +38,6 @@ class LawReport(models.Model):
         group_expand="_read_group_stage_ids",
         domain="[('kh_department', '=', x_studio_type)]",
     )
-
-    x_studio_company_id = fields.Many2one("res.company", string="Company")
-    x_studio_currency_id = fields.Many2one("res.currency", string="Currency")
-    x_studio_value = fields.Monetary(string="Value", currency_field="x_studio_currency_id")
-    x_studio_contract_value = fields.Char(string="Contract value")
-
-    x_studio_user_id = fields.Many2one(
-        "res.users",
-        string="Responsible",
-        domain=[("share", "=", False)],
-        tracking=True,
-    )
-    x_studio_partner_id = fields.Many2one("res.partner", string="Contact")
-    x_studio_partner_email = fields.Char(string="Email")
-    x_studio_partner_phone = fields.Char(string="Phone")
-
-    x_studio_date = fields.Date(string="Date")
-    x_studio_date_start = fields.Datetime(string="Start Date")
-    x_studio_date_stop = fields.Datetime(string="End Date")
-
-    x_studio_plot_number = fields.Char(string="plot number")
-    x_studio_many2one_field_4g2_1irjm2hqi = fields.Many2one("project.project", string="Project realted")
-    x_studio_notes = fields.Html(string="Notes")
-    x_studio_image = fields.Binary(string="Image")
-
-    x_reports_line_ids_d0617 = fields.One2many(
-        "x_reports_line_65f86", "x_reports_id", string="New Lines"
-    )
-
-    # Left to Studio on purpose (still loaded automatically):
-    # - x_studio_tag_ids, x_studio_many2many_field_481_1irjliq1b: many2many
-    #   relation tables were named by Studio; redefining them needs the exact
-    #   table/column names or the links would appear empty.
-    # - x_studio_char_field_43c_1ioull8lc, x_studio_integer_field_5ek_1ioullg9e,
-    #   x_studio_html_field_97q_1irju01v0, x_studio_many2one_field_3tp_1irjlp4tr:
-    #   unnamed Studio placeholders, pending a keep/remove decision.
 
     # ------------------------------------------------------------------
     # Common to both departments
@@ -215,6 +166,18 @@ class LawReport(models.Model):
                 if first:
                     vals["x_studio_stage_id"] = first.id
         return super().create(vals_list)
+
+    def write(self, vals):
+        # Changing the department (e.g. classifying a file without type) also
+        # moves the file to the first stage of that department.
+        department = vals.get("x_studio_type")
+        if department and "x_studio_stage_id" not in vals:
+            mismatched = self.filtered(lambda r: r.x_studio_stage_id.kh_department != department)
+            first = self._kh_first_stage(department)
+            if mismatched and first:
+                super(LawReport, mismatched).write(dict(vals, x_studio_stage_id=first.id))
+                return super(LawReport, self - mismatched).write(vals)
+        return super().write(vals)
 
     # ------------------------------------------------------------------
     # Computes
