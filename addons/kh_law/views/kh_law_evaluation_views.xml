@@ -5,7 +5,7 @@
         <field name="name">kh.law.evaluation.form</field>
         <field name="model">kh.law.evaluation</field>
         <field name="arch" type="xml">
-            <form string="Evaluation">
+            <form string="تقييم">
                 <sheet>
                     <group>
                         <group>
@@ -22,7 +22,7 @@
                             <field name="evaluator_id" widget="many2one_avatar_user"/>
                         </group>
                     </group>
-                    <field name="note" placeholder="Comments..."/>
+                    <field name="note" placeholder="ملاحظات..."/>
                 </sheet>
                 <chatter/>
             </form>
@@ -51,7 +51,7 @@
         <field name="name">kh.law.evaluation.pivot</field>
         <field name="model">kh.law.evaluation</field>
         <field name="arch" type="xml">
-            <pivot string="Evaluations">
+            <pivot string="التقييمات">
                 <field name="user_id" type="row"/>
                 <field name="date_from" interval="quarter" type="col"/>
                 <field name="score_avg" type="measure"/>
@@ -65,21 +65,21 @@
         <field name="arch" type="xml">
             <search>
                 <field name="user_id"/>
-                <filter name="law" string="Legal Affairs" domain="[('department', '=', 'Law')]"/>
-                <filter name="pro" string="PRO" domain="[('department', '=', 'PRO')]"/>
+                <filter name="law" string="الشؤون القانونية" domain="[('department', '=', 'Law')]"/>
+                <filter name="pro" string="العلاقات العامة" domain="[('department', '=', 'PRO')]"/>
                 <separator/>
-                <filter name="monthly" string="Monthly" domain="[('period_type', '=', 'monthly')]"/>
-                <filter name="quarterly" string="Quarterly" domain="[('period_type', '=', 'quarterly')]"/>
+                <filter name="monthly" string="شهري" domain="[('period_type', '=', 'monthly')]"/>
+                <filter name="quarterly" string="ربعي" domain="[('period_type', '=', 'quarterly')]"/>
                 <group>
-                    <filter name="group_user" string="Employee" context="{'group_by': 'user_id'}"/>
-                    <filter name="group_period" string="Period" context="{'group_by': 'date_from:month'}"/>
+                    <filter name="group_user" string="الموظف" context="{'group_by': 'user_id'}"/>
+                    <filter name="group_period" string="الفترة" context="{'group_by': 'date_from:month'}"/>
                 </group>
             </search>
         </field>
     </record>
 
     <record id="action_kh_law_evaluation" model="ir.actions.act_window">
-        <field name="name">Evaluations</field>
+        <field name="name">التقييمات</field>
         <field name="res_model">kh.law.evaluation</field>
         <field name="view_mode">list,form,pivot</field>
     </record>

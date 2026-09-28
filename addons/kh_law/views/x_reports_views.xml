@@ -14,15 +14,15 @@
                 </header>
                 <sheet>
                     <div class="oe_button_box" name="button_box"/>
-                    <widget name="web_ribbon" title="Archived" bg_color="text-bg-danger" invisible="x_active"/>
-                    <widget name="web_ribbon" title="Late" bg_color="text-bg-danger" invisible="not kh_is_late"/>
+                    <widget name="web_ribbon" title="مؤرشف" bg_color="text-bg-danger" invisible="x_active"/>
+                    <widget name="web_ribbon" title="متأخرة" bg_color="text-bg-danger" invisible="not kh_is_late"/>
                     <field name="x_active" invisible="1"/>
                     <field name="kh_is_closed" invisible="1"/>
                     <field name="kh_is_stale" invisible="1"/>
                     <field name="kh_expiry_state" invisible="1"/>
                     <field name="x_studio_image" widget="image" class="oe_avatar"/>
                     <div class="oe_title">
-                        <h1><field name="x_name" placeholder="File title..."/></h1>
+                        <h1><field name="x_name" placeholder="عنوان الملف..."/></h1>
                         <field name="kh_priority" widget="priority"/>
                     </div>
                     <group>
@@ -47,7 +47,7 @@
                         </group>
                     </group>
 
-                    <group string="Case Tracking" name="kh_legal" invisible="x_studio_type != 'Law'">
+                    <group string="متابعة القضية" name="kh_legal" invisible="x_studio_type != 'Law'">
                         <group>
                             <field name="kh_case_assessment"/>
                             <field name="kh_case_outcome" required="kh_is_closed and x_studio_type == 'Law'"/>
@@ -61,7 +61,7 @@
                         </group>
                     </group>
 
-                    <group string="Transaction" name="kh_pro" invisible="x_studio_type != 'PRO'">
+                    <group string="المعاملة" name="kh_pro" invisible="x_studio_type != 'PRO'">
                         <group>
                             <field name="kh_pro_service"/>
                             <field name="kh_expiry_date"/>
@@ -94,10 +94,10 @@
                     </group>
 
                     <notebook>
-                        <page string="Details" name="details">
+                        <page string="التفاصيل" name="details">
                             <field name="x_studio_notes"/>
                         </page>
-                        <page string="Required Documents" name="documents" invisible="x_studio_type != 'PRO'">
+                        <page string="المستندات المطلوبة" name="documents" invisible="x_studio_type != 'PRO'">
                             <field name="kh_document_ids">
                                 <list editable="bottom" decoration-muted="kh_is_received">
                                     <field name="sequence" widget="handle"/>
@@ -107,7 +107,7 @@
                                 </list>
                             </field>
                         </page>
-                        <page string="New Page" name="studio_page">
+                        <page string="معلومات إضافية" name="studio_page">
                             <field name="x_studio_html_field_97q_1irju01v0"/>
                             <field name="x_reports_line_ids_d0617"/>
                         </page>
@@ -135,13 +135,13 @@
                              colors='{"planned": "success", "today": "warning", "overdue": "danger"}'/>
                 <templates>
                     <t t-name="menu">
-                        <t t-if="widget.editable"><a role="menuitem" type="open" class="dropdown-item">Edit</a></t>
-                        <t t-if="widget.deletable"><a role="menuitem" type="delete" class="dropdown-item">Delete</a></t>
+                        <t t-if="widget.editable"><a role="menuitem" type="open" class="dropdown-item">تعديل</a></t>
+                        <t t-if="widget.deletable"><a role="menuitem" type="delete" class="dropdown-item">حذف</a></t>
                         <div role="separator" class="dropdown-divider"/>
                         <field name="x_color" widget="kanban_color_picker"/>
                     </t>
                     <t t-name="card">
-                        <widget name="web_ribbon" title="Late" bg_color="text-bg-danger" invisible="not kh_is_late"/>
+                        <widget name="web_ribbon" title="متأخرة" bg_color="text-bg-danger" invisible="not kh_is_late"/>
                         <field name="x_name" class="fw-bold fs-5"/>
                         <field name="x_studio_many2one_field_4g2_1irjm2hqi" invisible="not x_studio_many2one_field_4g2_1irjm2hqi"/>
                         <field name="x_studio_partner_id" invisible="not x_studio_partner_id"/>
@@ -153,7 +153,7 @@
                                    decoration-warning="kh_case_assessment == 'medium'"
                                    decoration-danger="kh_case_assessment == 'difficult'"/>
                             <span t-if="record.kh_is_stale.raw_value" class="badge text-bg-danger"
-                                  title="Days without activity">
+                                  title="أيام بدون نشاط">
                                 <i class="fa fa-clock-o me-1"/><t t-esc="record.kh_days_inactive.value"/>
                             </span>
                         </div>
@@ -165,7 +165,7 @@
                                    decoration-warning="kh_expiry_state == 'warning'"
                                    decoration-danger="kh_expiry_state in ('danger', 'expired')"/>
                             <span t-if="record.kh_missing_doc_count.raw_value" class="badge text-bg-warning"
-                                  title="Missing documents">
+                                  title="مستندات ناقصة">
                                 <i class="fa fa-file-o me-1"/><t t-esc="record.kh_missing_doc_count.value"/>
                             </span>
                         </div>
@@ -200,9 +200,9 @@
                        column_invisible="context.get('default_x_studio_type') == 'PRO'"/>
                 <field name="kh_case_outcome" optional="hide"
                        column_invisible="context.get('default_x_studio_type') == 'PRO'"/>
-                <field name="kh_fee_expected" optional="hide" sum="Total"
+                <field name="kh_fee_expected" optional="hide" sum="المجموع"
                        column_invisible="context.get('default_x_studio_type') == 'PRO'"/>
-                <field name="kh_fee_collected" optional="hide" sum="Total"
+                <field name="kh_fee_collected" optional="hide" sum="المجموع"
                        column_invisible="context.get('default_x_studio_type') == 'PRO'"/>
                 <field name="kh_days_inactive" optional="show"
                        column_invisible="context.get('default_x_studio_type') == 'PRO'"/>
@@ -236,34 +236,34 @@
                 <field name="x_studio_user_id"/>
                 <field name="x_studio_many2one_field_4g2_1irjm2hqi"/>
                 <field name="x_studio_tag_ids"/>
-                <filter name="my" string="My Files" domain="[('x_studio_user_id', '=', uid)]"/>
-                <filter name="high" string="High Priority" domain="[('kh_priority', '=', '2')]"/>
+                <filter name="my" string="ملفاتي" domain="[('x_studio_user_id', '=', uid)]"/>
+                <filter name="high" string="أولوية عالية" domain="[('kh_priority', '=', '2')]"/>
                 <separator/>
-                <filter name="open" string="Open" domain="[('kh_is_closed', '=', False)]"/>
-                <filter name="closed" string="Closed" domain="[('kh_is_closed', '=', True)]"/>
+                <filter name="open" string="مفتوحة" domain="[('kh_is_closed', '=', False)]"/>
+                <filter name="closed" string="مغلقة" domain="[('kh_is_closed', '=', True)]"/>
                 <separator/>
-                <filter name="stale" string="No Recent Activity" domain="[('kh_is_stale', '=', True)]"/>
-                <filter name="late" string="Late" domain="[('kh_is_late', '=', True)]"/>
-                <filter name="missing_docs" string="Missing Documents" domain="[('kh_missing_doc_count', '>', 0)]"/>
+                <filter name="stale" string="بدون نشاط مؤخراً" domain="[('kh_is_stale', '=', True)]"/>
+                <filter name="late" string="متأخرة" domain="[('kh_is_late', '=', True)]"/>
+                <filter name="missing_docs" string="مستندات ناقصة" domain="[('kh_missing_doc_count', '>', 0)]"/>
                 <separator/>
-                <filter name="expired" string="Expired"
+                <filter name="expired" string="منتهية"
                         domain="[('kh_expiry_date', '&lt;', context_today().strftime('%Y-%m-%d'))]"/>
-                <filter name="expiring_30" string="Expiring in 30 Days"
+                <filter name="expiring_30" string="تنتهي خلال 30 يوم"
                         domain="[('kh_expiry_date', '&lt;=', (context_today() + relativedelta(days=30)).strftime('%Y-%m-%d'))]"/>
-                <filter name="expiring_60" string="Expiring in 60 Days"
+                <filter name="expiring_60" string="تنتهي خلال 60 يوم"
                         domain="[('kh_expiry_date', '&lt;=', (context_today() + relativedelta(days=60)).strftime('%Y-%m-%d'))]"/>
-                <filter name="expiring_90" string="Expiring in 90 Days"
+                <filter name="expiring_90" string="تنتهي خلال 90 يوم"
                         domain="[('kh_expiry_date', '&lt;=', (context_today() + relativedelta(days=90)).strftime('%Y-%m-%d'))]"/>
                 <separator/>
-                <filter name="archived" string="Archived" domain="[('x_active', '=', False)]"/>
+                <filter name="archived" string="المؤرشفة" domain="[('x_active', '=', False)]"/>
                 <group>
-                    <filter name="group_stage" string="Stage" context="{'group_by': 'x_studio_stage_id'}"/>
-                    <filter name="group_user" string="Responsible" context="{'group_by': 'x_studio_user_id'}"/>
-                    <filter name="group_assessment" string="Assessment" context="{'group_by': 'kh_case_assessment'}"/>
-                    <filter name="group_outcome" string="Outcome" context="{'group_by': 'kh_case_outcome'}"/>
-                    <filter name="group_service" string="Service" context="{'group_by': 'kh_pro_service'}"/>
-                    <filter name="group_on_time" string="On Time / Late" context="{'group_by': 'kh_on_time'}"/>
-                    <filter name="group_open_month" string="Opened (Month)" context="{'group_by': 'kh_open_date:month'}"/>
+                    <filter name="group_stage" string="المرحلة" context="{'group_by': 'x_studio_stage_id'}"/>
+                    <filter name="group_user" string="المسؤول" context="{'group_by': 'x_studio_user_id'}"/>
+                    <filter name="group_assessment" string="تقييم المحامي" context="{'group_by': 'kh_case_assessment'}"/>
+                    <filter name="group_outcome" string="نتيجة القضية" context="{'group_by': 'kh_case_outcome'}"/>
+                    <filter name="group_service" string="نوع الخدمة" context="{'group_by': 'kh_pro_service'}"/>
+                    <filter name="group_on_time" string="بالوقت / متأخرة" context="{'group_by': 'kh_on_time'}"/>
+                    <filter name="group_open_month" string="شهر الفتح" context="{'group_by': 'kh_open_date:month'}"/>
                 </group>
             </search>
         </field>
@@ -286,7 +286,7 @@
 
     <!-- Files with no department yet: set their Type here and they move to that department. -->
     <record id="action_x_reports_untyped" model="ir.actions.act_window">
-        <field name="name">Files Without Type</field>
+        <field name="name">ملفات بدون نوع</field>
         <field name="res_model">x_reports</field>
         <field name="view_mode">list,form</field>
         <field name="domain">[('x_studio_type', '=', False)]</field>
@@ -297,7 +297,7 @@
     </record>
 
     <record id="action_x_reports_law" model="ir.actions.act_window">
-        <field name="name">Legal Affairs</field>
+        <field name="name">الشؤون القانونية</field>
         <field name="res_model">x_reports</field>
         <field name="view_mode">kanban,list,form,calendar,activity</field>
         <field name="domain">[('x_studio_type', '=', 'Law')]</field>
@@ -310,7 +310,7 @@
     </record>
 
     <record id="action_x_reports_pro" model="ir.actions.act_window">
-        <field name="name">PRO</field>
+        <field name="name">العلاقات العامة</field>
         <field name="res_model">x_reports</field>
         <field name="view_mode">kanban,list,form,calendar,activity</field>
         <field name="domain">[('x_studio_type', '=', 'PRO')]</field>

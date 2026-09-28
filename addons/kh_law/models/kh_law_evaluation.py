@@ -4,42 +4,43 @@ from odoo.exceptions import ValidationError
 from .x_reports_stage import DEPARTMENTS
 
 SCORE_FIELDS = ("score_deadlines", "score_documents", "score_client")
+SCORE_HELP = "من 1 (ضعيف) إلى 5 (ممتاز)"
 
 
 class LawEvaluation(models.Model):
     _name = "kh.law.evaluation"
-    _description = "Periodic Evaluation"
+    _description = "تقييم دوري"
     _inherit = ["mail.thread"]
     _order = "date_from desc, id desc"
 
     user_id = fields.Many2one(
-        "res.users", string="Employee", required=True, tracking=True, domain=[("share", "=", False)]
+        "res.users", string="الموظف", required=True, tracking=True, domain=[("share", "=", False)]
     )
-    department = fields.Selection(DEPARTMENTS, string="Department", required=True, default="Law")
+    department = fields.Selection(DEPARTMENTS, string="القسم", required=True, default="Law")
     period_type = fields.Selection(
-        [("monthly", "Monthly"), ("quarterly", "Quarterly")],
-        string="Period", required=True, default="monthly",
+        [("monthly", "شهري"), ("quarterly", "ربعي")],
+        string="الفترة", required=True, default="monthly",
     )
     date_from = fields.Date(
-        string="Period Start", required=True,
+        string="بداية الفترة", required=True,
         default=lambda self: fields.Date.context_today(self).replace(day=1),
     )
     evaluator_id = fields.Many2one(
-        "res.users", string="Evaluated By", required=True, readonly=True, default=lambda self: self.env.user
+        "res.users", string="المقيّم", required=True, readonly=True, default=lambda self: self.env.user
     )
-    score_deadlines = fields.Integer(string="Meeting Deadlines", required=True, default=3, help="1 (poor) to 5 (excellent)")
-    score_documents = fields.Integer(string="Document Quality", required=True, default=3, help="1 (poor) to 5 (excellent)")
-    score_client = fields.Integer(string="Client Satisfaction", required=True, default=3, help="1 (poor) to 5 (excellent)")
+    score_deadlines = fields.Integer(string="الالتزام بالمواعيد", required=True, default=3, help=SCORE_HELP)
+    score_documents = fields.Integer(string="جودة المستندات", required=True, default=3, help=SCORE_HELP)
+    score_client = fields.Integer(string="رضا العميل", required=True, default=3, help=SCORE_HELP)
     score_avg = fields.Float(
-        string="Overall Score", compute="_compute_score_avg", store=True, aggregator="avg", digits=(3, 2)
+        string="التقييم العام", compute="_compute_score_avg", store=True, aggregator="avg", digits=(3, 2)
     )
-    note = fields.Html(string="Comments")
+    note = fields.Html(string="ملاحظات")
 
     @api.constrains(*SCORE_FIELDS)
     def _check_scores(self):
         for rec in self:
             if any(not 1 <= rec[name] <= 5 for name in SCORE_FIELDS):
-                raise ValidationError(self.env._("Scores must be between 1 and 5."))
+                raise ValidationError(self.env._("يجب أن تكون الدرجات بين 1 و 5."))
 
     @api.depends(*SCORE_FIELDS)
     def _compute_score_avg(self):

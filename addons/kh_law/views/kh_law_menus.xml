@@ -4,28 +4,28 @@
     <menuitem id="menu_kh_law_root" name="Law - PRO" sequence="45"
               web_icon="kh_law,static/description/icon.png"/>
 
-    <menuitem id="menu_kh_law_dashboard" name="Departments" parent="menu_kh_law_root"
+    <menuitem id="menu_kh_law_dashboard" name="الأقسام" parent="menu_kh_law_root"
               action="action_kh_law_department_dashboard" sequence="1"/>
-    <menuitem id="menu_kh_law_legal" name="Legal Affairs" parent="menu_kh_law_root"
+    <menuitem id="menu_kh_law_legal" name="الشؤون القانونية" parent="menu_kh_law_root"
               action="action_x_reports_law" sequence="2"/>
-    <menuitem id="menu_kh_law_pro" name="PRO" parent="menu_kh_law_root"
+    <menuitem id="menu_kh_law_pro" name="العلاقات العامة" parent="menu_kh_law_root"
               action="action_x_reports_pro" sequence="3"/>
 
-    <menuitem id="menu_kh_law_reporting" name="Reports" parent="menu_kh_law_root" sequence="4"/>
-    <menuitem id="menu_kh_law_report_legal" name="Legal Analysis" parent="menu_kh_law_reporting"
+    <menuitem id="menu_kh_law_reporting" name="التقارير" parent="menu_kh_law_root" sequence="4"/>
+    <menuitem id="menu_kh_law_report_legal" name="تحليل الشؤون القانونية" parent="menu_kh_law_reporting"
               action="action_x_reports_law_analysis" sequence="1"/>
-    <menuitem id="menu_kh_law_report_pro" name="PRO Analysis" parent="menu_kh_law_reporting"
+    <menuitem id="menu_kh_law_report_pro" name="تحليل العلاقات العامة" parent="menu_kh_law_reporting"
               action="action_x_reports_pro_analysis" sequence="2"/>
-    <menuitem id="menu_kh_law_evaluation" name="Evaluations" parent="menu_kh_law_reporting"
+    <menuitem id="menu_kh_law_evaluation" name="التقييمات" parent="menu_kh_law_reporting"
               action="action_kh_law_evaluation" sequence="3"/>
 
-    <menuitem id="menu_kh_law_config" name="Configuration" parent="menu_kh_law_root" sequence="99"
+    <menuitem id="menu_kh_law_config" name="الإعدادات" parent="menu_kh_law_root" sequence="99"
               groups="group_kh_law_manager"/>
-    <menuitem id="menu_kh_law_config_stages" name="Stages" parent="menu_kh_law_config"
+    <menuitem id="menu_kh_law_config_stages" name="المراحل" parent="menu_kh_law_config"
               action="action_x_reports_stage_kh" sequence="1"/>
-    <menuitem id="menu_kh_law_config_departments" name="Departments" parent="menu_kh_law_config"
+    <menuitem id="menu_kh_law_config_departments" name="الأقسام" parent="menu_kh_law_config"
               action="action_kh_law_department_config" sequence="2"/>
-    <menuitem id="menu_kh_law_config_untyped" name="Files Without Type" parent="menu_kh_law_config"
+    <menuitem id="menu_kh_law_config_untyped" name="ملفات بدون نوع" parent="menu_kh_law_config"
               action="action_x_reports_untyped" sequence="3"/>
 
 </odoo>

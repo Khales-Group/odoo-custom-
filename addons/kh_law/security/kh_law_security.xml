@@ -2,21 +2,21 @@
 <odoo>
 
     <record id="group_kh_law_manager" model="res.groups">
-        <field name="name">Law / PRO Manager</field>
-        <field name="comment">Can evaluate employees and configure departments and stages.</field>
+        <field name="name">مدير الشؤون القانونية والعلاقات العامة</field>
+        <field name="comment">يمكنه تقييم الموظفين وإعداد الأقسام والمراحل.</field>
         <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
         <field name="user_ids" eval="[(4, ref('base.user_root')), (4, ref('base.user_admin'))]"/>
     </record>
 
     <record id="rule_kh_law_evaluation_own" model="ir.rule">
-        <field name="name">Evaluations: own only</field>
+        <field name="name">التقييمات: تقييماتي فقط</field>
         <field name="model_id" ref="model_kh_law_evaluation"/>
         <field name="domain_force">[('user_id', '=', user.id)]</field>
         <field name="groups" eval="[(4, ref('base.group_user'))]"/>
     </record>
 
     <record id="rule_kh_law_evaluation_manager" model="ir.rule">
-        <field name="name">Evaluations: all (managers)</field>
+        <field name="name">التقييمات: الكل (للمدراء)</field>
         <field name="model_id" ref="model_kh_law_evaluation"/>
         <field name="domain_force">[(1, '=', 1)]</field>
         <field name="groups" eval="[(4, ref('group_kh_law_manager'))]"/>

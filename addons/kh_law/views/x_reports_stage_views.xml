@@ -23,17 +23,17 @@
         <field name="arch" type="xml">
             <search>
                 <field name="x_name"/>
-                <filter name="law" string="Legal Affairs" domain="[('kh_department', '=', 'Law')]"/>
-                <filter name="pro" string="PRO" domain="[('kh_department', '=', 'PRO')]"/>
+                <filter name="law" string="الشؤون القانونية" domain="[('kh_department', '=', 'Law')]"/>
+                <filter name="pro" string="العلاقات العامة" domain="[('kh_department', '=', 'PRO')]"/>
                 <group>
-                    <filter name="group_department" string="Department" context="{'group_by': 'kh_department'}"/>
+                    <filter name="group_department" string="القسم" context="{'group_by': 'kh_department'}"/>
                 </group>
             </search>
         </field>
     </record>
 
     <record id="action_x_reports_stage_kh" model="ir.actions.act_window">
-        <field name="name">Stages</field>
+        <field name="name">المراحل</field>
         <field name="res_model">x_reports_stage</field>
         <field name="view_mode">list</field>
         <field name="view_id" ref="view_x_reports_stage_kh_list"/>

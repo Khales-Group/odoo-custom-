@@ -31,7 +31,7 @@ class LawReport(models.Model):
 
     x_studio_stage_id = fields.Many2one(
         "x_reports_stage",
-        string="Stage",
+        string="المرحلة",
         required=True,
         ondelete="restrict",
         tracking=True,
@@ -43,45 +43,45 @@ class LawReport(models.Model):
     # Common to both departments
     # ------------------------------------------------------------------
     kh_priority = fields.Selection(
-        [("0", "Low"), ("1", "Medium"), ("2", "High")],
-        string="Priority",
+        [("0", "منخفضة"), ("1", "متوسطة"), ("2", "عالية")],
+        string="الأولوية",
         default="0",
         tracking=True,
     )
-    kh_is_closed = fields.Boolean(related="x_studio_stage_id.kh_is_closed", store=True, string="Closed")
+    kh_is_closed = fields.Boolean(related="x_studio_stage_id.kh_is_closed", store=True, string="مغلق")
     kh_open_date = fields.Date(
-        string="Opened On", compute="_compute_kh_open_date", store=True, readonly=False
+        string="تاريخ الفتح", compute="_compute_kh_open_date", store=True, readonly=False
     )
     kh_close_date = fields.Date(
-        string="Closed On", compute="_compute_kh_close_date", store=True, readonly=False, tracking=True
+        string="تاريخ الإغلاق", compute="_compute_kh_close_date", store=True, readonly=False, tracking=True
     )
     kh_duration_days = fields.Integer(
-        string="Duration (Days)", compute="_compute_kh_duration_days", store=True, aggregator="avg",
-        help="Days from opening to closing, for closed files.",
+        string="المدة (أيام)", compute="_compute_kh_duration_days", store=True, aggregator="avg",
+        help="عدد الأيام من فتح الملف حتى إغلاقه (للملفات المغلقة).",
     )
-    kh_last_update = fields.Datetime(string="Last Update", compute="_compute_kh_activity_info")
-    kh_days_inactive = fields.Integer(string="Days Without Activity", compute="_compute_kh_activity_info")
+    kh_last_update = fields.Datetime(string="آخر تحديث", compute="_compute_kh_activity_info")
+    kh_days_inactive = fields.Integer(string="أيام بدون نشاط", compute="_compute_kh_activity_info")
     kh_is_stale = fields.Boolean(
-        string="No Recent Activity", compute="_compute_kh_activity_info", search="_search_kh_is_stale"
+        string="بدون نشاط مؤخراً", compute="_compute_kh_activity_info", search="_search_kh_is_stale"
     )
 
     # ------------------------------------------------------------------
     # Legal Affairs
     # ------------------------------------------------------------------
     kh_case_assessment = fields.Selection(
-        [("likely_win", "Likely Win"), ("medium", "Medium"), ("difficult", "Difficult")],
-        string="Lawyer's Assessment",
+        [("likely_win", "رابحة متوقعة"), ("medium", "متوسطة"), ("difficult", "صعبة")],
+        string="تقييم المحامي",
         tracking=True,
     )
     kh_case_outcome = fields.Selection(
-        [("won", "Won"), ("lost", "Lost"), ("settled", "Settled"), ("withdrawn", "Withdrawn")],
-        string="Outcome",
+        [("won", "ربح"), ("lost", "خسارة"), ("settled", "تسوية"), ("withdrawn", "سحب")],
+        string="نتيجة القضية",
         tracking=True,
     )
-    kh_fee_expected = fields.Monetary(string="Expected Fees", currency_field="x_studio_currency_id")
-    kh_fee_collected = fields.Monetary(string="Collected Fees", currency_field="x_studio_currency_id")
+    kh_fee_expected = fields.Monetary(string="الأتعاب المتوقعة", currency_field="x_studio_currency_id")
+    kh_fee_collected = fields.Monetary(string="الأتعاب المحصّلة", currency_field="x_studio_currency_id")
     kh_fee_remaining = fields.Monetary(
-        string="Remaining Fees", currency_field="x_studio_currency_id",
+        string="الأتعاب المتبقية", currency_field="x_studio_currency_id",
         compute="_compute_kh_fee_remaining", store=True,
     )
 
@@ -90,49 +90,49 @@ class LawReport(models.Model):
     # ------------------------------------------------------------------
     kh_pro_service = fields.Selection(
         [
-            ("trade_license", "Trade License"),
-            ("residence", "Residence"),
-            ("visa", "Visa"),
-            ("labour_contract", "Labour Contract"),
-            ("office_lease", "Office Lease"),
-            ("other", "Other"),
+            ("trade_license", "رخصة تجارية"),
+            ("residence", "إقامة"),
+            ("visa", "تأشيرة"),
+            ("labour_contract", "عقد عمل"),
+            ("office_lease", "إيجار مكتب"),
+            ("other", "أخرى"),
         ],
-        string="Service",
+        string="نوع الخدمة",
         tracking=True,
     )
-    kh_expiry_date = fields.Date(string="Expiry Date", tracking=True)
-    kh_days_to_expiry = fields.Integer(string="Days to Expiry", compute="_compute_kh_expiry")
+    kh_expiry_date = fields.Date(string="تاريخ الانتهاء", tracking=True)
+    kh_days_to_expiry = fields.Integer(string="الأيام المتبقية للانتهاء", compute="_compute_kh_expiry")
     kh_expiry_state = fields.Selection(
         [
-            ("none", "No Expiry"),
-            ("far", "More than 90 days"),
-            ("ok", "Within 90 days"),
-            ("warning", "Within 60 days"),
-            ("danger", "Within 30 days"),
-            ("expired", "Expired"),
+            ("none", "بدون تاريخ انتهاء"),
+            ("far", "أكثر من 90 يوم"),
+            ("ok", "خلال 90 يوم"),
+            ("warning", "خلال 60 يوم"),
+            ("danger", "خلال 30 يوم"),
+            ("expired", "منتهية"),
         ],
-        string="Expiry Status",
+        string="حالة الانتهاء",
         compute="_compute_kh_expiry",
     )
-    kh_expiry_label = fields.Char(string="Countdown", compute="_compute_kh_expiry")
-    kh_due_date = fields.Date(string="Target Completion Date", tracking=True)
-    kh_is_late = fields.Boolean(string="Late", compute="_compute_kh_is_late", search="_search_kh_is_late")
+    kh_expiry_label = fields.Char(string="العد التنازلي", compute="_compute_kh_expiry")
+    kh_due_date = fields.Date(string="الموعد المستهدف للإنجاز", tracking=True)
+    kh_is_late = fields.Boolean(string="متأخرة", compute="_compute_kh_is_late", search="_search_kh_is_late")
     kh_on_time = fields.Selection(
-        [("on_time", "On Time"), ("late", "Late")],
-        string="Completed",
+        [("on_time", "بالوقت"), ("late", "متأخرة")],
+        string="الإنجاز",
         compute="_compute_kh_on_time",
         store=True,
     )
-    kh_fine_count = fields.Integer(string="Fines (Count)", tracking=True)
-    kh_fine_amount = fields.Monetary(string="Fines (Amount)", currency_field="x_studio_currency_id")
+    kh_fine_count = fields.Integer(string="عدد الغرامات", tracking=True)
+    kh_fine_amount = fields.Monetary(string="قيمة الغرامات", currency_field="x_studio_currency_id")
     kh_rejection_count = fields.Integer(
-        string="Rejections / Resubmissions",
+        string="مرات الرفض وإعادة التقديم",
         tracking=True,
-        help="How many times the transaction was rejected and had to be resubmitted.",
+        help="عدد مرات رفض المعاملة وإعادة تقديمها.",
     )
-    kh_document_ids = fields.One2many("kh.law.document", "report_id", string="Required Documents")
+    kh_document_ids = fields.One2many("kh.law.document", "report_id", string="المستندات المطلوبة")
     kh_missing_doc_count = fields.Integer(
-        string="Missing Documents", compute="_compute_kh_missing_doc_count", store=True
+        string="المستندات الناقصة", compute="_compute_kh_missing_doc_count", store=True
     )
 
     # ------------------------------------------------------------------
@@ -257,7 +257,7 @@ class LawReport(models.Model):
             rec.kh_days_to_expiry = days
             if days < 0:
                 rec.kh_expiry_state = "expired"
-                rec.kh_expiry_label = self.env._("Expired %s days ago", -days)
+                rec.kh_expiry_label = self.env._("منتهية منذ %s يوم", -days)
                 continue
             if days <= 30:
                 rec.kh_expiry_state = "danger"
@@ -267,7 +267,7 @@ class LawReport(models.Model):
                 rec.kh_expiry_state = "ok"
             else:
                 rec.kh_expiry_state = "far"
-            rec.kh_expiry_label = self.env._("%s days left", days)
+            rec.kh_expiry_label = self.env._("باقي %s يوم", days)
 
     @api.depends("kh_due_date", "kh_is_closed")
     def _compute_kh_is_late(self):

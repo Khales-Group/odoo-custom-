@@ -13,22 +13,22 @@ ACTIONS = {
 class LawDepartment(models.Model):
     """ Entry screen of the app: one card per department with its KPIs. """
     _name = "kh.law.department"
-    _description = "Law / PRO Department"
+    _description = "قسم"
     _order = "sequence, id"
 
-    name = fields.Char(required=True, translate=True)
-    code = fields.Selection(DEPARTMENTS, required=True)
-    sequence = fields.Integer(default=10)
-    color = fields.Integer()
+    name = fields.Char(string="الاسم", required=True, translate=True)
+    code = fields.Selection(DEPARTMENTS, string="القسم", required=True)
+    sequence = fields.Integer(string="الترتيب", default=10)
+    color = fields.Integer(string="اللون")
 
-    open_count = fields.Integer(string="Open", compute="_compute_stats")
-    closed_count = fields.Integer(string="Closed", compute="_compute_stats")
-    attention_count = fields.Integer(string="Need Attention", compute="_compute_stats")
-    expiring_count = fields.Integer(string="Expiring in 30 Days", compute="_compute_stats")
-    win_rate = fields.Float(string="Win Rate (%)", compute="_compute_stats", digits=(5, 1))
-    on_time_rate = fields.Float(string="On Time (%)", compute="_compute_stats", digits=(5, 1))
-    avg_duration = fields.Float(string="Avg. Duration (Days)", compute="_compute_stats", digits=(6, 1))
-    fine_count = fields.Integer(string="Fines", compute="_compute_stats")
+    open_count = fields.Integer(string="مفتوحة", compute="_compute_stats")
+    closed_count = fields.Integer(string="مغلقة", compute="_compute_stats")
+    attention_count = fields.Integer(string="تحتاج متابعة", compute="_compute_stats")
+    expiring_count = fields.Integer(string="تنتهي خلال 30 يوم", compute="_compute_stats")
+    win_rate = fields.Float(string="نسبة الربح (%)", compute="_compute_stats", digits=(5, 1))
+    on_time_rate = fields.Float(string="نسبة الإنجاز بالوقت (%)", compute="_compute_stats", digits=(5, 1))
+    avg_duration = fields.Float(string="متوسط المدة (أيام)", compute="_compute_stats", digits=(6, 1))
+    fine_count = fields.Integer(string="الغرامات", compute="_compute_stats")
 
     def _compute_stats(self):
         Report = self.env["x_reports"]
