@@ -3,7 +3,7 @@
     'summary': 'Approvals and workflow integrations (compatibility patch for v19)',
     'description': 'Compatibility layer for Studio fields and links to CRM/Project/Purchase after migration to Odoo 19.',
     'author': 'Prepared by ChatGPT for Khales',
-    'website': 'https://khales.ae',
+    'website': 'https://www.khales.ae',
     'category': 'Uncategorized',
     'version': '19.0.1.0.2',
     'depends': ['base', 'mail', 'hr', 'project', 'purchase', 'hr_payroll', 'account', 'mcp_server', 'hr_timesheet'],
