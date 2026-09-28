@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Legal: cases per lawyer by outcome, fees expected vs collected, average duration. -->
+    <record id="view_x_reports_law_pivot" model="ir.ui.view">
+        <field name="name">x_reports.kh.law.pivot</field>
+        <field name="model">x_reports</field>
+        <field name="priority">50</field>
+        <field name="arch" type="xml">
+            <pivot string="Legal Analysis" sample="1">
+                <field name="x_studio_user_id" type="row"/>
+                <field name="kh_case_outcome" type="col"/>
+                <field name="kh_fee_expected" type="measure"/>
+                <field name="kh_fee_collected" type="measure"/>
+                <field name="kh_duration_days" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_x_reports_law_graph" model="ir.ui.view">
+        <field name="name">x_reports.kh.law.graph</field>
+        <field name="model">x_reports</field>
+        <field name="priority">50</field>
+        <field name="arch" type="xml">
+            <graph string="Legal Analysis" type="bar" sample="1">
+                <field name="x_studio_user_id"/>
+                <field name="kh_fee_expected" type="measure"/>
+                <field name="kh_fee_collected" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- PRO: on time vs late per officer, fines, rejections, average duration. -->
+    <record id="view_x_reports_pro_pivot" model="ir.ui.view">
+        <field name="name">x_reports.kh.pro.pivot</field>
+        <field name="model">x_reports</field>
+        <field name="priority">50</field>
+        <field name="arch" type="xml">
+            <pivot string="PRO Analysis" sample="1">
+                <field name="x_studio_user_id" type="row"/>
+                <field name="kh_on_time" type="col"/>
+                <field name="kh_fine_count" type="measure"/>
+                <field name="kh_fine_amount" type="measure"/>
+                <field name="kh_rejection_count" type="measure"/>
+                <field name="kh_duration_days" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_x_reports_pro_graph" model="ir.ui.view">
+        <field name="name">x_reports.kh.pro.graph</field>
+        <field name="model">x_reports</field>
+        <field name="priority">50</field>
+        <field name="arch" type="xml">
+            <graph string="PRO Analysis" type="bar" stacked="1" sample="1">
+                <field name="x_studio_user_id"/>
+                <field name="kh_on_time"/>
+            </graph>
+        </field>
+    </record>
+
+    <record id="action_x_reports_law_analysis" model="ir.actions.act_window">
+        <field name="name">Legal Analysis</field>
+        <field name="res_model">x_reports</field>
+        <field name="view_mode">pivot,graph</field>
+        <field name="domain">[('x_studio_type', '=', 'Law')]</field>
+        <field name="context">{'default_x_studio_type': 'Law'}</field>
+        <field name="search_view_id" ref="view_x_reports_kh_search"/>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'pivot', 'view_id': ref('view_x_reports_law_pivot')}),
+            (0, 0, {'view_mode': 'graph', 'view_id': ref('view_x_reports_law_graph')})]"/>
+    </record>
+
+    <record id="action_x_reports_pro_analysis" model="ir.actions.act_window">
+        <field name="name">PRO Analysis</field>
+        <field name="res_model">x_reports</field>
+        <field name="view_mode">pivot,graph</field>
+        <field name="domain">[('x_studio_type', '=', 'PRO')]</field>
+        <field name="context">{'default_x_studio_type': 'PRO'}</field>
+        <field name="search_view_id" ref="view_x_reports_kh_search"/>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'pivot', 'view_id': ref('view_x_reports_pro_pivot')}),
+            (0, 0, {'view_mode': 'graph', 'view_id': ref('view_x_reports_pro_graph')})]"/>
+    </record>
+
+</odoo>

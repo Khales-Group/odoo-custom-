@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_x_reports_stage_kh_list" model="ir.ui.view">
+        <field name="name">x_reports_stage.kh.list</field>
+        <field name="model">x_reports_stage</field>
+        <field name="priority">50</field>
+        <field name="arch" type="xml">
+            <list editable="bottom">
+                <field name="kh_sequence" widget="handle"/>
+                <field name="x_name"/>
+                <field name="kh_department"/>
+                <field name="kh_is_closed"/>
+                <field name="kh_fold"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_x_reports_stage_kh_search" model="ir.ui.view">
+        <field name="name">x_reports_stage.kh.search</field>
+        <field name="model">x_reports_stage</field>
+        <field name="priority">50</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="x_name"/>
+                <filter name="law" string="Legal Affairs" domain="[('kh_department', '=', 'Law')]"/>
+                <filter name="pro" string="PRO" domain="[('kh_department', '=', 'PRO')]"/>
+                <group>
+                    <filter name="group_department" string="Department" context="{'group_by': 'kh_department'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_x_reports_stage_kh" model="ir.actions.act_window">
+        <field name="name">Stages</field>
+        <field name="res_model">x_reports_stage</field>
+        <field name="view_mode">list</field>
+        <field name="view_id" ref="view_x_reports_stage_kh_list"/>
+        <field name="search_view_id" ref="view_x_reports_stage_kh_search"/>
+        <field name="context">{'search_default_group_department': 1}</field>
+    </record>
+
+</odoo>

@@ -1,0 +1,6 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_kh_law_department_user,kh.law.department user,model_kh_law_department,base.group_user,1,0,0,0
+access_kh_law_department_manager,kh.law.department manager,model_kh_law_department,group_kh_law_manager,1,1,1,1
+access_kh_law_document_user,kh.law.document user,model_kh_law_document,base.group_user,1,1,1,1
+access_kh_law_evaluation_user,kh.law.evaluation user,model_kh_law_evaluation,base.group_user,1,0,0,0
+access_kh_law_evaluation_manager,kh.law.evaluation manager,model_kh_law_evaluation,group_kh_law_manager,1,1,1,1

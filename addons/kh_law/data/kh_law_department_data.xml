@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+
+    <record id="department_law" model="kh.law.department">
+        <field name="name">الشؤون القانونية - Legal Affairs</field>
+        <field name="code">Law</field>
+        <field name="sequence">1</field>
+        <field name="color">4</field>
+    </record>
+
+    <record id="department_pro" model="kh.law.department">
+        <field name="name">العلاقات العامة - PRO</field>
+        <field name="code">PRO</field>
+        <field name="sequence">2</field>
+        <field name="color">10</field>
+    </record>
+
+</odoo>

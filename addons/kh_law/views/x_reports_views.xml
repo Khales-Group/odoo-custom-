@@ -1,0 +1,298 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Own views (priority > Studio's 16) so the Studio views stay the model defaults. -->
+
+    <record id="view_x_reports_kh_form" model="ir.ui.view">
+        <field name="name">x_reports.kh.form</field>
+        <field name="model">x_reports</field>
+        <field name="priority">50</field>
+        <field name="arch" type="xml">
+            <form string="Law">
+                <header>
+                    <field name="x_studio_stage_id" widget="statusbar" options="{'clickable': '1'}"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box"/>
+                    <widget name="web_ribbon" title="Archived" bg_color="text-bg-danger" invisible="x_active"/>
+                    <widget name="web_ribbon" title="Late" bg_color="text-bg-danger" invisible="not kh_is_late"/>
+                    <field name="x_active" invisible="1"/>
+                    <field name="kh_is_closed" invisible="1"/>
+                    <field name="kh_is_stale" invisible="1"/>
+                    <field name="kh_expiry_state" invisible="1"/>
+                    <field name="x_studio_image" widget="image" class="oe_avatar"/>
+                    <div class="oe_title">
+                        <h1><field name="x_name" placeholder="File title..."/></h1>
+                        <field name="kh_priority" widget="priority"/>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="x_studio_partner_id"/>
+                            <field name="x_studio_plot_number"/>
+                            <field name="x_studio_partner_phone" widget="phone"/>
+                            <field name="x_studio_contract_value"/>
+                            <field name="x_studio_partner_email" widget="email"/>
+                            <field name="x_studio_date"/>
+                            <field name="x_studio_date_start"/>
+                            <field name="x_studio_date_stop"/>
+                        </group>
+                        <group>
+                            <field name="x_studio_value"/>
+                            <field name="x_studio_currency_id"/>
+                            <field name="x_studio_tag_ids" widget="many2many_tags"/>
+                            <field name="x_studio_company_id"/>
+                            <field name="x_studio_many2one_field_4g2_1irjm2hqi"/>
+                            <field name="x_studio_user_id" widget="many2one_avatar_user"/>
+                            <field name="x_studio_type"/>
+                        </group>
+                    </group>
+
+                    <group string="Case Tracking" name="kh_legal" invisible="x_studio_type != 'Law'">
+                        <group>
+                            <field name="kh_case_assessment"/>
+                            <field name="kh_case_outcome" required="kh_is_closed and x_studio_type == 'Law'"/>
+                            <field name="kh_last_update"/>
+                            <field name="kh_days_inactive" decoration-danger="kh_is_stale"/>
+                        </group>
+                        <group>
+                            <field name="kh_fee_expected"/>
+                            <field name="kh_fee_collected"/>
+                            <field name="kh_fee_remaining"/>
+                        </group>
+                    </group>
+
+                    <group string="Transaction" name="kh_pro" invisible="x_studio_type != 'PRO'">
+                        <group>
+                            <field name="kh_pro_service"/>
+                            <field name="kh_expiry_date"/>
+                            <field name="kh_expiry_label" widget="badge" invisible="not kh_expiry_date"
+                                   decoration-success="kh_expiry_state in ('ok', 'far')"
+                                   decoration-warning="kh_expiry_state == 'warning'"
+                                   decoration-danger="kh_expiry_state in ('danger', 'expired')"/>
+                            <field name="kh_due_date"/>
+                            <field name="kh_is_late" invisible="1"/>
+                            <field name="kh_on_time" invisible="not kh_on_time" widget="badge"
+                                   decoration-success="kh_on_time == 'on_time'"
+                                   decoration-danger="kh_on_time == 'late'"/>
+                        </group>
+                        <group>
+                            <field name="kh_missing_doc_count" decoration-danger="kh_missing_doc_count"/>
+                            <field name="kh_fine_count"/>
+                            <field name="kh_fine_amount"/>
+                            <field name="kh_rejection_count"/>
+                        </group>
+                    </group>
+
+                    <group name="kh_dates">
+                        <group>
+                            <field name="kh_open_date"/>
+                        </group>
+                        <group>
+                            <field name="kh_close_date" invisible="not kh_is_closed"/>
+                            <field name="kh_duration_days" invisible="not kh_is_closed"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Details" name="details">
+                            <field name="x_studio_notes"/>
+                        </page>
+                        <page string="Required Documents" name="documents" invisible="x_studio_type != 'PRO'">
+                            <field name="kh_document_ids">
+                                <list editable="bottom" decoration-muted="kh_is_received">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="name"/>
+                                    <field name="kh_is_received" widget="boolean_toggle"/>
+                                    <field name="kh_note"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="New Page" name="studio_page">
+                            <field name="x_studio_html_field_97q_1irju01v0"/>
+                            <field name="x_reports_line_ids_d0617"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_x_reports_kh_kanban" model="ir.ui.view">
+        <field name="name">x_reports.kh.kanban</field>
+        <field name="model">x_reports</field>
+        <field name="priority">50</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="x_studio_stage_id" highlight_color="x_color" sample="1">
+                <field name="x_studio_type"/>
+                <field name="kh_is_late"/>
+                <field name="kh_expiry_date"/>
+                <field name="kh_is_stale"/>
+                <field name="kh_days_inactive"/>
+                <field name="kh_expiry_state"/>
+                <field name="kh_missing_doc_count"/>
+                <progressbar field="activity_state"
+                             colors='{"planned": "success", "today": "warning", "overdue": "danger"}'/>
+                <templates>
+                    <t t-name="menu">
+                        <t t-if="widget.editable"><a role="menuitem" type="open" class="dropdown-item">Edit</a></t>
+                        <t t-if="widget.deletable"><a role="menuitem" type="delete" class="dropdown-item">Delete</a></t>
+                        <div role="separator" class="dropdown-divider"/>
+                        <field name="x_color" widget="kanban_color_picker"/>
+                    </t>
+                    <t t-name="card">
+                        <widget name="web_ribbon" title="Late" bg_color="text-bg-danger" invisible="not kh_is_late"/>
+                        <field name="x_name" class="fw-bold fs-5"/>
+                        <field name="x_studio_many2one_field_4g2_1irjm2hqi" invisible="not x_studio_many2one_field_4g2_1irjm2hqi"/>
+                        <field name="x_studio_partner_id" invisible="not x_studio_partner_id"/>
+                        <field name="x_studio_tag_ids" widget="many2many_tags"/>
+
+                        <div t-if="record.x_studio_type.raw_value == 'Law'" class="d-flex flex-wrap gap-1 mt-1">
+                            <field name="kh_case_assessment" widget="badge"
+                                   decoration-success="kh_case_assessment == 'likely_win'"
+                                   decoration-warning="kh_case_assessment == 'medium'"
+                                   decoration-danger="kh_case_assessment == 'difficult'"/>
+                            <span t-if="record.kh_is_stale.raw_value" class="badge text-bg-danger"
+                                  title="Days without activity">
+                                <i class="fa fa-clock-o me-1"/><t t-esc="record.kh_days_inactive.value"/>
+                            </span>
+                        </div>
+
+                        <div t-if="record.x_studio_type.raw_value == 'PRO'" class="d-flex flex-wrap gap-1 mt-1">
+                            <field name="kh_pro_service" widget="badge"/>
+                            <field name="kh_expiry_label" widget="badge" invisible="not kh_expiry_date"
+                                   decoration-success="kh_expiry_state in ('ok', 'far')"
+                                   decoration-warning="kh_expiry_state == 'warning'"
+                                   decoration-danger="kh_expiry_state in ('danger', 'expired')"/>
+                            <span t-if="record.kh_missing_doc_count.raw_value" class="badge text-bg-warning"
+                                  title="Missing documents">
+                                <i class="fa fa-file-o me-1"/><t t-esc="record.kh_missing_doc_count.value"/>
+                            </span>
+                        </div>
+
+                        <footer class="pt-1">
+                            <div class="d-flex mt-auto">
+                                <field name="kh_priority" widget="priority" class="me-2"/>
+                                <field name="activity_ids" widget="kanban_activity"/>
+                            </div>
+                            <field name="x_studio_user_id" widget="many2one_avatar_user" class="ms-auto"/>
+                        </footer>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <record id="view_x_reports_kh_list" model="ir.ui.view">
+        <field name="name">x_reports.kh.list</field>
+        <field name="model">x_reports</field>
+        <field name="priority">50</field>
+        <field name="arch" type="xml">
+            <list multi_edit="1" sample="1" decoration-danger="kh_is_late">
+                <field name="kh_is_late" column_invisible="1"/>
+                <field name="kh_expiry_state" column_invisible="1"/>
+                <field name="kh_priority" widget="priority" optional="show" nolabel="1"/>
+                <field name="x_name"/>
+                <field name="x_studio_partner_id" optional="show"/>
+                <field name="x_studio_user_id" widget="many2one_avatar_user" optional="show"/>
+                <field name="x_studio_stage_id" optional="show"/>
+                <field name="kh_case_assessment" optional="show"
+                       column_invisible="context.get('default_x_studio_type') == 'PRO'"/>
+                <field name="kh_case_outcome" optional="hide"
+                       column_invisible="context.get('default_x_studio_type') == 'PRO'"/>
+                <field name="kh_fee_expected" optional="hide" sum="Total"
+                       column_invisible="context.get('default_x_studio_type') == 'PRO'"/>
+                <field name="kh_fee_collected" optional="hide" sum="Total"
+                       column_invisible="context.get('default_x_studio_type') == 'PRO'"/>
+                <field name="kh_days_inactive" optional="show"
+                       column_invisible="context.get('default_x_studio_type') == 'PRO'"/>
+                <field name="kh_pro_service" optional="show"
+                       column_invisible="context.get('default_x_studio_type') == 'Law'"/>
+                <field name="kh_expiry_date" optional="show"
+                       column_invisible="context.get('default_x_studio_type') == 'Law'"/>
+                <field name="kh_expiry_label" widget="badge" optional="show"
+                       decoration-success="kh_expiry_state in ('ok', 'far')"
+                       decoration-warning="kh_expiry_state == 'warning'"
+                       decoration-danger="kh_expiry_state in ('danger', 'expired')"
+                       column_invisible="context.get('default_x_studio_type') == 'Law'"/>
+                <field name="kh_due_date" optional="show"
+                       column_invisible="context.get('default_x_studio_type') == 'Law'"/>
+                <field name="kh_missing_doc_count" optional="hide"
+                       column_invisible="context.get('default_x_studio_type') == 'Law'"/>
+                <field name="kh_open_date" optional="hide"/>
+                <field name="activity_ids" widget="list_activity" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_x_reports_kh_search" model="ir.ui.view">
+        <field name="name">x_reports.kh.search</field>
+        <field name="model">x_reports</field>
+        <field name="priority">50</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="x_name"/>
+                <field name="x_studio_partner_id"/>
+                <field name="x_studio_user_id"/>
+                <field name="x_studio_many2one_field_4g2_1irjm2hqi"/>
+                <field name="x_studio_tag_ids"/>
+                <filter name="my" string="My Files" domain="[('x_studio_user_id', '=', uid)]"/>
+                <filter name="high" string="High Priority" domain="[('kh_priority', '=', '2')]"/>
+                <separator/>
+                <filter name="open" string="Open" domain="[('kh_is_closed', '=', False)]"/>
+                <filter name="closed" string="Closed" domain="[('kh_is_closed', '=', True)]"/>
+                <separator/>
+                <filter name="stale" string="No Recent Activity" domain="[('kh_is_stale', '=', True)]"/>
+                <filter name="late" string="Late" domain="[('kh_is_late', '=', True)]"/>
+                <filter name="missing_docs" string="Missing Documents" domain="[('kh_missing_doc_count', '>', 0)]"/>
+                <separator/>
+                <filter name="expired" string="Expired"
+                        domain="[('kh_expiry_date', '&lt;', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter name="expiring_30" string="Expiring in 30 Days"
+                        domain="[('kh_expiry_date', '&lt;=', (context_today() + relativedelta(days=30)).strftime('%Y-%m-%d'))]"/>
+                <filter name="expiring_60" string="Expiring in 60 Days"
+                        domain="[('kh_expiry_date', '&lt;=', (context_today() + relativedelta(days=60)).strftime('%Y-%m-%d'))]"/>
+                <filter name="expiring_90" string="Expiring in 90 Days"
+                        domain="[('kh_expiry_date', '&lt;=', (context_today() + relativedelta(days=90)).strftime('%Y-%m-%d'))]"/>
+                <separator/>
+                <filter name="archived" string="Archived" domain="[('x_active', '=', False)]"/>
+                <group>
+                    <filter name="group_stage" string="Stage" context="{'group_by': 'x_studio_stage_id'}"/>
+                    <filter name="group_user" string="Responsible" context="{'group_by': 'x_studio_user_id'}"/>
+                    <filter name="group_assessment" string="Assessment" context="{'group_by': 'kh_case_assessment'}"/>
+                    <filter name="group_outcome" string="Outcome" context="{'group_by': 'kh_case_outcome'}"/>
+                    <filter name="group_service" string="Service" context="{'group_by': 'kh_pro_service'}"/>
+                    <filter name="group_on_time" string="On Time / Late" context="{'group_by': 'kh_on_time'}"/>
+                    <filter name="group_open_month" string="Opened (Month)" context="{'group_by': 'kh_open_date:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_x_reports_law" model="ir.actions.act_window">
+        <field name="name">Legal Affairs</field>
+        <field name="res_model">x_reports</field>
+        <field name="view_mode">kanban,list,form,calendar,activity</field>
+        <field name="domain">[('x_studio_type', '=', 'Law')]</field>
+        <field name="context">{'default_x_studio_type': 'Law'}</field>
+        <field name="search_view_id" ref="view_x_reports_kh_search"/>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'kanban', 'view_id': ref('view_x_reports_kh_kanban')}),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_x_reports_kh_list')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('view_x_reports_kh_form')})]"/>
+    </record>
+
+    <record id="action_x_reports_pro" model="ir.actions.act_window">
+        <field name="name">PRO</field>
+        <field name="res_model">x_reports</field>
+        <field name="view_mode">kanban,list,form,calendar,activity</field>
+        <field name="domain">[('x_studio_type', '=', 'PRO')]</field>
+        <field name="context">{'default_x_studio_type': 'PRO'}</field>
+        <field name="search_view_id" ref="view_x_reports_kh_search"/>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'kanban', 'view_id': ref('view_x_reports_kh_kanban')}),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_x_reports_kh_list')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('view_x_reports_kh_form')})]"/>
+    </record>
+
+</odoo>
