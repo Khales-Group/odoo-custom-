@@ -3,8 +3,17 @@ from odoo.exceptions import ValidationError
 
 from .x_reports_stage import DEPARTMENTS
 
-SCORE_FIELDS = ("score_deadlines", "score_documents", "score_client")
-SCORE_HELP = "من 1 (ضعيف) إلى 5 (ممتاز)"
+# Star ratings: "0" is the empty state of the stars widget (not rated yet).
+SCORES = [
+    ("0", "بدون تقييم"),
+    ("1", "ضعيف"),
+    ("2", "مقبول"),
+    ("3", "جيد"),
+    ("4", "جيد جداً"),
+    ("5", "ممتاز"),
+]
+CRITERIA_FIELDS = ("score_deadlines", "score_documents", "score_client")
+RATED_FIELDS = CRITERIA_FIELDS + ("score_overall",)
 
 
 class LawEvaluation(models.Model):
@@ -28,24 +37,34 @@ class LawEvaluation(models.Model):
     evaluator_id = fields.Many2one(
         "res.users", string="المقيّم", required=True, readonly=True, default=lambda self: self.env.user
     )
-    score_deadlines = fields.Integer(string="الالتزام بالمواعيد", required=True, default=3, help=SCORE_HELP)
-    score_documents = fields.Integer(string="جودة المستندات", required=True, default=3, help=SCORE_HELP)
-    score_client = fields.Integer(string="رضا العميل", required=True, default=3, help=SCORE_HELP)
+    score_deadlines = fields.Selection(SCORES, string="الالتزام بالمواعيد", required=True, default="0")
+    score_documents = fields.Selection(SCORES, string="جودة المستندات", required=True, default="0")
+    score_client = fields.Selection(SCORES, string="رضا العميل", required=True, default="0")
     score_avg = fields.Float(
-        string="التقييم العام", compute="_compute_score_avg", store=True, aggregator="avg", digits=(3, 2)
+        string="معدل المعايير", compute="_compute_scores", store=True, aggregator="avg", digits=(3, 2),
+        help="متوسط المعايير الثلاثة، يُحسب تلقائياً.",
+    )
+    score_overall = fields.Selection(
+        SCORES, string="التقييم الإجمالي من المدير", required=True, default="0", tracking=True,
+    )
+    score_overall_value = fields.Float(
+        string="التقييم الإجمالي", compute="_compute_scores", store=True, aggregator="avg", digits=(3, 2),
     )
     note = fields.Html(string="ملاحظات")
 
-    @api.constrains(*SCORE_FIELDS)
+    @api.constrains(*RATED_FIELDS)
     def _check_scores(self):
         for rec in self:
-            if any(not 1 <= rec[name] <= 5 for name in SCORE_FIELDS):
-                raise ValidationError(self.env._("يجب أن تكون الدرجات بين 1 و 5."))
+            if any(int(rec[name] or 0) < 1 for name in RATED_FIELDS):
+                raise ValidationError(self.env._(
+                    "يرجى تقييم جميع المعايير والتقييم الإجمالي (نجمة واحدة على الأقل)."
+                ))
 
-    @api.depends(*SCORE_FIELDS)
-    def _compute_score_avg(self):
+    @api.depends(*RATED_FIELDS)
+    def _compute_scores(self):
         for rec in self:
-            rec.score_avg = sum(rec[name] for name in SCORE_FIELDS) / len(SCORE_FIELDS)
+            rec.score_avg = sum(int(rec[name] or 0) for name in CRITERIA_FIELDS) / len(CRITERIA_FIELDS)
+            rec.score_overall_value = int(rec.score_overall or 0)
 
     @api.depends("user_id", "period_type", "date_from")
     def _compute_display_name(self):

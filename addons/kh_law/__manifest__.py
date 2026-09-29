@@ -1,6 +1,6 @@
 {
     "name": "Khales Law & PRO",
-    "version": "19.0.1.0.1",
+    "version": "19.0.1.0.2",
     "summary": "Legal Affairs and PRO departments on top of the Studio 'Law' model",
     "description": """
 Khales Law & PRO
