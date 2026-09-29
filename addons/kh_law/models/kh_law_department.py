@@ -20,6 +20,10 @@ class LawDepartment(models.Model):
     code = fields.Selection(DEPARTMENTS, string="القسم", required=True)
     sequence = fields.Integer(string="الترتيب", default=10)
     color = fields.Integer(string="اللون")
+    user_id = fields.Many2one(
+        "res.users", string="الموظف المسؤول", domain=[("share", "=", False)],
+        help="الموظف الذي يُقيَّم عن هذا القسم. إذا تُرك فارغاً، يُؤخذ المسؤول عن أكثر ملفات القسم.",
+    )
 
     open_count = fields.Integer(string="مفتوحة", compute="_compute_stats")
     closed_count = fields.Integer(string="مغلقة", compute="_compute_stats")
@@ -59,6 +63,28 @@ class LawDepartment(models.Model):
                     ("kh_expiry_date", "<=", today + timedelta(days=30)),
                 ])
                 dept.fine_count = sum(Report.search(base).mapped("kh_fine_count"))
+
+    def _kh_employee(self):
+        """ The employee evaluated for this department: the configured one,
+        else the responsible of most of the department's files. """
+        self.ensure_one()
+        if self.user_id:
+            return self.user_id
+        groups = self.env["x_reports"]._read_group(
+            [("x_studio_type", "=", self.code), ("x_studio_user_id", "!=", False)],
+            ["x_studio_user_id"], ["__count"], order="__count desc", limit=1,
+        )
+        return groups[0][0] if groups else self.env["res.users"]
+
+    def action_new_evaluation(self):
+        self.ensure_one()
+        action = self.env["ir.actions.actions"]._for_xml_id("kh_law.action_kh_law_evaluation")
+        action.update({
+            "views": [(False, "form")],
+            "view_mode": "form",
+            "context": {"default_department": self.code},
+        })
+        return action
 
     def _kh_action(self, index):
         self.ensure_one()

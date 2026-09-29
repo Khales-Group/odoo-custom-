@@ -12,6 +12,7 @@
                         <div class="d-flex align-items-center mb-3">
                             <i t-att-class="record.code.raw_value == 'Law' ? 'fa fa-balance-scale fa-3x me-3' : 'fa fa-id-card-o fa-3x me-3'"/>
                             <field name="name" class="fw-bold fs-3"/>
+                            <field name="user_id" widget="many2one_avatar_user" class="ms-auto" invisible="not user_id"/>
                         </div>
                         <div class="row text-center g-2">
                             <div class="col-4">
@@ -55,6 +56,8 @@
                         <footer class="mt-3">
                             <button name="action_open_records" type="object" class="btn btn-primary">فتح</button>
                             <button name="action_open_reports" type="object" class="btn btn-secondary ms-2">التقارير</button>
+                            <button name="action_new_evaluation" type="object" class="btn btn-secondary ms-2"
+                                    groups="kh_law.group_kh_law_manager">تقييم</button>
                         </footer>
                     </t>
                 </templates>
@@ -70,6 +73,7 @@
                 <field name="sequence" widget="handle"/>
                 <field name="name"/>
                 <field name="code" readonly="1"/>
+                <field name="user_id" widget="many2one_avatar_user"/>
             </list>
         </field>
     </record>

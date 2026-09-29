@@ -8,24 +8,55 @@
             <form string="تقييم">
                 <sheet>
                     <group>
+                        <field name="department" widget="radio" options="{'horizontal': true}"/>
+                    </group>
+
+                    <div invisible="department" class="text-muted">اختر القسم لبدء التقييم.</div>
+
+                    <group invisible="not department">
                         <group string="الموظف والفترة">
                             <field name="user_id" widget="many2one_avatar_user"/>
-                            <field name="department"/>
                             <field name="period_type"/>
                             <field name="date_from"/>
+                            <field name="date_to"/>
                             <field name="evaluator_id" widget="many2one_avatar_user"/>
                         </group>
-                        <group string="المعايير">
+                        <group string="أرقام الفترة (تلقائي)" invisible="department != 'Law'">
+                            <field name="kpi_closed" string="قضايا مغلقة بالفترة"/>
+                            <field name="kpi_win_rate"/>
+                            <field name="kpi_avg_days"/>
+                            <field name="kpi_stale"/>
+                        </group>
+                        <group string="أرقام الفترة (تلقائي)" invisible="department != 'PRO'">
+                            <field name="kpi_closed" string="معاملات منجزة بالفترة"/>
+                            <field name="kpi_on_time"/>
+                            <field name="kpi_late"/>
+                            <field name="kpi_avg_days"/>
+                            <field name="kpi_fines"/>
+                            <field name="kpi_rejections"/>
+                        </group>
+                    </group>
+
+                    <group invisible="not department">
+                        <group string="معايير الشؤون القانونية" invisible="department != 'Law'">
                             <field name="score_deadlines" widget="priority"/>
                             <field name="score_documents" widget="priority"/>
                             <field name="score_client" widget="priority"/>
                             <field name="score_avg"/>
                         </group>
+                        <group string="معايير العلاقات العامة" invisible="department != 'PRO'">
+                            <field name="score_pro_on_time" widget="priority"/>
+                            <field name="score_pro_speed" widget="priority"/>
+                            <field name="score_pro_fines" widget="priority"/>
+                            <field name="score_pro_accuracy" widget="priority"/>
+                            <field name="score_avg"/>
+                        </group>
+                        <group string="التقييم الإجمالي">
+                            <field name="score_overall" widget="priority"/>
+                        </group>
                     </group>
-                    <group string="التقييم الإجمالي">
-                        <field name="score_overall" widget="priority"/>
-                    </group>
-                    <field name="note" placeholder="ملاحظات المدير..."/>
+
+                    <field name="note" placeholder="ملاحظات المدير..." invisible="not department"/>
                 </sheet>
                 <chatter/>
             </form>
@@ -39,12 +70,9 @@
             <list>
                 <field name="date_from"/>
                 <field name="period_type"/>
-                <field name="user_id" widget="many2one_avatar_user"/>
                 <field name="department"/>
-                <field name="score_deadlines" widget="priority" readonly="1" optional="show"/>
-                <field name="score_documents" widget="priority" readonly="1" optional="show"/>
-                <field name="score_client" widget="priority" readonly="1" optional="show"/>
-                <field name="score_avg" optional="show"/>
+                <field name="user_id" widget="many2one_avatar_user"/>
+                <field name="score_avg"/>
                 <field name="score_overall" widget="priority" readonly="1"/>
                 <field name="evaluator_id" optional="hide"/>
             </list>
@@ -56,7 +84,7 @@
         <field name="model">kh.law.evaluation</field>
         <field name="arch" type="xml">
             <pivot string="التقييمات">
-                <field name="user_id" type="row"/>
+                <field name="department" type="row"/>
                 <field name="date_from" interval="quarter" type="col"/>
                 <field name="score_overall_value" type="measure"/>
                 <field name="score_avg" type="measure"/>
