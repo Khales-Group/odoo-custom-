@@ -1,6 +1,9 @@
 import logging
 import re
 
+from odoo.tools import SQL
+from odoo.tools.sql import column_exists
+
 _logger = logging.getLogger(__name__)
 
 # Studio models this module redefines in Python.
@@ -48,6 +51,27 @@ def _set_name(record, name, langs):
         record.with_context(lang=lang).x_name = name
 
 
+def relax_required_studio_fields(cr):
+    """ Studio lets a field be marked required while old rows are still empty
+    (e.g. files without Type): it only warns that NOT NULL can't be added.
+    Once this module owns the model, its tables are initialised at install and
+    that failing NOT NULL is logged as an error ("column ... contains null
+    values"). Such fields are made optional in the database instead; the form
+    still requires the Type. """
+    cr.execute("""
+        SELECT id, model, name FROM ir_model_fields
+         WHERE model IN %s AND state = 'manual' AND required AND store
+    """, [OWNED_MODELS])
+    for field_id, model, name in cr.fetchall():
+        table = model.replace(".", "_")
+        if not column_exists(cr, table, name):
+            continue
+        cr.execute(SQL("SELECT 1 FROM %s WHERE %s IS NULL LIMIT 1", SQL.identifier(table), SQL.identifier(name)))
+        if cr.fetchone():
+            cr.execute("UPDATE ir_model_fields SET required = false WHERE id = %s", [field_id])
+            _logger.warning("kh_law: %s.%s has empty values; no longer required in the database", model, name)
+
+
 def pre_init_hook(env):
     # Studio models are rebuilt from ir_model at every registry load and would
     # replace this module's Python classes; marking them as code-owned stops that.
@@ -55,6 +79,7 @@ def pre_init_hook(env):
         "UPDATE ir_model SET state = 'base' WHERE model IN %s AND state = 'manual'",
         [OWNED_MODELS],
     )
+    relax_required_studio_fields(env.cr)
 
 
 def post_init_hook(env):
