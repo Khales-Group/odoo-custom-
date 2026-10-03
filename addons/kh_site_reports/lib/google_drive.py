@@ -1,3 +1,4 @@
+import codecs
 import datetime
 import io
 import json
@@ -94,6 +95,21 @@ def list_image_files(drive, parent_id):
     return resp.get("files", [])
 
 
+def list_text_files(drive, parent_id):
+    """Filters by extension as well as mimeType: a .txt uploaded from some
+    phones/apps lands in Drive as application/octet-stream instead of text/plain.
+    """
+    resp = drive.files().list(
+        q=f"'{parent_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false",
+        fields="files(id,name,mimeType)",
+        pageSize=500,
+    ).execute()
+    return [
+        f for f in resp.get("files", [])
+        if f["name"].lower().endswith(".txt") or f.get("mimeType") == "text/plain"
+    ]
+
+
 def download_file_bytes(drive, file_id):
     request = drive.files().get_media(fileId=file_id)
     buffer = io.BytesIO()
@@ -102,6 +118,25 @@ def download_file_bytes(drive, file_id):
     while not done:
         _, done = downloader.next_chunk()
     return buffer.getvalue()
+
+
+def decode_text(data):
+    if data.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        return data.decode("utf-16")
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        # Older Windows Notepad saves Arabic text in the ANSI Arabic code page.
+        return data.decode("cp1256", errors="replace")
+
+
+def read_visit_notes(drive, folder_id):
+    """Text of every .txt note the site engineer dropped in a visit folder
+    alongside the photos (in name order, joined), or "" if there are none.
+    """
+    files = sorted(list_text_files(drive, folder_id), key=lambda f: f["name"])
+    notes = [decode_text(download_file_bytes(drive, f["id"])).strip() for f in files]
+    return "\n\n".join(n for n in notes if n)
 
 
 def parse_folder_date(name):

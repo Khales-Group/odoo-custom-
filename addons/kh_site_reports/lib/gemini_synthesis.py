@@ -64,15 +64,26 @@ def _generate_json(client, model, prompt, temperature):
     return json.loads(text)
 
 
+NOTE_SOURCE_LABELS = {
+    "chatter": "AI-written summary of the visit's site photos",
+    "drive_txt": "site engineer's own notes, typed on site",
+}
+
+
 def synthesize_monthly_report(client, model, project_name, visits, language="en"):
-    """visits: list of {"date_label": str, "narrative": str}.
-    One cheap text-only Gemini call combining the already-AI-written per-visit notes
-    (posted by project-watcher.js) into a client-facing synthesis.
+    """visits: list of {"date_label": str, "narrative": str, "note_source": str}.
+    One cheap text-only Gemini call combining the per-visit notes into a
+    client-facing synthesis. note_source is "chatter" for the AI-written note
+    posted by project-watcher.js, or "drive_txt" for the engineer's raw .txt
+    note found in the visit's Drive folder.
 
     language: "en" or "ar" — controls the language of the generated text
     (the JSON keys themselves stay fixed in English either way).
     """
-    combined = "\n\n".join(f"{v['date_label']}:\n{v['narrative']}" for v in visits)
+    combined = "\n\n".join(
+        f"{v['date_label']} [{NOTE_SOURCE_LABELS[v.get('note_source', 'chatter')]}]:\n{v['narrative']}"
+        for v in visits
+    )
     if language == "ar":
         language_instruction = (
             "Write your entire response in formal Modern Standard Arabic, in a client-facing "
@@ -83,8 +94,11 @@ def synthesize_monthly_report(client, model, project_name, visits, language="en"
         language_instruction = "Write your entire response in English."
 
     prompt = (
-        f'Here are the site-visit update notes already written for "{project_name}" this reporting period '
-        f"(one per visit, already AI-summarized from site photos):\n\n{combined}\n\n"
+        f'Here are the site-visit update notes for "{project_name}" this reporting period, one per visit. '
+        "Each is labelled with its source: either an AI-written summary of that visit's site photos, or the "
+        "site engineer's own notes typed on site. The engineer's notes are first-hand but raw — they may be "
+        "informal, in shorthand, contain typos, or mix Arabic and English; interpret them into professional "
+        f"wording rather than quoting them.\n\n{combined}\n\n"
         "Produce a client-facing monthly report synthesis from these notes only — do not assume anything "
         f"not stated in them. {language_instruction}\n\n{SYNTHESIS_INSTRUCTIONS}"
     )

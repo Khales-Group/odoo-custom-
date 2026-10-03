@@ -14,11 +14,12 @@ request):
 - Resolves the project's Google Drive "Site Photos" folder from its
   x_studio_all_files_drive_ field.
 - Finds dated site-visit subfolders that fall within the picked month.
-- Reuses the AI-written visit note already posted on the project's chatter
-  (by the external site-visit watcher) as that visit's narrative — no new
-  photo analysis, just a single cheap text-only Gemini call to synthesize
-  the month's notes into a summary, planned activities, and
-  recommendations.
+- Uses the .txt note the site engineer dropped in the visit folder between
+  the photos as that visit's narrative when there is one; otherwise reuses
+  the AI-written visit note already posted on the project's chatter (by the
+  external site-visit watcher). No new photo analysis — just a single cheap
+  text-only Gemini call to synthesize the month's notes into a summary,
+  planned activities, and recommendations.
 - Builds a .docx matching the Khales "Monthly Report" template and attaches
   it directly to the project's chatter, then notifies the requesting user.
 - The wizard lets the requester pick the report language (English or

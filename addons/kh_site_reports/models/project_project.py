@@ -15,6 +15,8 @@ except ImportError:
 
 DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
 PHOTOS_PER_VISIT = 4
+# Guards the Gemini prompt against a stray huge .txt dropped in a visit folder.
+MAX_TXT_NOTE_CHARS = 20000
 
 ARABIC_MONTHS = [
     "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
@@ -74,6 +76,8 @@ class Project(models.Model):
                 ("res_id", "=", self.id),
                 ("model", "=", "project.project"),
                 ("body", "like", folder_date_label),
+                # Our own report notices list folder names too — never treat them as a visit note.
+                ("body", "not ilike", "included with photos only"),
             ],
             order="date desc",
             limit=1,
@@ -164,7 +168,13 @@ class Project(models.Model):
                     skipped.append(f"{folder['name']} (no photos)")
                     continue
 
-                narrative = self._fetch_visit_note(folder["name"])
+                # Some projects keep the visit note as a .txt between the photos instead of
+                # the chatter note posted by project-watcher.js — the .txt wins when present.
+                narrative = google_drive.read_visit_notes(drive, folder["id"])[:MAX_TXT_NOTE_CHARS]
+                note_source = "drive_txt"
+                if not narrative:
+                    narrative = self._fetch_visit_note(folder["name"])
+                    note_source = "chatter"
                 if not narrative:
                     no_note.append(folder["name"])
 
@@ -180,14 +190,15 @@ class Project(models.Model):
                 else:
                     date_label = f"Site Visit — {visit_date.strftime('%d %B %Y')} ({weekday})"
                 # A visit is included in the report (photos always shown) as long as it has
-                # photos — a missing chatter note (project-watcher.js hasn't caught up yet)
-                # only means that visit contributes nothing to the written summary below,
+                # photos — a missing note (no .txt, and project-watcher.js hasn't caught up
+                # yet) only means that visit contributes nothing to the written summary below,
                 # it does not exclude the visit's photos from the report.
                 visits_for_report.append(
                     {
                         "date": visit_date,
                         "date_label": date_label,
                         "narrative": narrative,
+                        "note_source": note_source,
                         "photos": photos,
                     }
                 )
@@ -281,8 +292,9 @@ class Project(models.Model):
                 self.message_post(body=_("Skipped visit folder(s) with no photos: %s") % ", ".join(skipped))
             if no_note:
                 self.message_post(
-                    body=_("Visit folder(s) included with photos only (no chatter note found, so not "
-                           "reflected in the written summary): %s") % ", ".join(no_note)
+                    body=_("Visit folder(s) included with photos only (no .txt note in the folder and no "
+                           "chatter note found, so not reflected in the written summary): %s")
+                    % ", ".join(no_note)
                 )
             self._notify_done(
                 requesting_user_id,
