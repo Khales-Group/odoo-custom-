@@ -18,15 +18,10 @@ class SignRequestItemValue(models.Model):
             _logger.info("KH_SIGN_STAMP: sign.item %s not found", sign_item_id)
             return False
 
-        item_type = item.type_id
-        signature_ref = self.env.ref("sign.sign_item_type_signature", raise_if_not_found=False)
-        is_signature = bool(signature_ref and item_type == signature_ref) or (
-            item_type.name or ""
-        ).strip().lower() == "signature"
-        if not is_signature:
+        if item.type_id.item_type != "signature":
             _logger.info(
-                "KH_SIGN_STAMP: item %s has type '%s' (not Signature) - skipped",
-                sign_item_id, item_type.name,
+                "KH_SIGN_STAMP: item %s has item_type '%s' (not 'signature') - skipped",
+                sign_item_id, item.type_id.item_type,
             )
             return False
 
@@ -53,6 +48,7 @@ class SignRequestItemValue(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        _logger.info("KH_SIGN_STAMP: create() ENTERED with %d vals: %s", len(vals_list), vals_list)
         for vals in vals_list:
             if vals.get("sign_item_id") and vals.get("sign_request_item_id"):
                 stamp = self._kh_stamp_value(vals["sign_item_id"], vals["sign_request_item_id"])
@@ -66,6 +62,7 @@ class SignRequestItemValue(models.Model):
         return super().create(vals_list)
 
     def write(self, vals):
+        _logger.info("KH_SIGN_STAMP: write() ENTERED on ids=%s with vals=%s", self.ids, vals)
         if "value" not in vals:
             return super().write(vals)
         for record in self:
