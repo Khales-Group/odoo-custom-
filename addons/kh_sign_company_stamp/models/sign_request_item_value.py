@@ -26,7 +26,8 @@ class SignRequestItemValue(models.Model):
             return False
 
         request_item = self.env["sign.request.item"].browse(sign_request_item_id)
-        company = request_item.sign_request_id.company_id
+        sign_request = request_item.sign_request_id
+        company = sign_request.communication_company_id or sign_request.create_uid.company_id
         if not company:
             _logger.info(
                 "KH_SIGN_STAMP: request item %s has no company on its sign.request - skipped",
