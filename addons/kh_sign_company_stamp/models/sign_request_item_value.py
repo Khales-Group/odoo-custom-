@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
+import logging
+
 from odoo import api, models
+
+_logger = logging.getLogger(__name__)
 
 
 class SignRequestItemValue(models.Model):
@@ -9,14 +13,42 @@ class SignRequestItemValue(models.Model):
         """Data-url of the company stamp for this (item, request item) pair,
         or False if this isn't a 'Signature' field or the document's
         company has no stamp configured."""
-        signature_type = self.env.ref("sign.sign_item_type_signature", raise_if_not_found=False)
         item = self.env["sign.item"].browse(sign_item_id)
-        if not signature_type or not item.exists() or item.type_id != signature_type:
+        if not item.exists():
+            _logger.info("KH_SIGN_STAMP: sign.item %s not found", sign_item_id)
             return False
+
+        item_type = item.type_id
+        signature_ref = self.env.ref("sign.sign_item_type_signature", raise_if_not_found=False)
+        is_signature = bool(signature_ref and item_type == signature_ref) or (
+            item_type.name or ""
+        ).strip().lower() == "signature"
+        if not is_signature:
+            _logger.info(
+                "KH_SIGN_STAMP: item %s has type '%s' (not Signature) - skipped",
+                sign_item_id, item_type.name,
+            )
+            return False
+
         request_item = self.env["sign.request.item"].browse(sign_request_item_id)
         company = request_item.sign_request_id.company_id
-        if not company or not company.sign_stamp_image:
+        if not company:
+            _logger.info(
+                "KH_SIGN_STAMP: request item %s has no company on its sign.request - skipped",
+                sign_request_item_id,
+            )
             return False
+        if not company.sign_stamp_image:
+            _logger.info(
+                "KH_SIGN_STAMP: company '%s' (id %s) has no sign_stamp_image configured - skipped",
+                company.name, company.id,
+            )
+            return False
+
+        _logger.info(
+            "KH_SIGN_STAMP: applying stamp of company '%s' to item %s",
+            company.name, sign_item_id,
+        )
         return "data:image/png;base64,%s" % company.sign_stamp_image.decode()
 
     @api.model_create_multi
@@ -26,6 +58,11 @@ class SignRequestItemValue(models.Model):
                 stamp = self._kh_stamp_value(vals["sign_item_id"], vals["sign_request_item_id"])
                 if stamp:
                     vals["value"] = stamp
+            else:
+                _logger.info(
+                    "KH_SIGN_STAMP: create() called without sign_item_id/sign_request_item_id: %s",
+                    vals,
+                )
         return super().create(vals_list)
 
     def write(self, vals):
