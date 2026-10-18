@@ -2,60 +2,69 @@
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
 
-MAJID_ID = 369  # ماجد - المدير، لازم يوافق على أي تصعيد
-PRO_OFFICER_LOGIN = "hmam.h7@khales.ae"  # حمام - مسؤول العلاقات العامة
-LAWYER_LOGIN = "as.sami71@hotmail.com"  # أحمد علي - المحامي
+MAJID_ID = 369  # Majed - the manager; every escalation needs his approval
+PRO_OFFICER_LOGIN = "hmam.h7@khales.ae"  # Hamam - Public Relations officer
+LAWYER_LOGIN = "as.sami71@hotmail.com"  # Ahmed Ali - the lawyer
 
 
 class KhCollectionCase(models.Model):
     _name = "kh.collection.case"
-    _description = "ملف تحصيل"
+    _description = "Collection Case"
     _inherit = ["mail.thread", "mail.activity.mixin"]
     _order = "create_date desc"
     _rec_name = "name"
 
-    name = fields.Char(string="المرجع", compute="_compute_name", store=True)
-    client_id = fields.Many2one("res.partner", string="العميل", required=True, tracking=True)
-    contractor_id = fields.Many2one("res.partner", string="المقاول", required=True, tracking=True)
-    project_id = fields.Many2one("project.project", string="المشروع", required=True, tracking=True)
-    amount = fields.Monetary(string="المبلغ المطلوب تحصيله", required=True, tracking=True)
+    name = fields.Char(string="Reference", compute="_compute_name", store=True)
+    client_id = fields.Many2one("res.partner", string="Client", required=True, tracking=True)
+    contractor_id = fields.Many2one("res.partner", string="Contractor", required=True, tracking=True)
+    project_id = fields.Many2one("project.project", string="Project", required=True, tracking=True)
+    amount = fields.Monetary(string="Amount to Collect", required=True, tracking=True)
     currency_id = fields.Many2one(
-        "res.currency", string="العملة", default=lambda self: self.env.company.currency_id
+        "res.currency", string="Currency", default=lambda self: self.env.company.currency_id
     )
     accountant_id = fields.Many2one(
-        "res.users", string="المحاسب المسؤول", default=lambda self: self.env.user, required=True, tracking=True
+        "res.users", string="Accountant", default=lambda self: self._default_accountant(),
+        required=True, tracking=True,
     )
-    note = fields.Text(string="ملاحظات")
+    note = fields.Text(string="Notes")
 
     state = fields.Selection(
         [
-            ("accountant", "مع المحاسب"),
-            ("pending_pro_approval", "بانتظار موافقة المدير (تصعيد لـ PRO)"),
-            ("pro", "مع العلاقات العامة"),
-            ("pending_law_approval", "بانتظار موافقة المدير (تصعيد للمحامي)"),
-            ("law", "مع المحامي"),
-            ("collected", "تم التحصيل"),
+            ("accountant", "With Accountant"),
+            ("pending_pro_approval", "Pending Manager Approval (PRO)"),
+            ("pro", "With PRO"),
+            ("pending_law_approval", "Pending Manager Approval (Legal)"),
+            ("law", "With Lawyer"),
+            ("collected", "Collected"),
         ],
-        string="الحالة",
+        string="Status",
         default="accountant",
         required=True,
         tracking=True,
     )
 
-    report_id = fields.Many2one("x_reports", string="ملف Law/PRO", readonly=True, copy=False)
-    pro_task_id = fields.Many2one("project.task", string="مهمة العلاقات العامة", readonly=True, copy=False)
-    law_task_id = fields.Many2one("project.task", string="مهمة المحامي", readonly=True, copy=False)
-    is_manager = fields.Boolean(string="هو ماجد؟", compute="_compute_is_manager")
+    report_id = fields.Many2one("x_reports", string="Law/PRO File", readonly=True, copy=False)
+    pro_task_id = fields.Many2one("project.task", string="PRO Task", readonly=True, copy=False)
+    law_task_id = fields.Many2one("project.task", string="Legal Task", readonly=True, copy=False)
+    is_manager = fields.Boolean(string="Is Current User the Manager?", compute="_compute_is_manager")
 
     def _compute_is_manager(self):
         for rec in self:
             rec.is_manager = self.env.user.id == MAJID_ID
 
+    @api.model
+    def _default_accountant(self):
+        # Looked up by name, not a fixed id - same approach already used
+        # elsewhere in this codebase (project_ai_manager.py) since the real
+        # user id for "Karan" isn't reliably known/fixed across environments.
+        karan = self.env["res.users"].sudo().search([("name", "ilike", "karan")], limit=1)
+        return karan or self.env.user
+
     @api.depends("client_id", "project_id")
     def _compute_name(self):
         for rec in self:
             parts = [p for p in (rec.client_id.name, rec.project_id.name) if p]
-            rec.name = _("تحصيل - %s") % " / ".join(parts) if parts else _("تحصيل")
+            rec.name = _("Collection - %s") % " / ".join(parts) if parts else _("Collection")
 
     # ------------------------------------------------------------------
     # Helpers
@@ -71,7 +80,7 @@ class KhCollectionCase(models.Model):
 
     def _check_is_manager(self):
         if self.env.user.id != MAJID_ID:
-            raise UserError(_("بس ماجد يقدر يوافق على التصعيد."))
+            raise UserError(_("Only the manager can approve this escalation."))
 
     def _request_manager_approval(self, message):
         manager = self._get_manager()
@@ -79,14 +88,14 @@ class KhCollectionCase(models.Model):
             rec.activity_schedule(
                 "mail.mail_activity_data_todo",
                 user_id=manager.id,
-                summary=_("طلب موافقة على تصعيد ملف تحصيل"),
+                summary=_("Approval needed: collection case escalation"),
                 note=message,
             )
             rec.message_post(body=message)
 
     def _close_my_pending_activities(self):
         self.activity_ids.filtered(lambda a: a.user_id.id == self.env.user.id).action_feedback(
-            feedback=_("تمت الموافقة")
+            feedback=_("Approved")
         )
 
     # ------------------------------------------------------------------
@@ -95,10 +104,10 @@ class KhCollectionCase(models.Model):
     def action_request_pro_escalation(self):
         for rec in self:
             if rec.state != "accountant":
-                raise UserError(_("بس ممكن تطلب تصعيد وانت بمرحلة 'مع المحاسب'."))
+                raise UserError(_("You can only request escalation while the case is 'With Accountant'."))
             rec.state = "pending_pro_approval"
             rec._request_manager_approval(
-                _("المحاسب %s ما قدر يحصّل مبلغ %s من %s. بانتظار موافقتك للتحويل لمسؤول العلاقات العامة.")
+                _("Accountant %s could not collect %s from %s. Waiting for your approval to transfer it to PRO.")
                 % (rec.accountant_id.name, rec.amount, rec.client_id.name)
             )
 
@@ -109,13 +118,13 @@ class KhCollectionCase(models.Model):
                 continue
             rec.state = "accountant"
             rec._close_my_pending_activities()
-            rec.message_post(body=_("ماجد رفض التصعيد، الملف رجع للمحاسب."))
+            rec.message_post(body=_("Manager rejected the escalation - case sent back to the accountant."))
 
     def action_approve_pro_escalation(self):
         self._check_is_manager()
         for rec in self:
             if rec.state != "pending_pro_approval":
-                raise UserError(_("هاد الملف مش بانتظار موافقة تصعيد لـ PRO."))
+                raise UserError(_("This case is not pending a PRO escalation approval."))
             pro_officer = rec._get_pro_officer()
             report = self.env["x_reports"].create(
                 {
@@ -129,10 +138,10 @@ class KhCollectionCase(models.Model):
             )
             task = self.env["project.task"].create(
                 {
-                    "name": _("تحصيل: %s") % rec.name,
+                    "name": _("Collection: %s") % rec.name,
                     "project_id": rec.project_id.id,
                     "user_ids": [(6, 0, [pro_officer.id])],
-                    "description": _("مطلوب تحصيل %s من %s (مقاول: %s). ما قدر المحاسب %s يحصّلها.")
+                    "description": _("Collect %s from %s (contractor: %s). Accountant %s could not collect it.")
                     % (rec.amount, rec.client_id.name, rec.contractor_id.name, rec.accountant_id.name),
                 }
             )
@@ -147,11 +156,11 @@ class KhCollectionCase(models.Model):
             rec.activity_schedule(
                 "mail.mail_activity_data_todo",
                 user_id=pro_officer.id,
-                summary=_("ملف تحصيل جديد تحوّل إلك"),
-                note=_("انحوّل إلك ملف تحصيل %s بمبلغ %s - شوف الملف %s والمهمة المرتبطة فيه.")
+                summary=_("A collection case has been transferred to you"),
+                note=_("Collection case %s (amount %s) has been transferred to you - see file %s and its task.")
                 % (rec.name, rec.amount, report.x_name),
             )
-            rec.message_post(body=_("ماجد وافق - الملف تحوّل لـ %s (PRO).") % pro_officer.name)
+            rec.message_post(body=_("Manager approved - case transferred to %s (PRO).") % pro_officer.name)
 
     # ------------------------------------------------------------------
     # Stage 2: PRO -> Law (needs Majed's approval)
@@ -159,10 +168,10 @@ class KhCollectionCase(models.Model):
     def action_request_law_escalation(self):
         for rec in self:
             if rec.state != "pro":
-                raise UserError(_("بس ممكن تطلب تصعيد وانت بمرحلة 'مع العلاقات العامة'."))
+                raise UserError(_("You can only request escalation while the case is 'With PRO'."))
             rec.state = "pending_law_approval"
             rec._request_manager_approval(
-                _("مسؤول العلاقات العامة ما قدر يحصّل مبلغ %s من %s. بانتظار موافقتك للتحويل للمحامي.")
+                _("PRO could not collect %s from %s. Waiting for your approval to transfer it to the lawyer.")
                 % (rec.amount, rec.client_id.name)
             )
 
@@ -173,13 +182,13 @@ class KhCollectionCase(models.Model):
                 continue
             rec.state = "pro"
             rec._close_my_pending_activities()
-            rec.message_post(body=_("ماجد رفض التصعيد، الملف رجع للعلاقات العامة."))
+            rec.message_post(body=_("Manager rejected the escalation - case sent back to PRO."))
 
     def action_approve_law_escalation(self):
         self._check_is_manager()
         for rec in self:
             if rec.state != "pending_law_approval":
-                raise UserError(_("هاد الملف مش بانتظار موافقة تصعيد للمحامي."))
+                raise UserError(_("This case is not pending a legal escalation approval."))
             lawyer = rec._get_lawyer()
             if rec.report_id:
                 # Same file, moved to the Law department - kh_law automatically
@@ -187,10 +196,10 @@ class KhCollectionCase(models.Model):
                 rec.report_id.write({"x_studio_type": "Law", "x_studio_user_id": lawyer.id})
             task = self.env["project.task"].create(
                 {
-                    "name": _("تحصيل (قانوني): %s") % rec.name,
+                    "name": _("Collection (Legal): %s") % rec.name,
                     "project_id": rec.project_id.id,
                     "user_ids": [(6, 0, [lawyer.id])],
-                    "description": _("مطلوب تحصيل %s من %s (مقاول: %s) عن طريق الإجراءات القانونية.")
+                    "description": _("Collect %s from %s (contractor: %s) through legal action.")
                     % (rec.amount, rec.client_id.name, rec.contractor_id.name),
                 }
             )
@@ -199,10 +208,11 @@ class KhCollectionCase(models.Model):
             rec.activity_schedule(
                 "mail.mail_activity_data_todo",
                 user_id=lawyer.id,
-                summary=_("ملف تحصيل جديد تحوّل إلك"),
-                note=_("انحوّل إلك ملف تحصيل %s بمبلغ %s للمتابعة القانونية.") % (rec.name, rec.amount),
+                summary=_("A collection case has been transferred to you"),
+                note=_("Collection case %s (amount %s) has been transferred to you for legal follow-up.")
+                % (rec.name, rec.amount),
             )
-            rec.message_post(body=_("ماجد وافق - الملف تحوّل لـ %s (محامي).") % lawyer.name)
+            rec.message_post(body=_("Manager approved - case transferred to %s (Lawyer).") % lawyer.name)
 
     # ------------------------------------------------------------------
     # Any stage -> Collected
@@ -210,5 +220,5 @@ class KhCollectionCase(models.Model):
     def action_mark_collected(self):
         for rec in self:
             rec.state = "collected"
-            rec.activity_ids.action_feedback(feedback=_("تم التحصيل"))
-            rec.message_post(body=_("تم تحصيل المبلغ."))
+            rec.activity_ids.action_feedback(feedback=_("Collected"))
+            rec.message_post(body=_("Amount collected."))
