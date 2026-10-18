@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_kh_collection_case_form" model="ir.ui.view">
+        <field name="name">kh.collection.case.form</field>
+        <field name="model">kh.collection.case</field>
+        <field name="arch" type="xml">
+            <form string="ملف تحصيل">
+                <header>
+                    <button name="action_request_pro_escalation" type="object"
+                            string="ما قدرت أحصّل - صعّد لـ PRO" class="btn-primary"
+                            invisible="state != 'accountant'"/>
+                    <button name="action_approve_pro_escalation" type="object"
+                            string="وافق على التصعيد لـ PRO" class="btn-primary"
+                            invisible="state != 'pending_pro_approval' or not is_manager"/>
+                    <button name="action_reject_pro_escalation" type="object"
+                            string="رفض التصعيد"
+                            invisible="state != 'pending_pro_approval' or not is_manager"/>
+                    <button name="action_request_law_escalation" type="object"
+                            string="ما قدر يحصّل - صعّد للمحامي" class="btn-primary"
+                            invisible="state != 'pro'"/>
+                    <button name="action_approve_law_escalation" type="object"
+                            string="وافق على التصعيد للمحامي" class="btn-primary"
+                            invisible="state != 'pending_law_approval' or not is_manager"/>
+                    <button name="action_reject_law_escalation" type="object"
+                            string="رفض التصعيد"
+                            invisible="state != 'pending_law_approval' or not is_manager"/>
+                    <button name="action_mark_collected" type="object"
+                            string="تم التحصيل" class="btn-success"
+                            invisible="state == 'collected'"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="accountant,pending_pro_approval,pro,pending_law_approval,law,collected"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="client_id"/>
+                            <field name="contractor_id"/>
+                            <field name="project_id"/>
+                        </group>
+                        <group>
+                            <field name="amount"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="accountant_id"/>
+                        </group>
+                    </group>
+                    <group string="الملف والمهام المرتبطة" invisible="not report_id">
+                        <field name="report_id" readonly="1"/>
+                        <field name="pro_task_id" readonly="1"/>
+                        <field name="law_task_id" readonly="1"/>
+                    </group>
+                    <field name="note" placeholder="ملاحظات..."/>
+                    <field name="is_manager" invisible="1"/>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_kh_collection_case_list" model="ir.ui.view">
+        <field name="name">kh.collection.case.list</field>
+        <field name="model">kh.collection.case</field>
+        <field name="arch" type="xml">
+            <list string="ملفات التحصيل">
+                <field name="name"/>
+                <field name="client_id"/>
+                <field name="contractor_id"/>
+                <field name="project_id"/>
+                <field name="amount"/>
+                <field name="accountant_id"/>
+                <field name="state"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_kh_collection_case" model="ir.actions.act_window">
+        <field name="name">ملفات التحصيل</field>
+        <field name="res_model">kh.collection.case</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem id="menu_kh_collection_root" name="التحصيل" sequence="60" action="action_kh_collection_case"/>
+</odoo>
