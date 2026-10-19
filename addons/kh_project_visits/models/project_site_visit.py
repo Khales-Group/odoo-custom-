@@ -12,7 +12,11 @@ class ProjectSiteVisit(models.Model):
         "project.project", string="Project", required=True, ondelete="cascade", index=True
     )
     visit_date = fields.Date(string="Visit Date", required=True, default=fields.Date.context_today)
-    note = fields.Text(string="Visit Note")
+    note = fields.Html(
+        string="Visit Note",
+        help="Use the editor's numbered-list button to write clear, separate points "
+        "instead of one long paragraph.",
+    )
 
 
 class ProjectProject(models.Model):

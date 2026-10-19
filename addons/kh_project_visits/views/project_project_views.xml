@@ -1,5 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <record id="view_project_site_visit_form" model="ir.ui.view">
+        <field name="name">project.site.visit.form</field>
+        <field name="model">project.site.visit</field>
+        <field name="arch" type="xml">
+            <form string="Site Visit">
+                <sheet>
+                    <group>
+                        <field name="visit_date"/>
+                    </group>
+                    <separator string="Visit Note"/>
+                    <p class="text-muted">
+                        Use the toolbar's numbered-list button to write clear, separate
+                        points instead of one long paragraph.
+                    </p>
+                    <field name="note" widget="html"/>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_project_site_visit_list" model="ir.ui.view">
+        <field name="name">project.site.visit.list</field>
+        <field name="model">project.site.visit</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="visit_date"/>
+                <field name="note"/>
+            </list>
+        </field>
+    </record>
+
     <record id="view_project_form_inherit_site_visit" model="ir.ui.view">
         <field name="name">project.project.form.inherit.site.visit</field>
         <field name="model">project.project</field>
@@ -7,8 +38,12 @@
         <field name="arch" type="xml">
             <notebook position="inside">
                 <page string="Site Visits" name="site_visits">
+                    <!-- Not editable inline on purpose: clicking a row or "Add a
+                         line" opens project.site.visit's own form (above) in a
+                         dialog, giving the note's rich-text editor enough room
+                         for proper numbered lists instead of a cramped cell. -->
                     <field name="visit_ids">
-                        <list editable="bottom">
+                        <list>
                             <field name="visit_date"/>
                             <field name="note"/>
                         </list>
