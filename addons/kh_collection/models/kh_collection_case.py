@@ -134,6 +134,9 @@ class KhCollectionCase(models.Model):
                     "x_studio_partner_id": rec.client_id.id,
                     "x_studio_company_id": rec.project_id.company_id.id or self.env.company.id,
                     "x_studio_notes": rec.note,
+                    "x_studio_value": rec.amount,
+                    "x_studio_many2one_field_4g2_1irjm2hqi": rec.project_id.id,  # "Project realted"
+                    "kh_collection_case_id": rec.id,
                 }
             )
             task = self.env["project.task"].create(

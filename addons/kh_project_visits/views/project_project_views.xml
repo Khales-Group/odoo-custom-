@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_project_form_inherit_site_visit" model="ir.ui.view">
+        <field name="name">project.project.form.inherit.site.visit</field>
+        <field name="model">project.project</field>
+        <field name="inherit_id" ref="project.edit_project"/>
+        <field name="arch" type="xml">
+            <notebook position="inside">
+                <page string="Site Visits" name="site_visits">
+                    <field name="visit_ids">
+                        <list editable="bottom">
+                            <field name="visit_date"/>
+                            <field name="note"/>
+                        </list>
+                    </field>
+                </page>
+            </notebook>
+        </field>
+    </record>
+</odoo>

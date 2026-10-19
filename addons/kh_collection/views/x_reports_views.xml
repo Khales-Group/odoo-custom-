@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_x_reports_form_inherit_kh_collection" model="ir.ui.view">
+        <field name="name">x_reports.form.inherit.kh.collection</field>
+        <field name="model">x_reports</field>
+        <field name="inherit_id" ref="kh_law.view_x_reports_kh_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_view_collection_case" type="object"
+                        class="oe_stat_button" icon="fa-money"
+                        invisible="not kh_collection_case_id">
+                    <div class="o_stat_info">
+                        <span class="o_stat_text">Collection Case</span>
+                    </div>
+                </button>
+            </xpath>
+            <xpath expr="//field[@name='x_studio_type']" position="after">
+                <field name="kh_collection_case_id" invisible="1"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

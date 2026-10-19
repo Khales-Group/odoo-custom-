@@ -28,6 +28,7 @@ tied to the separate Approvals app).
     "data": [
         "security/ir.model.access.csv",
         "views/kh_collection_case_views.xml",
+        "views/x_reports_views.xml",
     ],
     "installable": True,
     "application": True,
