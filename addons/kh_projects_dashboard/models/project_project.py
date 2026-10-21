@@ -2,6 +2,18 @@
 from odoo import api, fields, models
 
 
+def _kh_safe_float(value):
+    # x_studio_value_of_the_contract is a Studio field and isn't reliably a
+    # clean number on every record (some have text in it) - never let one
+    # bad record break the whole dashboard for everyone.
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 class ProjectProject(models.Model):
     _inherit = "project.project"
 
@@ -83,4 +95,4 @@ class ProjectProject(models.Model):
                     ])
                     collected = sum(inv.amount_total - inv.amount_residual for inv in invoices)
             project.kh_collected_amount = collected
-            project.kh_remaining_amount = (project.x_studio_value_of_the_contract or 0.0) - collected
+            project.kh_remaining_amount = _kh_safe_float(project.x_studio_value_of_the_contract) - collected
