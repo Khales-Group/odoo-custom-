@@ -30,7 +30,7 @@ class ResUsers(models.Model):
             majed = self.sudo().browse(MAJID_ID)
             karan = self.sudo().search([("name", "ilike", "karan")], limit=1)
             for user in (admin.exists() | majed.exists() | karan):
-                if group.id not in user.groups_id.ids:
-                    user.write({"groups_id": [(4, group.id)]})
+                if group.id not in user.group_ids.ids:
+                    user.write({"group_ids": [(4, group.id)]})
         except Exception:
             _logger.exception("kh_collection: could not ensure Collection Access group membership")
