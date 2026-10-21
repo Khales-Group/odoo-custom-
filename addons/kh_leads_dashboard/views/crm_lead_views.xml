@@ -1,5 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <record id="view_kh_leads_kanban" model="ir.ui.view">
+        <field name="name">crm.lead.kanban.kh.dashboard</field>
+        <field name="model">crm.lead</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="kh_stage_group" records_draggable="0" class="o_kanban_small_column">
+                <field name="partner_id"/>
+                <field name="source_id"/>
+                <field name="x_studio_service"/>
+                <field name="x_studio_category"/>
+                <field name="expected_revenue"/>
+                <field name="user_id"/>
+                <field name="activity_date_deadline"/>
+                <field name="lost_reason_id"/>
+                <templates>
+                    <t t-name="card">
+                        <div class="p-2">
+                            <strong>OPP-<t t-esc="record.id.value"/> <field name="name"/></strong>
+                            <div><i class="fa fa-building-o me-1"/><field name="partner_id"/></div>
+                            <div><i class="fa fa-tag me-1"/><field name="x_studio_category"/></div>
+                            <div><i class="fa fa-compass me-1"/>Source: <field name="source_id"/></div>
+                            <div><i class="fa fa-wrench me-1"/>Need: <field name="x_studio_service"/></div>
+                            <div><i class="fa fa-money me-1"/><field name="expected_revenue" widget="monetary"/></div>
+                            <div><i class="fa fa-user me-1"/><field name="user_id" widget="many2one_avatar_user"/></div>
+                            <div><i class="fa fa-calendar me-1"/>Next step: <field name="activity_date_deadline"/></div>
+                            <div t-if="record.lost_reason_id.value">
+                                <i class="fa fa-exclamation-triangle me-1"/><field name="lost_reason_id"/>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
     <record id="view_kh_leads_pivot" model="ir.ui.view">
         <field name="name">crm.lead.pivot.kh.dashboard</field>
         <field name="model">crm.lead</field>
@@ -12,35 +46,24 @@
         </field>
     </record>
 
-    <record id="view_kh_leads_graph" model="ir.ui.view">
-        <field name="name">crm.lead.graph.kh.dashboard</field>
-        <field name="model">crm.lead</field>
-        <field name="arch" type="xml">
-            <graph string="Leads Dashboard" type="bar">
-                <field name="kh_stage_group"/>
-                <field name="expected_revenue" type="measure"/>
-            </graph>
-        </field>
-    </record>
-
     <record id="action_kh_leads_dashboard" model="ir.actions.act_window">
         <field name="name">Leads Dashboard</field>
         <field name="res_model">crm.lead</field>
-        <field name="view_mode">pivot,graph</field>
+        <field name="view_mode">kanban,pivot</field>
         <field name="domain">[('type', '=', 'opportunity'), ('active', 'in', [True, False])]</field>
     </record>
 
-    <record id="action_kh_leads_dashboard_view_pivot" model="ir.actions.act_window.view">
+    <record id="action_kh_leads_dashboard_view_kanban" model="ir.actions.act_window.view">
         <field name="sequence">1</field>
-        <field name="view_mode">pivot</field>
-        <field name="view_id" ref="view_kh_leads_pivot"/>
+        <field name="view_mode">kanban</field>
+        <field name="view_id" ref="view_kh_leads_kanban"/>
         <field name="act_window_id" ref="action_kh_leads_dashboard"/>
     </record>
 
-    <record id="action_kh_leads_dashboard_view_graph" model="ir.actions.act_window.view">
+    <record id="action_kh_leads_dashboard_view_pivot" model="ir.actions.act_window.view">
         <field name="sequence">2</field>
-        <field name="view_mode">graph</field>
-        <field name="view_id" ref="view_kh_leads_graph"/>
+        <field name="view_mode">pivot</field>
+        <field name="view_id" ref="view_kh_leads_pivot"/>
         <field name="act_window_id" ref="action_kh_leads_dashboard"/>
     </record>
 

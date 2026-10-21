@@ -55,6 +55,46 @@
         </field>
     </record>
 
+    <record id="view_kh_incentive_claim_kanban" model="ir.ui.view">
+        <field name="name">kh.incentive.claim.kanban</field>
+        <field name="model">kh.incentive.claim</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="state" records_draggable="0">
+                <field name="employee_id"/>
+                <field name="month"/>
+                <field name="project_id"/>
+                <field name="file_reference"/>
+                <field name="incentive_type"/>
+                <field name="role"/>
+                <field name="amount_collected"/>
+                <field name="approved_margin"/>
+                <field name="incentive_amount"/>
+                <field name="financial_reviewer_id"/>
+                <field name="payment_date"/>
+                <templates>
+                    <t t-name="card">
+                        <div class="p-2">
+                            <strong><field name="employee_id"/> - <field name="month"/></strong>
+                            <div><i class="fa fa-folder-open-o me-1"/>
+                                <field name="project_id"/><field name="file_reference"/>
+                            </div>
+                            <div><i class="fa fa-star me-1"/><field name="incentive_type"/> / <field name="role"/></div>
+                            <div><i class="fa fa-money me-1"/>Collected: <field name="amount_collected" widget="monetary"/></div>
+                            <div><i class="fa fa-percent me-1"/>Margin: <field name="approved_margin" widget="monetary"/></div>
+                            <div><i class="fa fa-gift me-1"/><strong><field name="incentive_amount" widget="monetary"/></strong></div>
+                            <div t-if="record.financial_reviewer_id.value">
+                                <i class="fa fa-check-square-o me-1"/>Reviewer: <field name="financial_reviewer_id"/>
+                            </div>
+                            <div t-if="record.payment_date.value">
+                                <i class="fa fa-calendar-check-o me-1"/>Paid: <field name="payment_date"/>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
     <record id="view_kh_incentive_claim_list" model="ir.ui.view">
         <field name="name">kh.incentive.claim.list</field>
         <field name="model">kh.incentive.claim</field>
@@ -94,11 +134,18 @@
     <record id="action_kh_incentive_dashboard" model="ir.actions.act_window">
         <field name="name">Incentives Dashboard</field>
         <field name="res_model">kh.incentive.claim</field>
-        <field name="view_mode">pivot</field>
+        <field name="view_mode">kanban,pivot</field>
+    </record>
+
+    <record id="action_kh_incentive_dashboard_view_kanban" model="ir.actions.act_window.view">
+        <field name="sequence">1</field>
+        <field name="view_mode">kanban</field>
+        <field name="view_id" ref="view_kh_incentive_claim_kanban"/>
+        <field name="act_window_id" ref="action_kh_incentive_dashboard"/>
     </record>
 
     <record id="action_kh_incentive_dashboard_view_pivot" model="ir.actions.act_window.view">
-        <field name="sequence">1</field>
+        <field name="sequence">2</field>
         <field name="view_mode">pivot</field>
         <field name="view_id" ref="view_kh_incentive_claim_pivot"/>
         <field name="act_window_id" ref="action_kh_incentive_dashboard"/>
