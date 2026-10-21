@@ -15,10 +15,14 @@ class KhCollectionCase(models.Model):
     _rec_name = "name"
 
     name = fields.Char(string="Reference", compute="_compute_name", store=True)
-    client_id = fields.Many2one("res.partner", string="Client", required=True, tracking=True)
-    contractor_id = fields.Many2one("res.partner", string="Contractor", required=True, tracking=True)
-    project_id = fields.Many2one("project.project", string="Project", required=True, tracking=True)
+    client_id = fields.Many2one("res.partner", string="Client", tracking=True)
+    contractor_id = fields.Many2one("res.partner", string="Contractor", tracking=True)
+    project_id = fields.Many2one("project.project", string="Project", tracking=True)
     amount = fields.Monetary(string="Amount to Collect", required=True, tracking=True)
+    received_amount = fields.Monetary(string="Received", tracking=True)
+    balance_amount = fields.Monetary(
+        string="Balance", compute="_compute_balance_amount", store=True
+    )
     currency_id = fields.Many2one(
         "res.currency", string="Currency", default=lambda self: self.env.company.currency_id
     )
@@ -60,11 +64,31 @@ class KhCollectionCase(models.Model):
         karan = self.env["res.users"].sudo().search([("name", "ilike", "karan")], limit=1)
         return karan or self.env.user
 
-    @api.depends("client_id", "project_id")
+    @api.depends("client_id", "contractor_id", "project_id")
     def _compute_name(self):
         for rec in self:
-            parts = [p for p in (rec.client_id.name, rec.project_id.name) if p]
+            parts = [p for p in (rec.client_id.name, rec.contractor_id.name, rec.project_id.name) if p]
             rec.name = _("Collection - %s") % " / ".join(parts) if parts else _("Collection")
+
+    def _party_display_name(self):
+        """Client if known, else contractor, else a generic placeholder -
+        several real cases only have one of the two on file."""
+        self.ensure_one()
+        return self.client_id.name or self.contractor_id.name or _("Unknown Party")
+
+    @api.depends("amount", "received_amount")
+    def _compute_balance_amount(self):
+        for rec in self:
+            rec.balance_amount = rec.amount - rec.received_amount
+
+    def write(self, vals):
+        res = super().write(vals)
+        if "received_amount" in vals:
+            for rec in self:
+                report = rec.report_id
+                if report and report.kh_collection_received != rec.received_amount:
+                    report.kh_collection_received = rec.received_amount
+        return res
 
     # ------------------------------------------------------------------
     # Helpers
@@ -108,7 +132,7 @@ class KhCollectionCase(models.Model):
             rec.state = "pending_pro_approval"
             rec._request_manager_approval(
                 _("Accountant %s could not collect %s from %s. Waiting for your approval to transfer it to PRO.")
-                % (rec.accountant_id.name, rec.amount, rec.client_id.name)
+                % (rec.accountant_id.name, rec.amount, rec._party_display_name())
             )
 
     def action_reject_pro_escalation(self):
@@ -131,12 +155,14 @@ class KhCollectionCase(models.Model):
                     "x_name": rec.name,
                     "x_studio_type": "PRO",
                     "x_studio_user_id": pro_officer.id,
-                    "x_studio_partner_id": rec.client_id.id,
+                    "x_studio_partner_id": (rec.client_id or rec.contractor_id).id,
                     "x_studio_company_id": rec.project_id.company_id.id or self.env.company.id,
                     "x_studio_notes": rec.note,
                     "x_studio_value": rec.amount,
                     "x_studio_many2one_field_4g2_1irjm2hqi": rec.project_id.id,  # "Project realted"
                     "kh_collection_case_id": rec.id,
+                    "kh_collection_amount": rec.amount,
+                    "kh_collection_received": rec.received_amount,
                 }
             )
             task = self.env["project.task"].create(
@@ -145,7 +171,8 @@ class KhCollectionCase(models.Model):
                     "project_id": rec.project_id.id,
                     "user_ids": [(6, 0, [pro_officer.id])],
                     "description": _("Collect %s from %s (contractor: %s). Accountant %s could not collect it.")
-                    % (rec.amount, rec.client_id.name, rec.contractor_id.name, rec.accountant_id.name),
+                    % (rec.amount, rec._party_display_name(), rec.contractor_id.name or _("Unknown"),
+                       rec.accountant_id.name),
                 }
             )
             rec.write(
@@ -175,7 +202,7 @@ class KhCollectionCase(models.Model):
             rec.state = "pending_law_approval"
             rec._request_manager_approval(
                 _("PRO could not collect %s from %s. Waiting for your approval to transfer it to the lawyer.")
-                % (rec.amount, rec.client_id.name)
+                % (rec.amount, rec._party_display_name())
             )
 
     def action_reject_law_escalation(self):
@@ -203,7 +230,7 @@ class KhCollectionCase(models.Model):
                     "project_id": rec.project_id.id,
                     "user_ids": [(6, 0, [lawyer.id])],
                     "description": _("Collect %s from %s (contractor: %s) through legal action.")
-                    % (rec.amount, rec.client_id.name, rec.contractor_id.name),
+                    % (rec.amount, rec._party_display_name(), rec.contractor_id.name or _("Unknown")),
                 }
             )
             rec.write({"state": "law", "law_task_id": task.id})

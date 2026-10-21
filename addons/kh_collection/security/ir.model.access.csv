@@ -1,2 +1,2 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_kh_collection_case_user,kh.collection.case.user,model_kh_collection_case,base.group_user,1,1,1,0
+access_kh_collection_case_user,kh.collection.case.user,model_kh_collection_case,kh_collection.group_kh_collection_user,1,1,1,0

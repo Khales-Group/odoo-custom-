@@ -26,6 +26,7 @@ tied to the separate Approvals app).
     "category": "Services",
     "depends": ["mail", "project", "kh_law"],
     "data": [
+        "security/kh_collection_security.xml",
         "security/ir.model.access.csv",
         "views/kh_collection_case_views.xml",
         "views/x_reports_views.xml",
