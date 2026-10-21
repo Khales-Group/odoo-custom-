@@ -56,12 +56,15 @@ class ProjectProject(models.Model):
                 if not move.amount_total:
                     continue
                 paid_ratio = (move.amount_total - move.amount_residual) / move.amount_total
-                for acc_id_str, pct in (line.analytic_distribution or {}).items():
-                    acc_id = int(acc_id_str)
-                    if acc_id in account_ids:
-                        collected_by_account[acc_id] = collected_by_account.get(acc_id, 0.0) + (
-                            paid_ratio * line.price_total * (pct / 100.0)
-                        )
+                for key, pct in (line.analytic_distribution or {}).items():
+                    # A key can combine several analytic dimensions in one
+                    # string (e.g. "1224,1381" - project + business unit),
+                    # not always a single id.
+                    for acc_id in (int(part) for part in key.split(",")):
+                        if acc_id in account_ids:
+                            collected_by_account[acc_id] = collected_by_account.get(acc_id, 0.0) + (
+                                paid_ratio * line.price_total * (pct / 100.0)
+                            )
 
         for project in self:
             collected = collected_by_account.get(project.account_id.id, 0.0) if project.account_id else 0.0
