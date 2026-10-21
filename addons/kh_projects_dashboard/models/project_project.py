@@ -48,6 +48,51 @@ class ProjectProject(models.Model):
         string="Remaining", currency_field="kh_currency_id",
         compute="_compute_kh_collected_amount",
     )
+    kh_last_activity_date = fields.Datetime(
+        string="Last Update", compute="_compute_kh_last_activity_date"
+    )
+
+    def _compute_kh_last_activity_date(self):
+        # "Last update" = the most recent of: the project's own write_date,
+        # a chatter entry on the project itself, or anything on one of its
+        # tasks (write_date or chatter entry - a note, a finished task, an
+        # attachment). A chatter post alone doesn't bump write_date in
+        # standard Odoo, which is why it needs to be checked separately.
+        tasks = self.env["project.task"].search([("project_id", "in", self.ids)]) if self.ids else self.env["project.task"]
+
+        last_msg_by_project = {}
+        if self.ids:
+            last_msg_by_project = dict(self.env["mail.message"].sudo()._read_group(
+                [("model", "=", "project.project"), ("res_id", "in", self.ids)],
+                ["res_id"], ["date:max"],
+            ))
+
+        last_msg_by_task = {}
+        if tasks:
+            last_msg_by_task = dict(self.env["mail.message"].sudo()._read_group(
+                [("model", "=", "project.task"), ("res_id", "in", tasks.ids)],
+                ["res_id"], ["date:max"],
+            ))
+
+        task_latest_by_project = {}
+        for task in tasks:
+            candidates = [task.write_date, last_msg_by_task.get(task.id)]
+            candidates = [d for d in candidates if d]
+            if not candidates:
+                continue
+            latest = max(candidates)
+            project_id = task.project_id.id
+            if project_id not in task_latest_by_project or latest > task_latest_by_project[project_id]:
+                task_latest_by_project[project_id] = latest
+
+        for project in self:
+            candidates = [
+                project.write_date,
+                last_msg_by_project.get(project.id),
+                task_latest_by_project.get(project.id),
+            ]
+            candidates = [d for d in candidates if d]
+            project.kh_last_activity_date = max(candidates) if candidates else project.write_date
 
     def _compute_kh_collected_amount(self):
         # Primary source: the invoice line's Analytic Distribution pointing

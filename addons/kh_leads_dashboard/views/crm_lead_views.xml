@@ -13,6 +13,7 @@
                 <field name="user_id"/>
                 <field name="activity_date_deadline"/>
                 <field name="lost_reason_id"/>
+                <field name="kh_last_activity_date"/>
                 <templates>
                     <t t-name="card">
                         <div class="p-2">
@@ -27,6 +28,7 @@
                             <div t-if="record.lost_reason_id.value">
                                 <i class="fa fa-exclamation-triangle me-1"/><field name="lost_reason_id"/>
                             </div>
+                            <div class="text-muted"><small>Updated: <field name="kh_last_activity_date"/></small></div>
                         </div>
                     </t>
                 </templates>
@@ -49,7 +51,7 @@
     <record id="action_kh_leads_dashboard" model="ir.actions.act_window">
         <field name="name">Leads Dashboard</field>
         <field name="res_model">crm.lead</field>
-        <field name="view_mode">kanban,pivot</field>
+        <field name="view_mode">kanban,pivot,form</field>
         <field name="domain">[('type', '=', 'opportunity'), ('active', 'in', [True, False])]</field>
     </record>
 

@@ -15,7 +15,7 @@
                 <field name="kh_status"/>
                 <field name="kh_status_reason"/>
                 <field name="x_studio_end_date"/>
-                <field name="write_date"/>
+                <field name="kh_last_activity_date"/>
                 <templates>
                     <t t-name="card">
                         <div class="p-2">
@@ -38,7 +38,7 @@
                             <div t-if="record.x_studio_end_date.value">
                                 <i class="fa fa-calendar me-1"/>Target: <field name="x_studio_end_date"/>
                             </div>
-                            <div class="text-muted"><small>Updated: <field name="write_date"/></small></div>
+                            <div class="text-muted"><small>Updated: <field name="kh_last_activity_date"/></small></div>
                         </div>
                     </t>
                 </templates>
@@ -62,7 +62,7 @@
     <record id="action_kh_projects_dashboard" model="ir.actions.act_window">
         <field name="name">Projects Dashboard</field>
         <field name="res_model">project.project</field>
-        <field name="view_mode">kanban,pivot</field>
+        <field name="view_mode">kanban,pivot,form</field>
     </record>
 
     <record id="action_kh_projects_dashboard_view_kanban" model="ir.actions.act_window.view">

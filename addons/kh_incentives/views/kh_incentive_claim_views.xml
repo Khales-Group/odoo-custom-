@@ -134,7 +134,7 @@
     <record id="action_kh_incentive_dashboard" model="ir.actions.act_window">
         <field name="name">Incentives Dashboard</field>
         <field name="res_model">kh.incentive.claim</field>
-        <field name="view_mode">kanban,pivot</field>
+        <field name="view_mode">kanban,pivot,form</field>
     </record>
 
     <record id="action_kh_incentive_dashboard_view_kanban" model="ir.actions.act_window.view">
