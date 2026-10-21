@@ -68,5 +68,6 @@
     </record>
 
     <menuitem id="menu_kh_leads_dashboard_root" name="Leads Dashboard" sequence="65"
-              action="action_kh_leads_dashboard"/>
+              action="action_kh_leads_dashboard"
+              web_icon="kh_leads_dashboard,static/description/icon.png"/>
 </odoo>

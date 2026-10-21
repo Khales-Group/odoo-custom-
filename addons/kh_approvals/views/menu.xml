@@ -49,7 +49,8 @@
 
 
     <!-- Menus -->
-    <menuitem id="menu_kh_approvals_root" name="Approvals" sequence="20"/>
+    <menuitem id="menu_kh_approvals_root" name="Approvals" sequence="20"
+              web_icon="kh_approvals,static/description/icon.png"/>
 
 <!-- Point menus to the NEW actions -->
 <menuitem id="menu_kh_approvals_my"

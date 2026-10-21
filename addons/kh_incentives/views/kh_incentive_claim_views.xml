@@ -151,7 +151,8 @@
         <field name="act_window_id" ref="action_kh_incentive_dashboard"/>
     </record>
 
-    <menuitem id="menu_kh_incentives_root" name="Incentives" sequence="70"/>
+    <menuitem id="menu_kh_incentives_root" name="Incentives" sequence="70"
+              web_icon="kh_incentives,static/description/icon.png"/>
     <menuitem id="menu_kh_incentive_claim" name="Claims" parent="menu_kh_incentives_root"
               action="action_kh_incentive_claim" sequence="10"/>
     <menuitem id="menu_kh_incentive_dashboard" name="Dashboard" parent="menu_kh_incentives_root"
