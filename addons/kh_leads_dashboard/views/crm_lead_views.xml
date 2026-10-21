@@ -7,7 +7,6 @@
             <pivot string="Leads Dashboard">
                 <field name="kh_stage_group" type="row"/>
                 <field name="source_id" type="row"/>
-                <field name="__count" type="measure"/>
                 <field name="expected_revenue" type="measure"/>
             </pivot>
         </field>
