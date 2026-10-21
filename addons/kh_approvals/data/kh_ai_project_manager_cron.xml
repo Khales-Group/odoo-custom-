@@ -17,7 +17,7 @@
         <field name="code">model._cron_run_ai_review_batch()</field>
         <field name="interval_number">15</field>
         <field name="interval_type">minutes</field>
-        <field name="active" eval="True"/>
+        <field name="active" eval="False"/>
         <field name="nextcall" eval="(datetime.now() + timedelta(minutes=15)).strftime('%Y-%m-%d %H:%M:%S')"/>
     </record>
 
@@ -32,7 +32,7 @@
         <field name="code">model._cron_daily_digest_batch()</field>
         <field name="interval_number">1</field>
         <field name="interval_type">days</field>
-        <field name="active" eval="True"/>
+        <field name="active" eval="False"/>
         <field name="nextcall" eval="(datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d 07:00:00')"/>
     </record>
 
@@ -46,7 +46,7 @@
         <field name="code">model._cron_weekly_report_batch()</field>
         <field name="interval_number">1</field>
         <field name="interval_type">weeks</field>
-        <field name="active" eval="True"/>
+        <field name="active" eval="False"/>
         <field name="nextcall" eval="(datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d 07:00:00')"/>
     </record>
 

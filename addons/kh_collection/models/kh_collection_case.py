@@ -98,6 +98,20 @@ class KhCollectionCase(models.Model):
                 report = rec.report_id
                 if report and report.kh_collection_received != rec.received_amount:
                     report.kh_collection_received = rec.received_amount
+        if any(f in vals for f in ("client_id", "contractor_id", "project_id")):
+            for rec in self:
+                report = rec.report_id
+                if not report:
+                    continue
+                report_vals = {}
+                partner = rec.client_id or rec.contractor_id
+                if report.x_studio_partner_id != partner:
+                    report_vals["x_studio_partner_id"] = partner.id
+                # "Project realted" - Studio field, kept by its generated technical name
+                if report.x_studio_many2one_field_4g2_1irjm2hqi != rec.project_id:
+                    report_vals["x_studio_many2one_field_4g2_1irjm2hqi"] = rec.project_id.id
+                if report_vals:
+                    report.write(report_vals)
         return res
 
     # ------------------------------------------------------------------
