@@ -15,6 +15,11 @@ class KhCollectionCase(models.Model):
     _rec_name = "name"
 
     name = fields.Char(string="Reference", compute="_compute_name", store=True)
+    import_reference = fields.Char(
+        string="Import Reference",
+        help="Original name from an imported sheet, used as the title when no "
+        "client/contractor/project is linked yet.",
+    )
     client_id = fields.Many2one("res.partner", string="Client", tracking=True)
     contractor_id = fields.Many2one("res.partner", string="Contractor", tracking=True)
     project_id = fields.Many2one("project.project", string="Project", tracking=True)
@@ -64,11 +69,16 @@ class KhCollectionCase(models.Model):
         karan = self.env["res.users"].sudo().search([("name", "ilike", "karan")], limit=1)
         return karan or self.env.user
 
-    @api.depends("client_id", "contractor_id", "project_id")
+    @api.depends("client_id", "contractor_id", "project_id", "import_reference")
     def _compute_name(self):
         for rec in self:
             parts = [p for p in (rec.client_id.name, rec.contractor_id.name, rec.project_id.name) if p]
-            rec.name = _("Collection - %s") % " / ".join(parts) if parts else _("Collection")
+            if parts:
+                rec.name = _("Collection - %s") % " / ".join(parts)
+            elif rec.import_reference:
+                rec.name = _("Collection - %s") % rec.import_reference
+            else:
+                rec.name = _("Collection")
 
     def _party_display_name(self):
         """Client if known, else contractor, else a generic placeholder -
