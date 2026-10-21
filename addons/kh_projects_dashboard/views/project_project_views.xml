@@ -9,7 +9,7 @@
                 <field name="company_id"/>
                 <field name="user_id"/>
                 <field name="x_studio_emarat"/>
-                <field name="x_studio_value_of_the_contract"/>
+                <field name="kh_contract_value"/>
                 <field name="kh_collected_amount"/>
                 <field name="kh_remaining_amount"/>
                 <field name="kh_status"/>
@@ -23,16 +23,16 @@
                             <div><i class="fa fa-map-marker me-1"/><field name="x_studio_emarat"/></div>
                             <div><i class="fa fa-building me-1"/><field name="company_id"/></div>
                             <div><i class="fa fa-user-o me-1"/>Client: <field name="partner_id"/></div>
-                            <div><i class="fa fa-file-text-o me-1"/>Contract: <field name="x_studio_value_of_the_contract" widget="monetary"/></div>
+                            <div><i class="fa fa-file-text-o me-1"/>Contract: <field name="kh_contract_value" widget="monetary"/></div>
                             <div><i class="fa fa-money me-1"/>Collected: <field name="kh_collected_amount" widget="monetary"/></div>
                             <div><i class="fa fa-hourglass-half me-1"/>Remaining: <field name="kh_remaining_amount" widget="monetary"/></div>
                             <div>
                                 <i class="fa fa-flag me-1"/>
-                                <field name="kh_status" widget="label_selection"
-                                       options="{'classes': {'green': 'success', 'yellow': 'warning', 'red': 'danger'}}"/>
+                                <field name="kh_status"/>
                             </div>
-                            <div t-if="record.kh_status_reason.value">
-                                <i class="fa fa-info-circle me-1"/>Reason: <field name="kh_status_reason"/>
+                            <div>
+                                <i class="fa fa-info-circle me-1"/>
+                                <field name="kh_status_reason" placeholder="Reason (if not Green)..."/>
                             </div>
                             <div><i class="fa fa-user me-1"/>Owner: <field name="user_id" widget="many2one_avatar_user"/></div>
                             <div t-if="record.x_studio_end_date.value">
@@ -52,7 +52,7 @@
         <field name="arch" type="xml">
             <pivot string="Projects Dashboard">
                 <field name="x_studio_emarat" type="row"/>
-                <field name="x_studio_value_of_the_contract" type="measure"/>
+                <field name="kh_contract_value" type="measure"/>
                 <field name="kh_collected_amount" type="measure"/>
                 <field name="kh_remaining_amount" type="measure"/>
             </pivot>

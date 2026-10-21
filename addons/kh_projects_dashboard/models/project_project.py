@@ -4,12 +4,21 @@ from odoo import api, fields, models
 
 def _kh_safe_float(value):
     # x_studio_value_of_the_contract is a Studio field and isn't reliably a
-    # clean number on every record (some have text in it) - never let one
-    # bad record break the whole dashboard for everyone.
+    # clean number on every record - never let one bad record break the
+    # whole dashboard for everyone.
     if isinstance(value, (int, float)):
         return float(value)
+    if not value:
+        return 0.0
+    text = str(value).strip()
+    # Employees sometimes type the contract value with dots as thousand
+    # separators (e.g. "1.250.000" for 1,250,000) instead of a plain number -
+    # more than one dot can only mean that, never a real decimal value.
+    if text.count(".") > 1:
+        text = text.replace(".", "")
+    text = text.replace(",", "")
     try:
-        return float(value)
+        return float(text)
     except (TypeError, ValueError):
         return 0.0
 
@@ -37,6 +46,19 @@ class ProjectProject(models.Model):
     kh_currency_id = fields.Many2one(
         "res.currency", string="Currency", related="company_id.currency_id"
     )
+    # x_studio_value_of_the_contract is shown directly with widget="monetary"
+    # in a couple of places and displays "NaN" whenever it holds text instead
+    # of a clean number. This is the same value run through the same safe
+    # parser used everywhere else, so the display is never broken.
+    kh_contract_value = fields.Monetary(
+        string="Contract Value", currency_field="kh_currency_id",
+        compute="_compute_kh_contract_value",
+    )
+
+    def _compute_kh_contract_value(self):
+        for project in self:
+            project.kh_contract_value = _kh_safe_float(project.x_studio_value_of_the_contract)
+
     # Not stored on purpose: this reflects live accounting data (invoices
     # posted/paid after the project was last touched should show up
     # immediately, not only after some unrelated write on the project).
