@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_kh_leads_pivot" model="ir.ui.view">
+        <field name="name">crm.lead.pivot.kh.dashboard</field>
+        <field name="model">crm.lead</field>
+        <field name="arch" type="xml">
+            <pivot string="Leads Dashboard">
+                <field name="kh_stage_group" type="row"/>
+                <field name="source_id" type="row"/>
+                <field name="__count" type="measure"/>
+                <field name="expected_revenue" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_kh_leads_graph" model="ir.ui.view">
+        <field name="name">crm.lead.graph.kh.dashboard</field>
+        <field name="model">crm.lead</field>
+        <field name="arch" type="xml">
+            <graph string="Leads Dashboard" type="bar">
+                <field name="kh_stage_group"/>
+                <field name="expected_revenue" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <record id="action_kh_leads_dashboard" model="ir.actions.act_window">
+        <field name="name">Leads Dashboard</field>
+        <field name="res_model">crm.lead</field>
+        <field name="view_mode">pivot,graph</field>
+        <field name="domain">[('type', '=', 'opportunity'), ('active', 'in', [True, False])]</field>
+    </record>
+
+    <record id="action_kh_leads_dashboard_view_pivot" model="ir.actions.act_window.view">
+        <field name="sequence">1</field>
+        <field name="view_mode">pivot</field>
+        <field name="view_id" ref="view_kh_leads_pivot"/>
+        <field name="act_window_id" ref="action_kh_leads_dashboard"/>
+    </record>
+
+    <record id="action_kh_leads_dashboard_view_graph" model="ir.actions.act_window.view">
+        <field name="sequence">2</field>
+        <field name="view_mode">graph</field>
+        <field name="view_id" ref="view_kh_leads_graph"/>
+        <field name="act_window_id" ref="action_kh_leads_dashboard"/>
+    </record>
+
+    <menuitem id="menu_kh_leads_dashboard_root" name="Leads Dashboard" sequence="65"
+              action="action_kh_leads_dashboard"/>
+</odoo>
