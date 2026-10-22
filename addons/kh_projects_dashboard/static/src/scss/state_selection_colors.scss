@@ -1,0 +1,6 @@
+// Core only ships .o_status_green and .o_status_red - add the missing
+// yellow so kh_status (Green/Yellow/Red) can use the same state_selection
+// dot widget as the rest of Odoo.
+.o_status_yellow {
+    background-color: #f0ad4e;
+}

@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import re
+
 from odoo import api, fields, models
 
 
@@ -11,14 +13,18 @@ def _kh_safe_float(value):
     if not value:
         return 0.0
     text = str(value).strip()
-    # Employees sometimes type the contract value with dots as thousand
-    # separators (e.g. "1.250.000" for 1,250,000) instead of a plain number -
-    # more than one dot can only mean that, never a real decimal value.
+    # Employees sometimes type things like "2,000,000 AED" or "AED 2,000,000"
+    # instead of a plain number - strip anything that isn't a digit, dot,
+    # comma or minus sign (currency codes/symbols, stray spaces...).
+    text = re.sub(r"[^0-9.,-]", "", text)
+    # ... and sometimes dots as thousand separators (e.g. "1.250.000" for
+    # 1,250,000) - more than one dot can only mean that, never a real
+    # decimal value.
     if text.count(".") > 1:
         text = text.replace(".", "")
     text = text.replace(",", "")
     try:
-        return float(text)
+        return float(text) if text else 0.0
     except (TypeError, ValueError):
         return 0.0
 

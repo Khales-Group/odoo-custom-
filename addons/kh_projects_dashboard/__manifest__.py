@@ -32,6 +32,12 @@ field if wanted): required outcome to close, "final uploaded to Odoo Y/N".
         "views/project_project_views.xml",
         "views/project_project_form_views.xml",
     ],
+    "assets": {
+        "web.assets_backend": [
+            "kh_projects_dashboard/static/src/js/state_selection_colors.js",
+            "kh_projects_dashboard/static/src/scss/state_selection_colors.scss",
+        ],
+    },
     "installable": True,
     "application": False,
     "auto_install": False,
