@@ -1,6 +1,6 @@
 {
     "name": "Khales Leads Dashboard",
-    "version": "19.0.1.0.0",
+    "version": "19.0.1.1.0",
     "summary": "Leads/opportunities pivot dashboard grouped by the manager's 4-stage funnel",
     "description": """
 Khales Leads Dashboard
@@ -19,7 +19,7 @@ Mapping (adjust models/crm_lead.py if a stage should move):
     """,
     "author": "Khales Group",
     "category": "Sales/CRM",
-    "depends": ["crm"],
+    "depends": ["crm", "kh_inline_edit"],
     "data": [
         "views/crm_lead_views.xml",
     ],

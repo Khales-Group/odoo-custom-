@@ -1,6 +1,6 @@
 {
     "name": "Khales Projects Dashboard",
-    "version": "19.0.1.0.0",
+    "version": "19.0.1.1.0",
     "summary": "Project kanban dashboard matching the manager's paper 'Project Card 9.1'",
     "description": """
 Khales Projects Dashboard
@@ -27,17 +27,11 @@ field if wanted): required outcome to close, "final uploaded to Odoo Y/N".
     """,
     "author": "Khales Group",
     "category": "Project",
-    "depends": ["project", "account", "kh_collection"],
+    "depends": ["project", "account", "kh_collection", "kh_inline_edit"],
     "data": [
         "views/project_project_views.xml",
         "views/project_project_form_views.xml",
     ],
-    "assets": {
-        "web.assets_backend": [
-            "kh_projects_dashboard/static/src/js/state_selection_colors.js",
-            "kh_projects_dashboard/static/src/scss/state_selection_colors.scss",
-        ],
-    },
     "installable": True,
     "application": False,
     "auto_install": False,

@@ -5,31 +5,48 @@
         <field name="model">crm.lead</field>
         <field name="arch" type="xml">
             <kanban default_group_by="kh_stage_group" records_draggable="0" class="o_kanban_small_column">
-                <field name="partner_id"/>
-                <field name="source_id"/>
-                <field name="x_studio_service"/>
-                <field name="x_studio_category"/>
-                <field name="expected_revenue"/>
-                <field name="user_id"/>
-                <field name="activity_ids"/>
-                <field name="lost_reason_id"/>
-                <field name="kh_last_activity_date"/>
+                <!-- Every widget="kh_inline" field below is edited right on the
+                     card and saved immediately (kh_inline_edit). "Next step" is
+                     Odoo's own activity button (schedule / mark done from the
+                     card). The column itself follows the CRM stage. -->
                 <templates>
                     <t t-name="card">
                         <div class="p-2">
-                            <strong>OPP-<t t-esc="record.id.value"/> <field name="name"/></strong>
-                            <div><i class="fa fa-building-o me-1"/><field name="partner_id"/></div>
-                            <div><i class="fa fa-tag me-1"/><field name="x_studio_category"/></div>
-                            <div><i class="fa fa-compass me-1"/>Source: <field name="source_id"/></div>
-                            <div><i class="fa fa-wrench me-1"/>Need: <field name="x_studio_service"/></div>
-                            <div><i class="fa fa-money me-1"/><field name="expected_revenue" widget="monetary"/></div>
-                            <div><i class="fa fa-user me-1"/><field name="user_id" widget="many2one_avatar_user"/></div>
-                            <div class="d-flex align-items-center">
-                                <i class="fa fa-calendar me-1"/>Next step:
-                                <field name="activity_ids" widget="kanban_activity" class="ms-1"/>
+                            <div class="o_kh_row fw-bold">
+                                <span class="text-nowrap">OPP-<t t-esc="record.id.value"/></span>
+                                <field name="name" widget="kh_inline" options="{'multiline': True}" placeholder="Opportunity..."/>
                             </div>
-                            <div t-if="record.lost_reason_id.value">
-                                <i class="fa fa-exclamation-triangle me-1"/><field name="lost_reason_id"/>
+                            <div class="o_kh_row">
+                                <i class="fa fa-building-o" title="Client"/>
+                                <field name="partner_id" widget="kh_inline" placeholder="Set client..."/>
+                            </div>
+                            <div class="o_kh_row">
+                                <i class="fa fa-tag" title="Category"/>
+                                <field name="x_studio_category" widget="kh_inline" placeholder="Set category..."/>
+                            </div>
+                            <div class="o_kh_row">
+                                <i class="fa fa-compass" title="Source"/><span class="o_kh_label">Source:</span>
+                                <field name="source_id" widget="kh_inline" placeholder="Set source..."/>
+                            </div>
+                            <div class="o_kh_row">
+                                <i class="fa fa-wrench" title="Need"/><span class="o_kh_label">Need:</span>
+                                <field name="x_studio_service" widget="kh_inline" placeholder="Set need..."/>
+                            </div>
+                            <div class="o_kh_row">
+                                <i class="fa fa-money" title="Expected revenue"/>
+                                <field name="expected_revenue" widget="kh_inline"/>
+                            </div>
+                            <div class="o_kh_row">
+                                <i class="fa fa-user" title="Salesperson"/>
+                                <field name="user_id" widget="kh_inline" domain="[('share', '=', False)]" placeholder="Set salesperson..."/>
+                            </div>
+                            <div class="o_kh_row">
+                                <i class="fa fa-calendar" title="Next step"/><span class="o_kh_label">Next step:</span>
+                                <field name="activity_ids" widget="kanban_activity"/>
+                            </div>
+                            <div class="o_kh_row" t-if="record.lost_reason_id.raw_value">
+                                <i class="fa fa-exclamation-triangle text-danger" title="Lost reason"/>
+                                <field name="lost_reason_id" widget="kh_inline"/>
                             </div>
                             <div class="text-muted"><small>Updated: <field name="kh_last_activity_date"/></small></div>
                         </div>

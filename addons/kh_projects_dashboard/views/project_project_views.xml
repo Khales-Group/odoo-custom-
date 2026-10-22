@@ -5,34 +5,52 @@
         <field name="model">project.project</field>
         <field name="arch" type="xml">
             <kanban default_group_by="x_studio_emarat" records_draggable="0">
-                <field name="partner_id"/>
-                <field name="company_id"/>
-                <field name="user_id"/>
-                <field name="x_studio_emarat"/>
-                <field name="kh_contract_value"/>
-                <field name="kh_collected_amount"/>
-                <field name="kh_remaining_amount"/>
-                <field name="kh_status"/>
-                <field name="kh_status_reason"/>
-                <field name="x_studio_end_date"/>
-                <field name="kh_last_activity_date"/>
+                <!-- Every widget="kh_inline" / "kh_status_dot" field below is
+                     edited right on the card and saved immediately
+                     (kh_inline_edit). Collected / Remaining / Updated are
+                     calculated, so read-only. -->
                 <templates>
                     <t t-name="card">
                         <div class="p-2">
-                            <strong>#<t t-esc="record.id.value"/> <field name="display_name"/></strong>
-                            <div><i class="fa fa-map-marker me-1"/><field name="x_studio_emarat"/></div>
-                            <div><i class="fa fa-building me-1"/><field name="company_id"/></div>
-                            <div><i class="fa fa-user-o me-1"/>Client: <field name="partner_id"/></div>
-                            <div><i class="fa fa-file-text-o me-1"/>Contract: <field name="kh_contract_value" widget="monetary"/></div>
-                            <div><i class="fa fa-money me-1"/>Collected: <field name="kh_collected_amount" widget="monetary"/></div>
-                            <div><i class="fa fa-hourglass-half me-1"/>Remaining: <field name="kh_remaining_amount" widget="monetary"/></div>
-                            <div class="d-flex align-items-center">
-                                <field name="kh_status" widget="state_selection"/>
-                                <field name="kh_status_reason" placeholder="Reason (if not Green)..." class="ms-1"/>
+                            <div class="o_kh_row fw-bold">
+                                <span class="text-nowrap">#<t t-esc="record.id.value"/></span>
+                                <field name="name" widget="kh_inline" options="{'multiline': True}" placeholder="Project name..."/>
                             </div>
-                            <div><i class="fa fa-user me-1"/>Owner: <field name="user_id" widget="many2one_avatar_user"/></div>
-                            <div t-if="record.x_studio_end_date.value">
-                                <i class="fa fa-calendar me-1"/>Target: <field name="x_studio_end_date"/>
+                            <div class="o_kh_row">
+                                <i class="fa fa-map-marker" title="Emirate"/>
+                                <field name="x_studio_emarat" widget="kh_inline" placeholder="Set emirate..."/>
+                            </div>
+                            <div class="o_kh_row">
+                                <i class="fa fa-building" title="Company"/>
+                                <field name="company_id" widget="kh_inline" placeholder="Set company..."/>
+                            </div>
+                            <div class="o_kh_row">
+                                <i class="fa fa-user-o" title="Client"/><span class="o_kh_label">Client:</span>
+                                <field name="partner_id" widget="kh_inline" placeholder="Set client..."/>
+                            </div>
+                            <div class="o_kh_row">
+                                <i class="fa fa-file-text-o" title="Contract value"/><span class="o_kh_label">Contract:</span>
+                                <field name="kh_contract_value" widget="kh_inline"/>
+                            </div>
+                            <div class="o_kh_row">
+                                <i class="fa fa-money" title="Collected"/><span class="o_kh_label">Collected:</span>
+                                <field name="kh_collected_amount" widget="monetary"/>
+                            </div>
+                            <div class="o_kh_row">
+                                <i class="fa fa-hourglass-half" title="Remaining"/><span class="o_kh_label">Remaining:</span>
+                                <field name="kh_remaining_amount" widget="monetary"/>
+                            </div>
+                            <div class="o_kh_row">
+                                <field name="kh_status" widget="kh_status_dot"/>
+                                <field name="kh_status_reason" widget="kh_inline" placeholder="Status reason..."/>
+                            </div>
+                            <div class="o_kh_row">
+                                <i class="fa fa-user" title="Owner"/><span class="o_kh_label">Owner:</span>
+                                <field name="user_id" widget="kh_inline" domain="[('share', '=', False)]" placeholder="Set owner..."/>
+                            </div>
+                            <div class="o_kh_row">
+                                <i class="fa fa-calendar" title="Target date"/><span class="o_kh_label">Target:</span>
+                                <field name="x_studio_end_date" widget="kh_inline"/>
                             </div>
                             <div class="text-muted"><small>Updated: <field name="kh_last_activity_date"/></small></div>
                         </div>
@@ -47,10 +65,11 @@
         <field name="model">project.project</field>
         <field name="arch" type="xml">
             <pivot string="Projects Dashboard">
+                <!-- Project count per Emirate and status. Contract / Collected /
+                     Remaining can't be pivot measures: they're calculated live
+                     (not stored), and a pivot can only add up stored columns. -->
                 <field name="x_studio_emarat" type="row"/>
-                <field name="kh_contract_value" type="measure"/>
-                <field name="kh_collected_amount" type="measure"/>
-                <field name="kh_remaining_amount" type="measure"/>
+                <field name="kh_status" type="col"/>
             </pivot>
         </field>
     </record>

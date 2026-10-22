@@ -3,6 +3,13 @@ import re
 
 from odoo import api, fields, models
 
+# Arabic-Indic and Persian digits, plus the Arabic decimal/thousands marks,
+# mapped to their plain equivalents ("٢٬٠٠٠٬٠٠٠" -> "2,000,000").
+_KH_DIGITS = str.maketrans(
+    "٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹٫٬",
+    "01234567890123456789.,",
+)
+
 
 def _kh_safe_float(value):
     # x_studio_value_of_the_contract is a Studio field and isn't reliably a
@@ -12,7 +19,7 @@ def _kh_safe_float(value):
         return float(value)
     if not value:
         return 0.0
-    text = str(value).strip()
+    text = str(value).strip().translate(_KH_DIGITS)
     # Employees sometimes type things like "2,000,000 AED" or "AED 2,000,000"
     # instead of a plain number - strip anything that isn't a digit, dot,
     # comma or minus sign (currency codes/symbols, stray spaces...).
@@ -68,9 +75,14 @@ class ProjectProject(models.Model):
     def _inverse_kh_contract_value(self):
         # Editing this from the dashboard writes a clean number back into
         # the real Studio field, instead of whatever messy text was there -
-        # this fixes the underlying data, not just the display.
+        # this fixes the underlying data, not just the display. That field
+        # is text, so the number is written the way people read it
+        # ("2,000,000" / "1,250,000.50").
         for project in self:
-            project.x_studio_value_of_the_contract = project.kh_contract_value
+            text = "{:,.2f}".format(project.kh_contract_value or 0.0)
+            if text.endswith(".00"):
+                text = text[:-3]
+            project.x_studio_value_of_the_contract = text
 
     # Not stored on purpose: this reflects live accounting data (invoices
     # posted/paid after the project was last touched should show up

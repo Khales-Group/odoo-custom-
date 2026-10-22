@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <!-- The .stop handlers keep a click/keypress inside the field from also
+         reaching the Kanban card, which would open the record (click) or jump
+         to another card (arrow keys). -->
+    <t t-name="kh_inline_edit.InlineField">
+        <div class="o_kh_inline d-flex align-items-center w-100"
+             t-on-click.stop="() => {}"
+             t-on-keydown.stop="() => {}"
+             t-on-touchstart.stop="() => {}">
+            <t t-if="props.readonly">
+                <span class="text-truncate" t-esc="formattedValue"/>
+            </t>
+            <t t-elif="type === 'selection'">
+                <select class="o_kh_inline_input"
+                        t-att-class="{ 'o_kh_inline_empty': value === false }"
+                        t-att-title="field.string"
+                        t-on-change="onSelectChange">
+                    <option t-if="!props.required or value === false" value=""
+                            t-att-selected="value === false" t-esc="placeholder"/>
+                    <t t-foreach="selectionOptions" t-as="option" t-key="option[0]">
+                        <option t-att-value="option[0]" t-att-selected="option[0] === value" t-esc="option[1]"/>
+                    </t>
+                </select>
+            </t>
+            <t t-elif="type === 'many2one'">
+                <img t-if="avatarUrl" t-att-src="avatarUrl" class="o_kh_inline_avatar rounded-circle me-1" alt=""/>
+                <AutoComplete t-key="state.autocompleteKey"
+                              value="many2oneName"
+                              sources="autocompleteSources"
+                              placeholder="placeholder"
+                              title="field.string"
+                              autoSelect="true"
+                              onChange.bind="onAutocompleteChange"
+                              class="'o_kh_inline_m2o'"
+                              menuCssClass="'o_kh_inline_menu'"/>
+            </t>
+            <t t-elif="type === 'date' or type === 'datetime'">
+                <input t-att-type="type === 'date' ? 'date' : 'datetime-local'"
+                       class="o_kh_inline_input"
+                       t-att-class="{ 'o_kh_inline_empty': !value }"
+                       t-att-title="field.string"
+                       t-att-value="dateInputValue"
+                       t-on-change="onDateChange"/>
+            </t>
+            <t t-elif="type === 'boolean'">
+                <input type="checkbox" class="form-check-input"
+                       t-att-title="field.string"
+                       t-att-checked="value"
+                       t-on-change="onCheckboxChange"/>
+            </t>
+            <t t-elif="isMultiline">
+                <textarea class="o_kh_inline_input o_kh_inline_textarea"
+                          rows="1"
+                          t-ref="textarea"
+                          t-att-placeholder="placeholder"
+                          t-att-title="field.string"
+                          t-att-value="textValue"
+                          t-on-focus="onTextFocus"
+                          t-on-input="onTextInput"
+                          t-on-blur="onTextBlur"
+                          t-on-keydown="onTextKeydown"
+                          t-on-change="onTextChange"/>
+            </t>
+            <t t-else="">
+                <input type="text"
+                       class="o_kh_inline_input"
+                       t-att-inputmode="isNumeric ? 'decimal' : 'text'"
+                       t-att-placeholder="placeholder"
+                       t-att-title="field.string"
+                       t-att-value="textValue"
+                       t-on-focus="onTextFocus"
+                       t-on-input="onTextInput"
+                       t-on-blur="onTextBlur"
+                       t-on-keydown="onTextKeydown"
+                       t-on-change="onTextChange"/>
+            </t>
+        </div>
+    </t>
+
+    <!-- Just the coloured dot; an invisible native <select> sits on top of it,
+         so clicking/tapping the dot opens the normal picker (works the same
+         on desktop and phones). -->
+    <t t-name="kh_inline_edit.StatusDot">
+        <span class="o_kh_status_dot"
+              t-att-class="'o_kh_status_dot_' + (value or 'none')"
+              t-att-title="label"
+              t-on-click.stop="() => {}"
+              t-on-keydown.stop="() => {}"
+              t-on-touchstart.stop="() => {}">
+            <select t-if="!props.readonly" class="o_kh_status_select"
+                    t-att-aria-label="label" t-on-change="onChange">
+                <t t-foreach="options" t-as="option" t-key="option[0]">
+                    <option t-att-value="option[0]" t-att-selected="option[0] === value" t-esc="option[1]"/>
+                </t>
+            </select>
+        </span>
+    </t>
+
+</templates>
