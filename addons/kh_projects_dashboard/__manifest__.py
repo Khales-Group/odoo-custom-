@@ -1,6 +1,6 @@
 {
     "name": "Khales Projects Dashboard",
-    "version": "19.0.1.1.0",
+    "version": "19.0.1.2.0",
     "summary": "Project kanban dashboard matching the manager's paper 'Project Card 9.1'",
     "description": """
 Khales Projects Dashboard
@@ -11,16 +11,18 @@ paper "Project Card 9.1": code, name, Emirate, company, client, contract
 value, collected/remaining, status (Green/Yellow/Red) with a reason, owner,
 and last update.
 
-Collected/Remaining are computed live from real accounting data, not a
-separate manual entry:
-- Primary source: invoice lines whose Analytic Distribution points at this
-  project's own Analytic Account (account_id) - the normal way an
-  accountant ties an invoice to a project.
-- Fallback: if no invoice is tagged that way and the client has exactly one
-  project (no ambiguity), sum that client's posted invoices directly. Left
-  at 0 if the client has more than one project and nothing is tagged -
-  guessing which project an untagged invoice belongs to would be worse than
-  showing nothing.
+Collected/Remaining are computed live from real accounting data (amounts
+received on posted customer invoices, minus credit notes), not a separate
+manual entry. Invoices are tagged inconsistently, so each one is counted
+once, for the first rule that identifies its project:
+1. A project picked in the invoice lines' Analytic Distribution.
+2. Otherwise the client (duplicate contacts with the same name count as one
+   client): if the client has one project, that project; if several, the
+   one whose number (e.g. 00134) is written on the invoice reference, notes
+   or a line label.
+3. Otherwise the payment is shown on the client's project cards as
+   "Unlinked payments" and not added to Collected - guessing would put
+   money on the wrong project.
 
 Not included (not tracked anywhere in the system yet - would need a new
 field if wanted): required outcome to close, "final uploaded to Odoo Y/N".

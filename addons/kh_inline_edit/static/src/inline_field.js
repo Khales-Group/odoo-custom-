@@ -281,7 +281,9 @@ export class KhInlineField extends Component {
             name: request,
             operator: "ilike",
             domain: getFieldDomain(this.props.record, this.props.name, this.props.domain),
-            limit: 8,
+            // Short lists (sources, owners, companies) fit entirely, so
+            // nothing is hidden behind typing; long ones scroll.
+            limit: 20,
             context: this.props.context || {},
             specification: { display_name: {} },
         });

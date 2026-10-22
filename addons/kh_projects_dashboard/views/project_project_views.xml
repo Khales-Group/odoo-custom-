@@ -40,6 +40,11 @@
                                 <i class="fa fa-hourglass-half" title="Remaining"/><span class="o_kh_label">Remaining:</span>
                                 <field name="kh_remaining_amount" widget="monetary"/>
                             </div>
+                            <div class="o_kh_row text-warning" t-if="record.kh_unlinked_amount.raw_value">
+                                <i class="fa fa-chain-broken" title="Paid by this client on invoices with no project selected, and the client has several projects. Not counted in Collected until accounting sets the project in Analytic Distribution."/>
+                                <span class="o_kh_label text-warning">Unlinked payments:</span>
+                                <field name="kh_unlinked_amount" widget="monetary"/>
+                            </div>
                             <div class="o_kh_row">
                                 <field name="kh_status" widget="kh_status_dot"/>
                                 <field name="kh_status_reason" widget="kh_inline" placeholder="Status reason..."/>

@@ -1,6 +1,6 @@
 {
     "name": "Khales Inline Edit",
-    "version": "19.0.1.0.0",
+    "version": "19.0.1.0.1",
     "summary": "Edit fields directly on Kanban cards, without opening the record",
     "description": """
 Khales Inline Edit

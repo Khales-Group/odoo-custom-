@@ -1,6 +1,6 @@
 {
     "name": "Khales Leads Dashboard",
-    "version": "19.0.1.1.0",
+    "version": "19.0.1.2.0",
     "summary": "Leads/opportunities pivot dashboard grouped by the manager's 4-stage funnel",
     "description": """
 Khales Leads Dashboard
@@ -16,11 +16,15 @@ Mapping (adjust models/crm_lead.py if a stage should move):
 - Offer: Proposal, Open File, Pending Documents
 - Contract & Delivery: Contract, Won, Completed
 - Lost: Canceled
+
+Also makes sure the lead sources used by the sales team exist: WhatsApp,
+Instagram, Referral.
     """,
     "author": "Khales Group",
     "category": "Sales/CRM",
-    "depends": ["crm", "kh_inline_edit"],
+    "depends": ["crm", "utm", "kh_inline_edit"],
     "data": [
+        "data/utm_source_data.xml",
         "views/crm_lead_views.xml",
     ],
     "installable": True,
