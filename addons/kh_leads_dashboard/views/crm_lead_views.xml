@@ -11,7 +11,7 @@
                 <field name="x_studio_category"/>
                 <field name="expected_revenue"/>
                 <field name="user_id"/>
-                <field name="activity_date_deadline"/>
+                <field name="activity_ids"/>
                 <field name="lost_reason_id"/>
                 <field name="kh_last_activity_date"/>
                 <templates>
@@ -24,7 +24,10 @@
                             <div><i class="fa fa-wrench me-1"/>Need: <field name="x_studio_service"/></div>
                             <div><i class="fa fa-money me-1"/><field name="expected_revenue" widget="monetary"/></div>
                             <div><i class="fa fa-user me-1"/><field name="user_id" widget="many2one_avatar_user"/></div>
-                            <div><i class="fa fa-calendar me-1"/>Next step: <field name="activity_date_deadline"/></div>
+                            <div class="d-flex align-items-center">
+                                <i class="fa fa-calendar me-1"/>Next step:
+                                <field name="activity_ids" widget="kanban_activity" class="ms-1"/>
+                            </div>
                             <div t-if="record.lost_reason_id.value">
                                 <i class="fa fa-exclamation-triangle me-1"/><field name="lost_reason_id"/>
                             </div>

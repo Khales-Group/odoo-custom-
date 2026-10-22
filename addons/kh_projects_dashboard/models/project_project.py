@@ -58,12 +58,19 @@ class ProjectProject(models.Model):
     # parser used everywhere else, so the display is never broken.
     kh_contract_value = fields.Monetary(
         string="Contract Value", currency_field="kh_currency_id",
-        compute="_compute_kh_contract_value",
+        compute="_compute_kh_contract_value", inverse="_inverse_kh_contract_value",
     )
 
     def _compute_kh_contract_value(self):
         for project in self:
             project.kh_contract_value = _kh_safe_float(project.x_studio_value_of_the_contract)
+
+    def _inverse_kh_contract_value(self):
+        # Editing this from the dashboard writes a clean number back into
+        # the real Studio field, instead of whatever messy text was there -
+        # this fixes the underlying data, not just the display.
+        for project in self:
+            project.x_studio_value_of_the_contract = project.kh_contract_value
 
     # Not stored on purpose: this reflects live accounting data (invoices
     # posted/paid after the project was last touched should show up
