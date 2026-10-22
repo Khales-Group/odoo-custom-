@@ -4,14 +4,14 @@
         <field name="name">kh.incentive.claim.form</field>
         <field name="model">kh.incentive.claim</field>
         <field name="arch" type="xml">
-            <form string="Incentive Claim">
+            <form string="Bonus">
                 <header>
                     <button name="action_submit" type="object" string="Submit for Approval"
-                            class="btn-primary" invisible="state != 'draft'"/>
+                            class="btn-primary" invisible="state != 'draft' or is_ceo"/>
                     <button name="action_approve" type="object" string="Approve" class="btn-primary"
-                            invisible="state != 'pending_approval' or not is_ceo"/>
+                            invisible="state not in ('draft', 'pending_approval') or not is_ceo"/>
                     <button name="action_reject" type="object" string="Reject"
-                            invisible="state != 'pending_approval' or not is_ceo"/>
+                            invisible="state not in ('draft', 'pending_approval') or not is_ceo"/>
                     <button name="action_reset_to_draft" type="object" string="Reset to Draft"
                             invisible="state != 'rejected'"/>
                     <button name="action_mark_paid" type="object" string="Mark Paid" class="btn-success"
@@ -25,26 +25,39 @@
                     </div>
                     <group>
                         <group>
-                            <field name="employee_id"/>
+                            <field name="bonus_type" widget="radio"/>
+                            <field name="employee_id" widget="many2one_avatar_user"/>
                             <field name="month"/>
-                            <field name="project_id"/>
-                            <field name="file_reference"/>
                         </group>
                         <group>
-                            <field name="incentive_type"/>
-                            <field name="role"/>
-                            <field name="financial_reviewer_id"/>
-                            <field name="payment_date"/>
+                            <field name="collection_role" invisible="bonus_type != 'collection'"
+                                   required="bonus_type == 'collection'"/>
+                            <field name="collection_case_id" invisible="bonus_type != 'collection'"/>
+                            <field name="project_id" required="bonus_type in ('design', 'handover')"/>
+                            <field name="invoice_id" invisible="bonus_type != 'design'"/>
                         </group>
                     </group>
                     <group>
                         <group>
-                            <field name="amount_collected"/>
-                            <field name="approved_margin"/>
+                            <field name="amount_collected" invisible="bonus_type not in ('collection', 'design')"/>
+                            <field name="rate" invisible="bonus_type not in ('collection', 'design')"/>
+                            <field name="incentive_amount" class="fw-bold"
+                                   readonly="bonus_type in ('collection', 'design')"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="payment_date" invisible="state != 'paid'"/>
                         </group>
                         <group>
-                            <field name="incentive_amount"/>
-                            <field name="currency_id" invisible="1"/>
+                            <div class="text-muted" colspan="2" invisible="bonus_type != 'collection'">
+                                Accountant 0.25%, PRO 0.5%, Lawyer 1% of the amount received.
+                                Created automatically when money is collected on a case.
+                            </div>
+                            <div class="text-muted" colspan="2" invisible="bonus_type != 'design'">
+                                4% of the client's payment that starts the design, for the designer.
+                            </div>
+                            <div class="text-muted" colspan="2" invisible="bonus_type != 'handover'">
+                                Between 500 and 3,500, for the project manager once the project
+                                is handed over / complete.
+                            </div>
                         </group>
                     </group>
                     <field name="note" placeholder="Notes..."/>
@@ -60,34 +73,29 @@
         <field name="model">kh.incentive.claim</field>
         <field name="arch" type="xml">
             <kanban default_group_by="state" records_draggable="0">
-                <field name="employee_id"/>
-                <field name="month"/>
-                <field name="project_id"/>
-                <field name="file_reference"/>
-                <field name="incentive_type"/>
-                <field name="role"/>
-                <field name="amount_collected"/>
-                <field name="approved_margin"/>
-                <field name="incentive_amount"/>
-                <field name="financial_reviewer_id"/>
-                <field name="payment_date"/>
                 <templates>
                     <t t-name="card">
                         <div class="p-2">
-                            <strong><field name="employee_id"/> - <field name="month"/></strong>
-                            <div><i class="fa fa-folder-open-o me-1"/>
-                                <field name="project_id"/><field name="file_reference"/>
+                            <div class="d-flex align-items-center justify-content-between">
+                                <field name="employee_id" widget="many2one_avatar_user"/>
+                                <field name="bonus_type" widget="badge"/>
                             </div>
-                            <div><i class="fa fa-star me-1"/><field name="incentive_type"/> / <field name="role"/></div>
-                            <div><i class="fa fa-money me-1"/>Collected: <field name="amount_collected" widget="monetary"/></div>
-                            <div><i class="fa fa-percent me-1"/>Margin: <field name="approved_margin" widget="monetary"/></div>
-                            <div><i class="fa fa-gift me-1"/><strong><field name="incentive_amount" widget="monetary"/></strong></div>
-                            <div t-if="record.financial_reviewer_id.value">
-                                <i class="fa fa-check-square-o me-1"/>Reviewer: <field name="financial_reviewer_id"/>
+                            <div t-if="record.collection_role.raw_value">
+                                <i class="fa fa-user-circle-o me-1" title="Collected as"/><field name="collection_role"/>
                             </div>
-                            <div t-if="record.payment_date.value">
-                                <i class="fa fa-calendar-check-o me-1"/>Paid: <field name="payment_date"/>
+                            <div t-if="record.project_id.raw_value">
+                                <i class="fa fa-folder-open-o me-1" title="Project"/><field name="project_id"/>
                             </div>
+                            <div t-if="record.amount_collected.raw_value">
+                                <i class="fa fa-money me-1" title="Amount received"/>
+                                <field name="amount_collected" widget="monetary"/>
+                                <span class="text-muted"> x <field name="rate"/>%</span>
+                            </div>
+                            <div class="fs-5 fw-bold">
+                                <i class="fa fa-gift me-1" title="Bonus"/><field name="incentive_amount" widget="monetary"/>
+                            </div>
+                            <div class="text-muted"><small><field name="month"/></small></div>
+                            <field name="currency_id" invisible="1"/>
                         </div>
                     </t>
                 </templates>
@@ -99,15 +107,21 @@
         <field name="name">kh.incentive.claim.list</field>
         <field name="model">kh.incentive.claim</field>
         <field name="arch" type="xml">
-            <list string="Incentive Claims">
-                <field name="name"/>
-                <field name="employee_id"/>
+            <list string="Bonuses">
+                <field name="employee_id" widget="many2one_avatar_user"/>
+                <field name="bonus_type" widget="badge"/>
+                <field name="collection_role"/>
+                <field name="project_id" optional="show"/>
+                <field name="collection_case_id" optional="hide"/>
                 <field name="month"/>
-                <field name="incentive_type"/>
-                <field name="role"/>
-                <field name="amount_collected"/>
-                <field name="incentive_amount"/>
-                <field name="state"/>
+                <field name="currency_id" column_invisible="1"/>
+                <field name="amount_collected" sum="Total"/>
+                <field name="rate" optional="show"/>
+                <field name="incentive_amount" sum="Total"/>
+                <field name="state" widget="badge"
+                       decoration-info="state == 'pending_approval'"
+                       decoration-success="state in ('approved', 'paid')"
+                       decoration-danger="state == 'rejected'"/>
             </list>
         </field>
     </record>
@@ -116,25 +130,58 @@
         <field name="name">kh.incentive.claim.pivot</field>
         <field name="model">kh.incentive.claim</field>
         <field name="arch" type="xml">
-            <pivot string="Incentives Dashboard">
+            <pivot string="Bonuses">
                 <field name="employee_id" type="row"/>
-                <field name="role" type="col"/>
+                <field name="bonus_type" type="col"/>
                 <field name="incentive_amount" type="measure"/>
-                <field name="amount_collected" type="measure"/>
             </pivot>
         </field>
     </record>
 
+    <record id="view_kh_incentive_claim_search" model="ir.ui.view">
+        <field name="name">kh.incentive.claim.search</field>
+        <field name="model">kh.incentive.claim</field>
+        <field name="arch" type="xml">
+            <search string="Bonuses">
+                <field name="employee_id"/>
+                <field name="project_id"/>
+                <field name="collection_case_id"/>
+                <filter name="to_approve" string="To Approve" domain="[('state', 'in', ('draft', 'pending_approval'))]"/>
+                <filter name="approved" string="Approved, Not Paid" domain="[('state', '=', 'approved')]"/>
+                <filter name="paid" string="Paid" domain="[('state', '=', 'paid')]"/>
+                <separator/>
+                <filter name="collection" string="Collection" domain="[('bonus_type', '=', 'collection')]"/>
+                <filter name="design" string="Design Start" domain="[('bonus_type', '=', 'design')]"/>
+                <filter name="handover" string="Project Handover" domain="[('bonus_type', '=', 'handover')]"/>
+                <filter name="other" string="Other" domain="[('bonus_type', '=', 'other')]"/>
+                <separator/>
+                <filter name="this_month" string="Month" date="month"/>
+                <group>
+                    <filter name="group_type" string="Bonus Type" context="{'group_by': 'bonus_type'}"/>
+                    <filter name="group_role" string="Collected As" context="{'group_by': 'collection_role'}"/>
+                    <filter name="group_employee" string="Employee" context="{'group_by': 'employee_id'}"/>
+                    <filter name="group_month" string="Month" context="{'group_by': 'month:month'}"/>
+                    <filter name="group_state" string="Status" context="{'group_by': 'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
     <record id="action_kh_incentive_claim" model="ir.actions.act_window">
-        <field name="name">Incentive Claims</field>
+        <field name="name">Bonuses</field>
         <field name="res_model">kh.incentive.claim</field>
         <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_kh_incentive_claim_search"/>
+        <!-- Collection (Accountant, PRO, Lawyer), Design, Handover, Other -
+             then each employee, with totals on every group line. -->
+        <field name="context">{'group_by': ['bonus_type', 'collection_role', 'employee_id']}</field>
     </record>
 
     <record id="action_kh_incentive_dashboard" model="ir.actions.act_window">
-        <field name="name">Incentives Dashboard</field>
+        <field name="name">Bonuses Dashboard</field>
         <field name="res_model">kh.incentive.claim</field>
         <field name="view_mode">kanban,pivot,form</field>
+        <field name="search_view_id" ref="view_kh_incentive_claim_search"/>
     </record>
 
     <record id="action_kh_incentive_dashboard_view_kanban" model="ir.actions.act_window.view">
@@ -151,9 +198,9 @@
         <field name="act_window_id" ref="action_kh_incentive_dashboard"/>
     </record>
 
-    <menuitem id="menu_kh_incentives_root" name="Incentives" sequence="70"
+    <menuitem id="menu_kh_incentives_root" name="Bonuses" sequence="70"
               web_icon="kh_incentives,static/description/icon.png"/>
-    <menuitem id="menu_kh_incentive_claim" name="Claims" parent="menu_kh_incentives_root"
+    <menuitem id="menu_kh_incentive_claim" name="Bonuses" parent="menu_kh_incentives_root"
               action="action_kh_incentive_claim" sequence="10"/>
     <menuitem id="menu_kh_incentive_dashboard" name="Dashboard" parent="menu_kh_incentives_root"
               action="action_kh_incentive_dashboard" sequence="20"/>

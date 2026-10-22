@@ -2,7 +2,8 @@
 import re
 from collections import defaultdict
 
-from odoo import api, fields, models
+from odoo import _, api, fields, models
+from odoo.exceptions import UserError
 from odoo.tools import html2plaintext
 
 _KH_INVOICE_TYPES = ("out_invoice", "out_refund")
@@ -63,12 +64,21 @@ class ProjectProject(models.Model):
             ("missing_document", "Missing Document"),
             ("legal_deadline", "Legal Deadline"),
             ("payment_schedule", "Payment Schedule"),
+            ("payment_delay", "Delayed Payment"),
+            ("on_track", "Work Going Well"),
         ],
         string="Status Reason", tracking=True,
     )
     kh_currency_id = fields.Many2one(
         "res.currency", string="Currency", related="company_id.currency_id"
     )
+
+    @api.ondelete(at_uninstall=False)
+    def _kh_unlink_never(self):
+        # Company rule: a project is never deleted - not by the admin either,
+        # and not through code/sudo. Archive it instead (keeps its invoices,
+        # tasks, files and history linked).
+        raise UserError(_("Projects can't be deleted. Archive the project instead."))
     # x_studio_value_of_the_contract is shown directly with widget="monetary"
     # in a couple of places and displays "NaN" whenever it holds text instead
     # of a clean number. This is the same value run through the same safe
@@ -98,7 +108,7 @@ class ProjectProject(models.Model):
     # posted/paid after the project was last touched should show up
     # immediately, not only after some unrelated write on the project).
     kh_collected_amount = fields.Monetary(
-        string="Collected", currency_field="kh_currency_id",
+        string="Received", currency_field="kh_currency_id",
         compute="_compute_kh_collected_amount",
     )
     kh_remaining_amount = fields.Monetary(
@@ -110,7 +120,7 @@ class ProjectProject(models.Model):
         compute="_compute_kh_collected_amount",
         help="Paid by this project's client on invoices with no project in Analytic "
              "Distribution, while the client has several projects - so the system "
-             "can't tell which project it belongs to. Not included in Collected: "
+             "can't tell which project it belongs to. Not included in Received: "
              "set the project on those invoices and it moves there.",
     )
     kh_last_activity_date = fields.Datetime(
@@ -181,7 +191,7 @@ class ProjectProject(models.Model):
            -> that project. Several -> the one whose number (the "00134" in
            "Project: 00134 - ...") is written on the invoice.
         3. Still can't tell: "unlinked" - shown on each of the client's
-           project cards but not added to Collected, rather than guessing.
+           project cards but not added to Received, rather than guessing.
 
         Returns two {project_id: amount} dicts: collected, unlinked.
         """

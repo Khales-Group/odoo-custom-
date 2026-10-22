@@ -32,10 +32,15 @@
                 </header>
                 <sheet>
                     <div class="oe_title">
+                        <span class="badge rounded-pill text-bg-warning fs-6 mb-2"
+                              invisible="collection_type != 'vat_refund'">
+                            <i class="fa fa-percent me-1" title="VAT Refund"/>VAT Refund
+                        </span>
                         <h1><field name="name" readonly="1"/></h1>
                     </div>
                     <group>
                         <group>
+                            <field name="collection_type" widget="radio" options="{'horizontal': true}"/>
                             <field name="client_id"/>
                             <field name="contractor_id"/>
                             <field name="project_id"/>
@@ -46,6 +51,8 @@
                             <field name="balance_amount"/>
                             <field name="currency_id" invisible="1"/>
                             <field name="accountant_id"/>
+                            <field name="handler_role"/>
+                            <field name="handler_id"/>
                         </group>
                     </group>
                     <group string="Linked File &amp; Tasks" invisible="not report_id">
@@ -67,15 +74,51 @@
         <field name="arch" type="xml">
             <list string="Collection Cases">
                 <field name="name"/>
+                <field name="collection_type" widget="badge"
+                       decoration-warning="collection_type == 'vat_refund'"
+                       decoration-muted="collection_type == 'payment'"/>
+                <field name="client_id"/>
+                <field name="contractor_id" optional="show"/>
+                <field name="project_id" optional="show"/>
+                <field name="handler_role"/>
+                <field name="handler_id" widget="many2one_avatar_user"/>
+                <field name="currency_id" column_invisible="1"/>
+                <field name="amount" sum="Total"/>
+                <field name="received_amount" sum="Total"/>
+                <field name="balance_amount" sum="Total"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'collected'"
+                       decoration-warning="state in ('pending_pro_approval', 'pending_law_approval')"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_kh_collection_case_search" model="ir.ui.view">
+        <field name="name">kh.collection.case.search</field>
+        <field name="model">kh.collection.case</field>
+        <field name="arch" type="xml">
+            <search string="Collection Cases">
+                <field name="name"/>
                 <field name="client_id"/>
                 <field name="contractor_id"/>
                 <field name="project_id"/>
-                <field name="amount"/>
-                <field name="received_amount"/>
-                <field name="balance_amount"/>
-                <field name="accountant_id"/>
-                <field name="state"/>
-            </list>
+                <field name="handler_id"/>
+                <filter name="open" string="Not Collected Yet" domain="[('state', '!=', 'collected')]"/>
+                <filter name="collected" string="Collected" domain="[('state', '=', 'collected')]"/>
+                <separator/>
+                <filter name="vat_refund" string="VAT Refunds" domain="[('collection_type', '=', 'vat_refund')]"/>
+                <filter name="payment" string="Payments" domain="[('collection_type', '=', 'payment')]"/>
+                <separator/>
+                <filter name="with_accountant" string="With Accountant" domain="[('handler_role', '=', '1_accountant')]"/>
+                <filter name="with_pro" string="With PRO" domain="[('handler_role', '=', '2_pro')]"/>
+                <filter name="with_lawyer" string="With Lawyer" domain="[('handler_role', '=', '3_lawyer')]"/>
+                <group>
+                    <filter name="group_handler_role" string="Handled By" context="{'group_by': 'handler_role'}"/>
+                    <filter name="group_handler" string="Responsible" context="{'group_by': 'handler_id'}"/>
+                    <filter name="group_type" string="Type" context="{'group_by': 'collection_type'}"/>
+                    <filter name="group_state" string="Status" context="{'group_by': 'state'}"/>
+                </group>
+            </search>
         </field>
     </record>
 
@@ -83,9 +126,25 @@
         <field name="name">Collection Cases</field>
         <field name="res_model">kh.collection.case</field>
         <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_kh_collection_case_search"/>
+    </record>
+
+    <!-- Manager's overview: Accountant, then PRO, then Lawyer, and under each
+         the person handling the cases, with Balance / Collected / Remaining
+         totals on every group line. -->
+    <record id="action_kh_collection_case_by_employee" model="ir.actions.act_window">
+        <field name="name">By Employee</field>
+        <field name="res_model">kh.collection.case</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_kh_collection_case_search"/>
+        <field name="context">{'group_by': ['handler_role', 'handler_id']}</field>
     </record>
 
     <menuitem id="menu_kh_collection_root" name="Collection" sequence="60" action="action_kh_collection_case"
               groups="kh_collection.group_kh_collection_user"
               web_icon="kh_collection,static/description/icon.png"/>
+    <menuitem id="menu_kh_collection_cases" name="Cases" parent="menu_kh_collection_root"
+              action="action_kh_collection_case" sequence="10"/>
+    <menuitem id="menu_kh_collection_by_employee" name="By Employee" parent="menu_kh_collection_root"
+              action="action_kh_collection_case_by_employee" sequence="20"/>
 </odoo>

@@ -1,6 +1,6 @@
 {
     "name": "Khales Projects Dashboard",
-    "version": "19.0.1.2.0",
+    "version": "19.0.1.3.0",
     "summary": "Project kanban dashboard matching the manager's paper 'Project Card 9.1'",
     "description": """
 Khales Projects Dashboard
@@ -8,10 +8,10 @@ Khales Projects Dashboard
 
 A Kanban card dashboard for projects, matching the fields on the manager's
 paper "Project Card 9.1": code, name, Emirate, company, client, contract
-value, collected/remaining, status (Green/Yellow/Red) with a reason, owner,
+value, received/remaining, status (Green/Yellow/Red) with a reason, owner,
 and last update.
 
-Collected/Remaining are computed live from real accounting data (amounts
+Received/Remaining are computed live from real accounting data (amounts
 received on posted customer invoices, minus credit notes), not a separate
 manual entry. Invoices are tagged inconsistently, so each one is counted
 once, for the first rule that identifies its project:
@@ -21,7 +21,7 @@ once, for the first rule that identifies its project:
    one whose number (e.g. 00134) is written on the invoice reference, notes
    or a line label.
 3. Otherwise the payment is shown on the client's project cards as
-   "Unlinked payments" and not added to Collected - guessing would put
+   "Unlinked payments" and not added to Received - guessing would put
    money on the wrong project.
 
 Not included (not tracked anywhere in the system yet - would need a new

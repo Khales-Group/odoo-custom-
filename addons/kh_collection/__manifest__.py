@@ -1,6 +1,6 @@
 {
     "name": "Khales Collection",
-    "version": "19.0.1.0.1",
+    "version": "19.0.1.1.0",
     "summary": "Collection cases: accountant, then escalate (with manager approval) to PRO, then to Legal",
     "description": """
 Khales Collection
@@ -21,6 +21,12 @@ project) through an escalation chain:
 No step is automatic or time-based: every escalation is a manual request
 that only takes effect once Majed approves it (a plain Odoo activity, not
 tied to the separate Approvals app).
+
+Each case is either a normal payment or a VAT Refund (VAT the client still
+owes us back - orange badge). "Handled By" / "Responsible" follow the case
+(Accountant, then PRO, then Lawyer), and the "By Employee" menu lists the
+cases in that order, per person, with Balance / Collected / Remaining
+totals.
     """,
     "author": "Khales Group",
     "category": "Services",

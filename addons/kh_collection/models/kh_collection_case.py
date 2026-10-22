@@ -6,6 +6,16 @@ MAJID_ID = 369  # Majed - the manager; every escalation needs his approval
 PRO_OFFICER_LOGIN = "hmam.h7@khales.ae"  # Hamam - Public Relations officer
 LAWYER_LOGIN = "as.sami71@hotmail.com"  # Ahmed Ali - the lawyer
 
+# Who is working the case. The keys sort alphabetically in the order the
+# manager reads the list (Accountant, PRO, Lawyer) - Odoo orders grouped
+# lists by the raw selection value. Also used by kh_incentives for the
+# collection bonus rate.
+HANDLER_ROLES = [
+    ("1_accountant", "Accountant"),
+    ("2_pro", "PRO"),
+    ("3_lawyer", "Lawyer"),
+]
+
 
 class KhCollectionCase(models.Model):
     _name = "kh.collection.case"
@@ -23,10 +33,22 @@ class KhCollectionCase(models.Model):
     client_id = fields.Many2one("res.partner", string="Client", tracking=True)
     contractor_id = fields.Many2one("res.partner", string="Contractor", tracking=True)
     project_id = fields.Many2one("project.project", string="Project", tracking=True)
-    amount = fields.Monetary(string="Amount to Collect", required=True, tracking=True)
-    received_amount = fields.Monetary(string="Received", tracking=True)
+    collection_type = fields.Selection(
+        [("payment", "Payment"), ("vat_refund", "VAT Refund")],
+        string="Type", default="payment", required=True, tracking=True,
+        help="VAT Refund: VAT the client still has to pay back to us. Shown with an orange badge.",
+    )
+    amount = fields.Monetary(string="Balance", required=True, tracking=True,
+                             help="Total amount the client owes on this case.")
+    received_amount = fields.Monetary(string="Collected", tracking=True)
     balance_amount = fields.Monetary(
-        string="Balance", compute="_compute_balance_amount", store=True
+        string="Remaining", compute="_compute_balance_amount", store=True
+    )
+    handler_role = fields.Selection(
+        HANDLER_ROLES, string="Handled By", compute="_compute_handler", store=True,
+    )
+    handler_id = fields.Many2one(
+        "res.users", string="Responsible", compute="_compute_handler", store=True,
     )
     currency_id = fields.Many2one(
         "res.currency", string="Currency", default=lambda self: self.env.company.currency_id
@@ -90,6 +112,22 @@ class KhCollectionCase(models.Model):
     def _compute_balance_amount(self):
         for rec in self:
             rec.balance_amount = rec.amount - rec.received_amount
+
+    @api.depends("state", "accountant_id", "report_id.x_studio_user_id", "law_task_id")
+    def _compute_handler(self):
+        # Whoever holds the case right now. Waiting for Majed's approval
+        # doesn't move it yet; once collected, it stays with whoever got
+        # it to the end.
+        for rec in self:
+            if rec.state == "law" or (rec.state == "collected" and rec.law_task_id):
+                rec.handler_role = "3_lawyer"
+                rec.handler_id = rec.report_id.x_studio_user_id or rec._get_lawyer()
+            elif rec.state in ("pro", "pending_law_approval") or (rec.state == "collected" and rec.report_id):
+                rec.handler_role = "2_pro"
+                rec.handler_id = rec.report_id.x_studio_user_id or rec._get_pro_officer()
+            else:
+                rec.handler_role = "1_accountant"
+                rec.handler_id = rec.accountant_id
 
     def write(self, vals):
         res = super().write(vals)

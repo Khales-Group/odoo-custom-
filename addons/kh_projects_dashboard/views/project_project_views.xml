@@ -7,7 +7,7 @@
             <kanban default_group_by="x_studio_emarat" records_draggable="0">
                 <!-- Every widget="kh_inline" / "kh_status_dot" field below is
                      edited right on the card and saved immediately
-                     (kh_inline_edit). Collected / Remaining / Updated are
+                     (kh_inline_edit). Received / Remaining / Updated are
                      calculated, so read-only. -->
                 <templates>
                     <t t-name="card">
@@ -29,11 +29,15 @@
                                 <field name="partner_id" widget="kh_inline" placeholder="Set client..."/>
                             </div>
                             <div class="o_kh_row">
+                                <i class="fa fa-wrench" title="Service (Scope of Work)"/><span class="o_kh_label">Service:</span>
+                                <field name="x_studio_selection_field_2q6_1iqnqehp5" widget="kh_inline" placeholder="Set service..."/>
+                            </div>
+                            <div class="o_kh_row">
                                 <i class="fa fa-file-text-o" title="Contract value"/><span class="o_kh_label">Contract:</span>
                                 <field name="kh_contract_value" widget="kh_inline"/>
                             </div>
                             <div class="o_kh_row">
-                                <i class="fa fa-money" title="Collected"/><span class="o_kh_label">Collected:</span>
+                                <i class="fa fa-money" title="Received"/><span class="o_kh_label">Received:</span>
                                 <field name="kh_collected_amount" widget="monetary"/>
                             </div>
                             <div class="o_kh_row">
@@ -41,7 +45,7 @@
                                 <field name="kh_remaining_amount" widget="monetary"/>
                             </div>
                             <div class="o_kh_row text-warning" t-if="record.kh_unlinked_amount.raw_value">
-                                <i class="fa fa-chain-broken" title="Paid by this client on invoices with no project selected, and the client has several projects. Not counted in Collected until accounting sets the project in Analytic Distribution."/>
+                                <i class="fa fa-chain-broken" title="Paid by this client on invoices with no project selected, and the client has several projects. Not counted in Received until accounting sets the project in Analytic Distribution."/>
                                 <span class="o_kh_label text-warning">Unlinked payments:</span>
                                 <field name="kh_unlinked_amount" widget="monetary"/>
                             </div>
@@ -70,7 +74,7 @@
         <field name="model">project.project</field>
         <field name="arch" type="xml">
             <pivot string="Projects Dashboard">
-                <!-- Project count per Emirate and status. Contract / Collected /
+                <!-- Project count per Emirate and status. Contract / Received /
                      Remaining can't be pivot measures: they're calculated live
                      (not stored), and a pivot can only add up stored columns. -->
                 <field name="x_studio_emarat" type="row"/>
