@@ -1,4 +1,4 @@
-"""In-system AI chat controller (Claude), backed by the MCP tool layer.
+"""In-system AI chat controller (Claude, or Gemini - see gemini_chat.py), backed by the MCP tool layer.
 
 Conversations are persisted per-user (`mcp.chat.conversation` +
 `mcp.chat.message`) so the chat survives page reloads and users can keep
@@ -67,11 +67,8 @@ SYSTEM_PROMPT = (
     "can access. When looking up a customer/contact by name, use "
     "find_customer rather than a plain search_records call on res.partner - "
     "a name given in Arabic may only be on file in English (or vice versa), "
-    "and find_customer knows how to cross-reference that. You CAN generate "
-    "real PDF, Word, Excel, and PowerPoint files using the code execution "
-    "tool - when asked for a report/document/export, actually create the "
-    "file rather than saying you can't; a download link is added for the "
-    "user automatically once the file is ready. Reply in the same language "
+    "and find_customer knows how to cross-reference that. {file_generation}"
+    "Reply in the same language "
     "the user's latest message is written in (Arabic or English). Be "
     "concise and to the point.\n\n"
     "When asked to integrate/align a contractor's submitted timeline or "
@@ -93,16 +90,29 @@ SYSTEM_PROMPT = (
     "caused real mistakes before. Only use create_record for a phase that "
     "genuinely has no corresponding stage/tasks anywhere in the project at all."
 )
+FILE_GENERATION_PROMPT = (
+    "You CAN generate "
+    "real PDF, Word, Excel, and PowerPoint files using the code execution "
+    "tool - when asked for a report/document/export, actually create the "
+    "file rather than saying you can't; a download link is added for the "
+    "user automatically once the file is ready. "
+)
+# Gemini backend: no code-execution sandbox, so no file generation.
+NO_FILE_GENERATION_PROMPT = (
+    "You cannot create downloadable files (PDF, Word, Excel, PowerPoint) - "
+    "if asked, say so and give the content as formatted text instead. "
+)
 
 
-def _build_system_prompt(user):
+def _build_system_prompt(user, can_generate_files=True):
     # SYSTEM_PROMPT is a shared constant with no idea who's actually typing -
     # the model then has to guess or ask "who are you", even though the real
     # authenticated user is right here (env.user) and every tool call is
     # already scoped to their real permissions. Telling it explicitly closes
     # that gap: it can resolve "me"/"my tasks" itself instead of asking.
+    file_generation = FILE_GENERATION_PROMPT if can_generate_files else NO_FILE_GENERATION_PROMPT
     return (
-        SYSTEM_PROMPT
+        SYSTEM_PROMPT.format(file_generation=file_generation)
         + "\n\nThe person you are talking to in this conversation is: "
         + f"{user.name} (login: {user.login}, user_id={user.id}). When they "
         + "say 'me', 'my', 'I', or the Arabic equivalents (انا/لي/يلي عليّ), "
@@ -394,20 +404,29 @@ class McpChatController(http.Controller):
                 "error": "AI chat is disabled. Enable it under Settings > MCP Server."
             }
 
-        if not HAS_ANTHROPIC:
-            return {
-                "error": "The 'anthropic' Python package is not installed on the server."
-            }
-
         if not message and not attachments:
             return {"error": "message is required."}
 
-        client, model = _get_client_and_model()
-        if client is None:
-            return {
-                "error": "Anthropic API key is not configured. "
-                "Set it under Settings > MCP Server."
-            }
+        provider = env["ir.config_parameter"].sudo().get_param("mcp_server.chat_provider", "anthropic")
+        if provider == "gemini":
+            from . import gemini_chat
+
+            if not gemini_chat.HAS_GENAI:
+                return {"error": "The 'google-genai' Python package is not installed on the server."}
+            client, model = gemini_chat.get_client_and_model(env)
+            if client is None:
+                return {"error": "Gemini API key is not configured (system parameter gemini.api.key)."}
+        else:
+            if not HAS_ANTHROPIC:
+                return {
+                    "error": "The 'anthropic' Python package is not installed on the server."
+                }
+            client, model = _get_client_and_model()
+            if client is None:
+                return {
+                    "error": "Anthropic API key is not configured. "
+                    "Set it under Settings > MCP Server."
+                }
 
         user_content, attachment_error = _build_user_content(message or "", attachments)
         if attachment_error:
@@ -423,6 +442,11 @@ class McpChatController(http.Controller):
         history = _load_history(env, conversation.id)
         history.append({"role": "user", "content": user_content})
         _persist(env, user, conversation, "user", user_content)
+
+        if provider == "gemini":
+            return gemini_chat.run_turn(
+                env, user, conversation, is_new_conversation, message, history, client, model
+            )
 
         tools = build_tool_definitions(env) + FILE_GENERATION_TOOLS
         tool_activity = []

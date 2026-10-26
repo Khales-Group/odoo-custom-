@@ -75,6 +75,22 @@ class ResConfigSettings(models.TransientModel):
         config_parameter="mcp_server.anthropic_model",
         default="claude-opus-4-8",
     )
+    mcp_chat_provider = fields.Selection(
+        [("anthropic", "Claude (Anthropic)"), ("gemini", "Gemini (Google)")],
+        string="Chat Provider",
+        help="Which AI answers in the in-system chat. Gemini uses the API key in "
+        "the 'gemini.api.key' system parameter and can't generate PDF/Word/"
+        "Excel/PowerPoint files.",
+        config_parameter="mcp_server.chat_provider",
+        default="anthropic",
+    )
+    mcp_gemini_model = fields.Char(
+        string="Gemini Model",
+        help="Model ID used when the provider is Gemini, e.g. gemini-2.5-flash, "
+        "gemini-2.5-pro. Empty: the 'gemini.model' system parameter, else "
+        "gemini-2.5-flash.",
+        config_parameter="mcp_server.gemini_model",
+    )
 
     @api.model
     def get_values(self):
@@ -102,6 +118,8 @@ class ResConfigSettings(models.TransientModel):
             mcp_anthropic_model=params.get_param(
                 "mcp_server.anthropic_model", "claude-opus-4-8"
             ),
+            mcp_chat_provider=params.get_param("mcp_server.chat_provider", "anthropic"),
+            mcp_gemini_model=params.get_param("mcp_server.gemini_model", ""),
         )
         return res
 
@@ -126,5 +144,7 @@ class ResConfigSettings(models.TransientModel):
         params.set_param(
             "mcp_server.anthropic_model", self.mcp_anthropic_model or "claude-opus-4-8"
         )
+        params.set_param("mcp_server.chat_provider", self.mcp_chat_provider or "anthropic")
+        params.set_param("mcp_server.gemini_model", self.mcp_gemini_model or "")
 
         return result
