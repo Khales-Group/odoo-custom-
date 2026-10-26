@@ -19,6 +19,11 @@ STAGE_GROUP_MAP = {
 class CrmLead(models.Model):
     _inherit = "crm.lead"
 
+    # Only the sales team's own sources can be picked (Instagram, Facebook,
+    # WhatsApp, Referral, Direct Call - see utm_source.py) in the lead form.
+    # The dashboard itself shows the Studio field x_studio_source instead.
+    source_id = fields.Many2one(domain="[('kh_lead_source', '=', True)]")
+
     kh_stage_group = fields.Selection(
         [
             ("capture", "Capture"),

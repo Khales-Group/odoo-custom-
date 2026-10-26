@@ -36,6 +36,10 @@
                               invisible="collection_type != 'vat_refund'">
                             <i class="fa fa-percent me-1" title="VAT Refund"/>VAT Refund
                         </span>
+                        <span class="badge rounded-pill text-bg-warning fs-6 mb-2"
+                              invisible="collection_type != 'vat_return'">
+                            <i class="fa fa-percent me-1" title="VAT Return"/>VAT Return
+                        </span>
                         <h1><field name="name" readonly="1"/></h1>
                     </div>
                     <group>
@@ -75,8 +79,9 @@
             <list string="Collection Cases">
                 <field name="name"/>
                 <field name="collection_type" widget="badge"
-                       decoration-warning="collection_type == 'vat_refund'"
-                       decoration-muted="collection_type == 'payment'"/>
+                       decoration-warning="collection_type in ('vat_refund', 'vat_return')"
+                       decoration-info="collection_type == 'contractor'"
+                       decoration-muted="collection_type == 'client'"/>
                 <field name="client_id"/>
                 <field name="contractor_id" optional="show"/>
                 <field name="project_id" optional="show"/>
@@ -106,8 +111,10 @@
                 <filter name="open" string="Not Collected Yet" domain="[('state', '!=', 'collected')]"/>
                 <filter name="collected" string="Collected" domain="[('state', '=', 'collected')]"/>
                 <separator/>
+                <filter name="client" string="Client" domain="[('collection_type', '=', 'client')]"/>
+                <filter name="contractor" string="Contractor" domain="[('collection_type', '=', 'contractor')]"/>
+                <filter name="vat_return" string="VAT Returns" domain="[('collection_type', '=', 'vat_return')]"/>
                 <filter name="vat_refund" string="VAT Refunds" domain="[('collection_type', '=', 'vat_refund')]"/>
-                <filter name="payment" string="Payments" domain="[('collection_type', '=', 'payment')]"/>
                 <separator/>
                 <filter name="with_accountant" string="With Accountant" domain="[('handler_role', '=', '1_accountant')]"/>
                 <filter name="with_pro" string="With PRO" domain="[('handler_role', '=', '2_pro')]"/>

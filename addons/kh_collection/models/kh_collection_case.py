@@ -34,9 +34,15 @@ class KhCollectionCase(models.Model):
     contractor_id = fields.Many2one("res.partner", string="Contractor", tracking=True)
     project_id = fields.Many2one("project.project", string="Project", tracking=True)
     collection_type = fields.Selection(
-        [("payment", "Payment"), ("vat_refund", "VAT Refund")],
-        string="Type", default="payment", required=True, tracking=True,
-        help="VAT Refund: VAT the client still has to pay back to us. Shown with an orange badge.",
+        [
+            ("client", "Client"),
+            ("contractor", "Contractor"),
+            ("vat_return", "VAT Return"),
+            ("vat_refund", "VAT Refund"),
+        ],
+        string="Type", default="client", required=True, tracking=True,
+        help="Client / Contractor: who owes the amount. VAT Return / VAT Refund: VAT amounts "
+             "still owed to us - shown with an orange badge.",
     )
     amount = fields.Monetary(string="Balance", required=True, tracking=True,
                              help="Total amount the client owes on this case.")

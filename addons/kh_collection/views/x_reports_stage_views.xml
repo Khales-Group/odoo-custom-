@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_x_reports_stage_list_inherit_kh_collection" model="ir.ui.view">
+        <field name="name">x_reports_stage.list.inherit.kh.collection</field>
+        <field name="model">x_reports_stage</field>
+        <field name="inherit_id" ref="kh_law.view_x_reports_stage_kh_list"/>
+        <field name="arch" type="xml">
+            <field name="kh_is_closed" position="before">
+                <field name="kh_is_collection"/>
+            </field>
+        </field>
+    </record>
+</odoo>

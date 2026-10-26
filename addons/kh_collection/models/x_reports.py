@@ -31,8 +31,44 @@ class XReports(models.Model):
         for rec in self:
             rec.kh_collection_can_view = can_view
 
+    # ------------------------------------------------------------------
+    # Collection stage: files opened from the Collection app sit in their
+    # department's "Collection" stage (PRO first, then Law on escalation).
+    # ------------------------------------------------------------------
+    def _kh_first_stage(self, department):
+        # The Collection stage is first on the board, but regular files
+        # never start there.
+        return self.env["x_reports_stage"].search(
+            [("kh_department", "=", department), ("kh_is_collection", "=", False)], limit=1
+        )
+
+    def _kh_collection_stage(self, department):
+        return self.env["x_reports_stage"].search(
+            [("kh_department", "=", department), ("kh_is_collection", "=", True)], limit=1
+        )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if vals.get("kh_collection_case_id") and vals.get("x_studio_type") and not vals.get("x_studio_stage_id"):
+                stage = self._kh_collection_stage(vals["x_studio_type"])
+                if stage:
+                    vals["x_studio_stage_id"] = stage.id
+        return super().create(vals_list)
+
     def write(self, vals):
-        res = super().write(vals)
+        department = vals.get("x_studio_type")
+        moving, stage = self.browse(), None
+        if department and "x_studio_stage_id" not in vals:
+            moving = self.filtered(
+                lambda r: r.kh_collection_case_id and r.x_studio_stage_id.kh_department != department
+            )
+            stage = moving and self._kh_collection_stage(department)
+        if stage:
+            res = super(XReports, moving).write(dict(vals, x_studio_stage_id=stage.id))
+            res = super(XReports, self - moving).write(vals) and res
+        else:
+            res = super().write(vals)
         if "kh_collection_received" in vals:
             for rec in self:
                 case = rec.kh_collection_case_id

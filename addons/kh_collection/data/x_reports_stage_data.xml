@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Runs on every install/upgrade; only adds what's missing. -->
+    <function model="x_reports_stage" name="_kh_ensure_collection_stages"/>
+</odoo>

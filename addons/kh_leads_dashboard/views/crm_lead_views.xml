@@ -21,12 +21,12 @@
                                 <field name="partner_id" widget="kh_inline" placeholder="Set client..."/>
                             </div>
                             <div class="o_kh_row">
-                                <i class="fa fa-tag" title="Category"/>
-                                <field name="x_studio_category" widget="kh_inline" placeholder="Set category..."/>
+                                <i class="fa fa-cogs" title="Service type"/><span class="o_kh_label">Service Type:</span>
+                                <field name="x_studio_service_type" widget="kh_inline" placeholder="Set service type..."/>
                             </div>
                             <div class="o_kh_row">
                                 <i class="fa fa-compass" title="Source"/><span class="o_kh_label">Source:</span>
-                                <field name="source_id" widget="kh_inline" placeholder="Set source..."/>
+                                <field name="x_studio_source" widget="kh_inline" placeholder="Set source..."/>
                             </div>
                             <div class="o_kh_row">
                                 <i class="fa fa-wrench" title="Need"/><span class="o_kh_label">Need:</span>
@@ -62,7 +62,7 @@
         <field name="arch" type="xml">
             <pivot string="Leads Dashboard">
                 <field name="kh_stage_group" type="row"/>
-                <field name="source_id" type="row"/>
+                <field name="x_studio_source" type="row"/>
                 <field name="expected_revenue" type="measure"/>
             </pivot>
         </field>

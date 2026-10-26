@@ -1,6 +1,6 @@
 {
     "name": "Khales Leads Dashboard",
-    "version": "19.0.1.2.0",
+    "version": "19.0.1.4.0",
     "summary": "Leads/opportunities pivot dashboard grouped by the manager's 4-stage funnel",
     "description": """
 Khales Leads Dashboard
@@ -17,8 +17,13 @@ Mapping (adjust models/crm_lead.py if a stage should move):
 - Contract & Delivery: Contract, Won, Completed
 - Lost: Canceled
 
-Also makes sure the lead sources used by the sales team exist: WhatsApp,
-Instagram, Referral.
+The cards show the CRM's own Studio fields Service Type
+(x_studio_service_type) and Source (x_studio_source: WhatsApp, Instagram,
+Facebook, Google, Phone Call, Website, Direct, Referral).
+
+The standard Source (source_id) is limited to the ones the sales team uses: Instagram,
+Facebook, WhatsApp, Referral, Direct Call (created if missing; older sources
+stay on the leads that have them but can't be picked anymore).
     """,
     "author": "Khales Group",
     "category": "Sales/CRM",
