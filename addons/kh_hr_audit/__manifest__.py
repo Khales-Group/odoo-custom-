@@ -1,6 +1,6 @@
 {
     'name': 'Smart HR Audit',
-    'version': '1.0',
+    'version': '1.1',
     'summary': 'Analyze attendance, deductions, and payroll',
     'sequence': 10,
     'description': """Smart HR Control Center for Attendance & Payroll""",

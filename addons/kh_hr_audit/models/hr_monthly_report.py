@@ -74,13 +74,6 @@ class KhHrMonthlyReport(models.Model):
             })
             
         if vals_list:
-            reports = self.create(vals_list)
-            # Notify Managers via Activity
-            for report in reports:
-                if report.manager_user_id:
-                    report.activity_schedule(
-                        'mail.mail_activity_data_todo',
-                        user_id=report.manager_user_id.id,
-                        summary=f"Review Monthly Report: {report.employee_id.name}",
-                        note=f"The monthly report for {report.month_label} is ready for your review."
-                    )
+            # No "Review Monthly Report" to-do for the managers anymore: one
+            # per employee every month was pure noise (turned off Oct 2026).
+            self.create(vals_list)
