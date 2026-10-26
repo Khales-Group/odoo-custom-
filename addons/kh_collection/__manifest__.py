@@ -1,6 +1,6 @@
 {
     "name": "Khales Collection",
-    "version": "19.0.1.2.0",
+    "version": "19.0.1.3.0",
     "summary": "Collection cases: accountant, then escalate (with manager approval) to PRO, then to Legal",
     "description": """
 Khales Collection

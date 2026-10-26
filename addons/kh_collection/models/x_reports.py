@@ -20,6 +20,12 @@ class XReports(models.Model):
         compute="_compute_kh_collection_balance", store=True,
     )
     kh_collection_can_view = fields.Boolean(compute="_compute_kh_collection_can_view")
+    # The case's details, shown on the file for the PRO / lawyer, who have no
+    # access to the Collection app itself (related fields read as sudo).
+    kh_collection_type = fields.Selection(related="kh_collection_case_id.collection_type", string="Collection Type")
+    kh_collection_client_id = fields.Many2one(related="kh_collection_case_id.client_id", string="Client")
+    kh_collection_contractor_id = fields.Many2one(related="kh_collection_case_id.contractor_id", string="Contractor")
+    kh_collection_accountant_id = fields.Many2one(related="kh_collection_case_id.accountant_id", string="Accountant")
 
     @api.depends("kh_collection_amount", "kh_collection_received")
     def _compute_kh_collection_balance(self):

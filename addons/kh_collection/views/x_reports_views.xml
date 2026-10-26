@@ -23,11 +23,25 @@
                 <field name="kh_collection_case_id" invisible="1"/>
                 <field name="kh_collection_can_view" invisible="1"/>
             </xpath>
+            <xpath expr="//div[hasclass('oe_title')]/h1" position="before">
+                <span class="badge rounded-pill text-bg-warning fs-6 mb-2"
+                      invisible="kh_collection_type not in ('vat_refund', 'vat_return')">
+                    <i class="fa fa-percent me-1" title="VAT"/><field name="kh_collection_type" readonly="1"/>
+                </span>
+            </xpath>
             <xpath expr="//group[@name='kh_legal']" position="before">
                 <group string="Collection" invisible="not kh_collection_case_id">
-                    <field name="kh_collection_amount"/>
-                    <field name="kh_collection_received"/>
-                    <field name="kh_collection_balance"/>
+                    <group>
+                        <field name="kh_collection_type"/>
+                        <field name="kh_collection_client_id"/>
+                        <field name="kh_collection_contractor_id"/>
+                        <field name="kh_collection_accountant_id" widget="many2one_avatar_user"/>
+                    </group>
+                    <group>
+                        <field name="kh_collection_amount"/>
+                        <field name="kh_collection_received"/>
+                        <field name="kh_collection_balance"/>
+                    </group>
                 </group>
             </xpath>
         </field>

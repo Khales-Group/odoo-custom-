@@ -251,7 +251,9 @@ class KhCollectionCase(models.Model):
                 }
             )
             rec._close_my_pending_activities()
-            rec.activity_schedule(
+            # On the file, not the case: the PRO has no access to the
+            # Collection app, so he couldn't open an activity on the case.
+            report.activity_schedule(
                 "mail.mail_activity_data_todo",
                 user_id=pro_officer.id,
                 summary=_("A collection case has been transferred to you"),
@@ -303,7 +305,8 @@ class KhCollectionCase(models.Model):
             )
             rec.write({"state": "law", "law_task_id": task.id})
             rec._close_my_pending_activities()
-            rec.activity_schedule(
+            # On the file when there is one - same reason as for the PRO.
+            (rec.report_id or rec).activity_schedule(
                 "mail.mail_activity_data_todo",
                 user_id=lawyer.id,
                 summary=_("A collection case has been transferred to you"),
@@ -319,4 +322,8 @@ class KhCollectionCase(models.Model):
         for rec in self:
             rec.state = "collected"
             rec.activity_ids.action_feedback(feedback=_("Collected"))
+            # The "transferred to you" reminders live on the file.
+            rec.report_id.sudo().activity_ids.filtered(
+                lambda a: a.summary == _("A collection case has been transferred to you")
+            ).action_feedback(feedback=_("Collected"))
             rec.message_post(body=_("Amount collected."))
