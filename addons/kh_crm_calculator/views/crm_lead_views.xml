@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="crm_lead_view_form_kh_calculator" model="ir.ui.view">
+        <field name="name">crm.lead.form.kh.calculator</field>
+        <field name="model">crm.lead</field>
+        <field name="inherit_id" ref="crm.crm_lead_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Calculator" name="kh_calculator" invisible="not x_calc_reference">
+                    <group>
+                        <group string="Request" name="kh_calc_request">
+                            <field name="x_calc_reference" readonly="1"/>
+                            <field name="x_calc_request_type" readonly="1"/>
+                            <field name="x_calc_input_mode" readonly="1"/>
+                            <field name="x_calc_lang" readonly="1"/>
+                            <field name="x_calc_created_at" readonly="1"/>
+                            <field name="x_calc_lead_score" readonly="1"/>
+                            <field name="x_calc_version" readonly="1"/>
+                            <field name="x_calc_source" readonly="1"/>
+                        </group>
+                        <group string="Location &amp; market" name="kh_calc_market">
+                            <field name="x_calc_country" readonly="1"/>
+                            <field name="x_calc_city" readonly="1"/>
+                            <field name="x_calc_market_mode" readonly="1"/>
+                            <field name="x_calc_market_confidence" readonly="1"/>
+                            <field name="x_calc_currency" readonly="1"/>
+                            <field name="x_calc_pricing_source_date" readonly="1"/>
+                            <field name="x_calc_anchor_date" readonly="1"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group string="Project" name="kh_calc_project">
+                            <field name="x_calc_built_area_sqm" readonly="1"/>
+                            <field name="x_calc_budget" readonly="1"/>
+                            <field name="x_calc_finish_level" readonly="1"/>
+                            <field name="x_calc_floors" readonly="1"/>
+                            <field name="x_calc_special_items" readonly="1"/>
+                            <field name="x_calc_family_plan" readonly="1"/>
+                        </group>
+                        <group string="Results" name="kh_calc_results">
+                            <field name="x_calc_result_low" readonly="1"/>
+                            <field name="x_calc_result_expected" readonly="1"/>
+                            <field name="x_calc_result_high" readonly="1"/>
+                            <field name="x_calc_area_conservative_sqm" readonly="1"/>
+                            <field name="x_calc_area_reference_sqm" readonly="1"/>
+                            <field name="x_calc_area_max_sqm" readonly="1"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group string="Readiness &amp; contact" name="kh_calc_readiness">
+                            <field name="x_calc_land_status" readonly="1"/>
+                            <field name="x_calc_start_timing" readonly="1"/>
+                            <field name="x_calc_has_plan_or_quote" readonly="1"/>
+                            <field name="x_calc_review_goal" readonly="1"/>
+                            <field name="x_calc_preferred_contact" readonly="1"/>
+                            <field name="x_calc_contact_consent" readonly="1"/>
+                            <field name="x_calc_marketing_consent" readonly="1"/>
+                        </group>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Same filters and group-bys in the Leads and the Pipeline (opportunities) search. -->
+    <record id="view_crm_case_leads_filter_kh_calculator" model="ir.ui.view">
+        <field name="name">crm.lead.search.lead.kh.calculator</field>
+        <field name="model">crm.lead</field>
+        <field name="inherit_id" ref="crm.view_crm_case_leads_filter"/>
+        <field name="arch" type="xml">
+            <xpath expr="//search/group" position="before">
+                <field name="x_calc_reference"/>
+                <separator/>
+                <filter string="Calculator leads" name="kh_calc_leads" domain="[('x_calc_reference', '!=', False)]"/>
+                <filter string="Design requests" name="kh_calc_design" domain="[('x_calc_request_type', '=', 'design')]"/>
+                <filter string="Budget reviews" name="kh_calc_budget_review" domain="[('x_calc_request_type', '=', 'budget_review')]"/>
+            </xpath>
+            <xpath expr="//search/group" position="inside">
+                <separator/>
+                <filter string="Calculator country" name="kh_calc_group_country" context="{'group_by': 'x_calc_country'}"/>
+                <filter string="Calculator city" name="kh_calc_group_city" context="{'group_by': 'x_calc_city'}"/>
+                <filter string="Calculator request type" name="kh_calc_group_request_type" context="{'group_by': 'x_calc_request_type'}"/>
+                <filter string="Calculator finish level" name="kh_calc_group_finish_level" context="{'group_by': 'x_calc_finish_level'}"/>
+                <filter string="Calculator start timing" name="kh_calc_group_start_timing" context="{'group_by': 'x_calc_start_timing'}"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_crm_case_opportunities_filter_kh_calculator" model="ir.ui.view">
+        <field name="name">crm.lead.search.opportunity.kh.calculator</field>
+        <field name="model">crm.lead</field>
+        <field name="inherit_id" ref="crm.view_crm_case_opportunities_filter"/>
+        <field name="arch" type="xml">
+            <xpath expr="//search/group" position="before">
+                <field name="x_calc_reference"/>
+                <separator/>
+                <filter string="Calculator leads" name="kh_calc_leads" domain="[('x_calc_reference', '!=', False)]"/>
+                <filter string="Design requests" name="kh_calc_design" domain="[('x_calc_request_type', '=', 'design')]"/>
+                <filter string="Budget reviews" name="kh_calc_budget_review" domain="[('x_calc_request_type', '=', 'budget_review')]"/>
+            </xpath>
+            <xpath expr="//search/group" position="inside">
+                <separator/>
+                <filter string="Calculator country" name="kh_calc_group_country" context="{'group_by': 'x_calc_country'}"/>
+                <filter string="Calculator city" name="kh_calc_group_city" context="{'group_by': 'x_calc_city'}"/>
+                <filter string="Calculator request type" name="kh_calc_group_request_type" context="{'group_by': 'x_calc_request_type'}"/>
+                <filter string="Calculator finish level" name="kh_calc_group_finish_level" context="{'group_by': 'x_calc_finish_level'}"/>
+                <filter string="Calculator start timing" name="kh_calc_group_start_timing" context="{'group_by': 'x_calc_start_timing'}"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

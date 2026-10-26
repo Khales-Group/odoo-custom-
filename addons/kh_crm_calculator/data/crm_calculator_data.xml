@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- noupdate: runs at install only. Reuses the tags "Calculator v2",
+         "Design request", "Budget review" and the source "Website
+         Calculator v2" when they already exist (matched on name), creates
+         the missing ones, and gives them this module's xmlids
+         (kh_crm_calculator.tag_calculator_v2, ...). -->
+    <data noupdate="1">
+        <function model="crm.lead" name="_kh_calc_ensure_records"/>
+    </data>
+</odoo>
