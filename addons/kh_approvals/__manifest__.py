@@ -5,7 +5,7 @@
     'author': 'Prepared by ChatGPT for Khales',
     'website': 'https://www.khales.ae',
     'category': 'Uncategorized',
-    'version': '19.0.1.0.3',
+    'version': '19.0.1.0.4',
     'depends': ['base', 'mail', 'hr', 'project', 'purchase', 'hr_payroll', 'account', 'mcp_server', 'hr_timesheet'],
     'external_dependencies': {
         'python': ['anthropic'],

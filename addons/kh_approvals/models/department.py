@@ -14,3 +14,9 @@ class KhApprovalsDepartment(models.Model):
         index=True,
     )
     active = fields.Boolean(default=True)
+    kh_auto_bill = fields.Boolean(
+        string="Create Bill When Paid",
+        help="When an approval of this department is marked Paid (with an amount), "
+             "a draft vendor bill is created and linked to it for the accountant to "
+             "check and confirm.",
+    )

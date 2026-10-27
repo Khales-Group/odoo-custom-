@@ -290,7 +290,67 @@ class KhApprovalRequest(models.Model):
                     if not self.env.context.get('kh_allow_write_outside_draft'):
                         raise UserError(_("You cannot edit request details after submission. "
                                           "Use 'Edit Request' to return to Draft, edit, and re-submit."))
-        return super().write(vals)
+        res = super().write(vals)
+        if vals.get('payment_state') == 'paid':
+            self._kh_create_bill_on_paid()
+        return res
+
+    # -------------------------------------------------------------------------
+    # Paid -> draft vendor bill (departments with "Create Bill When Paid")
+    # -------------------------------------------------------------------------
+    def _kh_bill_lines(self):
+        """Petty cash items when they add up to the approved amount, else one
+        line for the amount. No VAT: the accountant adds it on the draft."""
+        self.ensure_one()
+        analytic = {}
+        project_account = getattr(self.x_studio_project, 'account_id', False)
+        if project_account:
+            analytic = {str(project_account.id): 100}
+        items = self.petty_cash_line_ids
+        items_total = sum(items.mapped(lambda l: l.qty * l.unit_price))
+        if items and self.currency_id.compare_amounts(items_total, self.amount) == 0:
+            specs = [(l.name, l.qty, l.unit_price) for l in items]
+        else:
+            specs = [(self.title or self.name, 1.0, self.amount)]
+        return [(0, 0, {
+            'name': name,
+            'quantity': qty,
+            'price_unit': price,
+            'tax_ids': [(6, 0, [])],
+            'analytic_distribution': analytic or False,
+        }) for name, qty, price in specs]
+
+    def _kh_create_bill_on_paid(self):
+        for rec in self.sudo():
+            if (not rec.department_id.kh_auto_bill or rec.amount <= 0 or rec.bill_ids
+                    or rec.purchase_order_id or rec.approval_type == 'payslip'):
+                continue
+            try:
+                with self.env.cr.savepoint():
+                    bill = self.env['account.move'].sudo().with_company(rec.company_id).create({
+                        'move_type': 'in_invoice',
+                        'company_id': rec.company_id.id,
+                        'partner_id': rec.partner_id.id,
+                        'currency_id': rec.currency_id.id,
+                        'invoice_date': fields.Date.context_today(rec),
+                        'ref': rec.name,
+                        'invoice_origin': rec.name,
+                        'invoice_line_ids': rec._kh_bill_lines(),
+                    })
+                    rec.bill_ids = [(4, bill.id)]
+            except Exception as exc:  # never block marking the request paid
+                _logger.exception("kh_approvals: could not create the bill for %s", rec.name)
+                rec._post_note(Markup(_("⚠️ Marked paid, but the vendor bill could not be created "
+                                        "automatically: %s. Please create it manually.")) % exc)
+                continue
+            bill.message_post(body=_("Draft created automatically from approval %s (%s).")
+                              % (rec.name, rec.title))
+            note = Markup(_("🧾 Draft vendor bill <a href='/odoo/account.move/%s'>%s</a> created for %s. "
+                            "The accountant checks it (VAT, account) and confirms it.")) % (
+                bill.id, bill.display_name, rec.currency_id.format(rec.amount))
+            if not rec.partner_id:
+                note += _(" No vendor on this request - set it on the bill.")
+            rec._post_note(note)
 
     # -------------------------------------------------------------------------
     # Helpers - Links

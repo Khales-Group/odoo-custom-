@@ -8,6 +8,7 @@
         <list>
           <field name="name"/>
           <field name="company_id"/>
+          <field name="kh_auto_bill"/>
           <field name="active"/>
         </list>
       </field>
@@ -25,6 +26,7 @@
                 <field name="active"/>
                 <field name="name" required="1"/>
                 <field name="company_id"/>
+                <field name="kh_auto_bill"/>
               </group>
             </group>
           </sheet>
