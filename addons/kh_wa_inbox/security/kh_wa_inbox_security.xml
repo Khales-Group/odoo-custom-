@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Shown on the user form as "مفكرة القروبات: مستخدم / المدير".
+         No users are added here: the manager, admin and the bot's
+         integration user are added by hand after install. -->
+    <record id="res_groups_privilege_kh_wa_inbox" model="res.groups.privilege">
+        <field name="name">مفكرة القروبات</field>
+        <field name="sequence">50</field>
+        <field name="category_id" ref="base.module_category_productivity"/>
+    </record>
+
+    <record id="group_kh_wa_user" model="res.groups">
+        <field name="name">مستخدم</field>
+        <field name="sequence">10</field>
+        <field name="privilege_id" ref="res_groups_privilege_kh_wa_inbox"/>
+        <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
+        <field name="comment">Only the items assigned to them or that they asked. No phone numbers, no day pages, no delete.</field>
+    </record>
+
+    <record id="group_kh_wa_manager" model="res.groups">
+        <field name="name">المدير</field>
+        <field name="sequence">20</field>
+        <field name="privilege_id" ref="res_groups_privilege_kh_wa_inbox"/>
+        <field name="implied_ids" eval="[(4, ref('group_kh_wa_user'))]"/>
+        <field name="comment">All items of all groups, day pages and settings. Also for the bot's integration user.</field>
+    </record>
+</odoo>

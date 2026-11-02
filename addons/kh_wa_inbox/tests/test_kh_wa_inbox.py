@@ -1,0 +1,268 @@
+import base64
+import logging
+import time
+from datetime import timedelta
+
+from odoo import fields
+from odoo.exceptions import AccessError
+from odoo.tests import TransactionCase, new_test_user, tagged
+
+from odoo.addons.kh_wa_inbox.models.kh_wa_tools import dubai_date, dubai_today, mask_text
+
+_logger = logging.getLogger(__name__)
+
+CHAT = "test-legal@g.us"
+
+
+@tagged("post_install", "-at_install")
+class TestKhWaInbox(TransactionCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.manager = new_test_user(cls.env, login="kh_wa_test_manager", groups="kh_wa_inbox.group_kh_wa_manager")
+        cls.user_a = new_test_user(cls.env, login="kh_wa_test_user_a", groups="kh_wa_inbox.group_kh_wa_user")
+        cls.user_b = new_test_user(cls.env, login="kh_wa_test_user_b", groups="kh_wa_inbox.group_kh_wa_user")
+        # The bot works as a manager.
+        cls.Item = cls.env["kh.wa.item"].with_user(cls.manager)
+        result = cls.env["kh.wa.group"].with_user(cls.manager).upsert_groups(
+            [{"wa_chat_id": CHAT, "name": "Legal (test)", "category": "legal"}]
+        )
+        cls.group = cls.env["kh.wa.group"].browse(result["ids"])
+        cls.asked = fields.Datetime.now() - timedelta(hours=3)
+
+    def row(self, key, **values):
+        return {
+            "source_msg_id": key,
+            "wa_chat_id": CHAT,
+            "name": f"Item {key}",
+            "asked_at": fields.Datetime.to_string(self.asked),
+            **values,
+        }
+
+    def at(self, minutes):
+        return fields.Datetime.to_string(self.asked + timedelta(minutes=minutes))
+
+    def upsert(self, *rows):
+        result = self.Item.upsert_items(list(rows))
+        self.assertFalse([e for e in result["errors"] if not e["saved"]], result["errors"])
+        return result
+
+    def item(self, key):
+        return self.env["kh.wa.item"].search([("source_msg_id", "=", key)])
+
+    def day_page(self):
+        return self.env["kh.wa.day"].search([("group_id", "=", self.group.id), ("date", "=", dubai_date(self.asked))])
+
+    # ------------------------------------------------------------------
+
+    def test_groups_upsert_is_keyed_by_chat_id(self):
+        Group = self.env["kh.wa.group"].with_user(self.manager)
+        again = Group.upsert_groups([{"wa_chat_id": CHAT, "name": "Legal", "color": 3}])
+        self.assertEqual(again["ids"], self.group.ids)
+        self.assertEqual((self.group.name, self.group.color), ("Legal", 3))
+        missing_name = Group.upsert_groups([{"wa_chat_id": "new@g.us"}])
+        self.assertFalse(missing_name["ids"])
+        self.assertEqual(len(missing_name["errors"]), 1)
+
+    def test_same_message_twice_gives_one_item(self):
+        file = {"name": "plan.pdf", "mimetype": "application/pdf", "datas": base64.b64encode(b"%PDF-1 test").decode()}
+        first = self.upsert(self.row("m1", attachments=[file]))
+        second = self.upsert(self.row("m1", name="Item m1 (updated)", attachments=[file]))
+        self.assertEqual(first["ids"], second["ids"])
+        item = self.item("m1")
+        self.assertEqual(len(item), 1)
+        self.assertEqual(item.name, "Item m1 (updated)")
+        self.assertEqual(len(item.attachment_ids), 1, "the same file pushed twice is kept once")
+
+    def test_one_bad_row_does_not_fail_the_batch(self):
+        result = self.Item.upsert_items([
+            self.row("ok1"),
+            self.row("bad", wa_chat_id="unknown@g.us"),
+            self.row("ok2", kind="nonsense"),
+            self.row("ok3", assignee_login="nobody-with-this-login"),
+        ])
+        self.assertEqual(len(result["ids"]), 2)
+        self.assertEqual(
+            [(e["index"], e["saved"]) for e in result["errors"]], [(1, False), (2, False), (3, True)],
+        )
+        self.assertTrue(self.item("ok3"))
+        self.assertFalse(self.item("ok3").assignee_id)
+
+    def test_quick_done_is_counted_not_stored(self):
+        quick = self.row("q1", state="done", done_at=self.at(30))
+        self.assertEqual(self.upsert(quick)["ids"], [])
+        self.assertFalse(self.item("q1"))
+        self.assertEqual(self.day_page().quick_done_count, 1)
+
+        self.upsert(quick)  # the bot sends it again
+        self.assertEqual(self.day_page().quick_done_count, 1, "counted once per message")
+
+        slow = self.row("q2", state="done", done_at=self.at(90))
+        self.assertEqual(len(self.upsert(slow)["ids"]), 1)
+        self.assertEqual(self.item("q2").state, "done")
+        self.assertEqual(self.day_page().quick_done_count, 1)
+
+    def test_quick_done_threshold_is_a_setting(self):
+        self.env["ir.config_parameter"].sudo().set_param("kh_wa_inbox.quick_done_minutes", "20")
+        self.upsert(self.row("t1", state="done", done_at=self.at(30)))
+        self.assertTrue(self.item("t1"), "30 minutes is over a 20-minute threshold")
+
+    def test_upsert_days_ignores_quick_done_count(self):
+        Day = self.env["kh.wa.day"].with_user(self.manager)
+        self.upsert(self.row("q1", state="done", done_at=self.at(10)))
+        day = fields.Date.to_string(dubai_date(self.asked))
+        result = Day.upsert_days([{"date": day, "wa_chat_id": CHAT, "summary": "a\nb", "message_count": 7,
+                                   "quick_done_count": 99}])
+        self.assertEqual(result["ids"], self.day_page().ids)
+        self.assertEqual(self.day_page().quick_done_count, 1)
+        self.assertEqual(self.day_page().message_count, 7)
+
+    def test_existing_item_done_quickly(self):
+        # Untouched: removed and counted.
+        self.upsert(self.row("e1"))
+        self.upsert(self.row("e1", state="done", done_at=self.at(20)))
+        self.assertFalse(self.item("e1"))
+        self.assertEqual(self.day_page().quick_done_count, 1)
+
+        # Someone wrote on it: closed, not removed.
+        self.upsert(self.row("e2"))
+        self.item("e2").with_user(self.manager).message_post(body="On it", message_type="comment")
+        self.upsert(self.row("e2", state="done", done_at=self.at(20)))
+        self.assertEqual(self.item("e2").state, "done")
+
+        # A reminder was set: closed, not removed.
+        self.upsert(self.row("e3"))
+        self.item("e3").with_user(self.manager).action_remind("tomorrow")
+        self.upsert(self.row("e3", state="done", done_at=self.at(20)))
+        self.assertEqual(self.item("e3").state, "done")
+        self.assertEqual(self.day_page().quick_done_count, 1)
+
+    def test_manual_edits_are_not_overwritten(self):
+        self.upsert(self.row("x1", assignee_login=self.user_a.login))
+        item = self.item("x1")
+        item.with_user(self.manager).write({"state": "waiting", "assignee_id": self.user_b.id, "manager_note": "Call"})
+        self.assertEqual(set(item.manual_fields.split(",")), {"state", "assignee_id", "manager_note"})
+
+        self.upsert(self.row("x1", name="Renamed", state="done", done_at=self.at(200),
+                             assignee_login=self.user_a.login, manager_note="from the bot", urgent=True))
+        self.assertEqual(item.state, "waiting")
+        self.assertFalse(item.done_at)
+        self.assertEqual(item.assignee_id, self.user_b)
+        self.assertEqual(item.manager_note, "Call")
+        self.assertEqual(item.name, "Renamed", "fields nobody edited still follow the bot")
+        self.assertTrue(item.urgent)
+
+    def test_otp_and_card_numbers_are_masked(self):
+        self.upsert(self.row("otp", source_text="OTP 482913",
+                             context_text="رمز التحقق ٤٨٢٩١٣\nالبطاقة 4111 1111 1111 1234"))
+        item = self.item("otp")
+        self.assertEqual(item.source_text, "OTP ••••")
+        self.assertEqual(item.context_text, "رمز التحقق ••••\nالبطاقة •••• 1234")
+        item.with_user(self.manager).write({"done_note": "paid by 4111111111111234"})
+        self.assertEqual(item.done_note, "paid by •••• 1234")
+        # Dates, times, amounts, phone numbers and IBANs stay readable.
+        for text in ("visit 2026-11-02 at 10:45", "AED 1,250.00", "+971501234567",
+                     "AE07 0331 2345 6789 0123 456", "050 123 4567"):
+            self.assertEqual(mask_text(text), text)
+
+    def test_user_sees_only_their_items(self):
+        self.upsert(
+            self.row("a1", assignee_login=self.user_a.login, requester_phone="+971500000001"),
+            self.row("b1", assignee_login=self.user_b.login),
+            self.row("c1", requester_login=self.user_b.login),
+        )
+        a1, b1, c1 = self.item("a1"), self.item("b1"), self.item("c1")
+        as_a = self.env["kh.wa.item"].with_user(self.user_a)
+        as_b = self.env["kh.wa.item"].with_user(self.user_b)
+        keys = ["a1", "b1", "c1"]
+        self.assertEqual(as_a.search([("source_msg_id", "in", keys)]), a1)
+        self.assertEqual(as_b.search([("source_msg_id", "in", keys)]), b1 | c1, "assigned to b, or asked by b")
+        with self.assertRaises(AccessError):
+            b1.with_user(self.user_a).read(["name"])
+        with self.assertRaises(AccessError):
+            a1.with_user(self.user_a).read(["requester_phone"])
+        with self.assertRaises(AccessError):
+            a1.with_user(self.user_a).unlink()
+        with self.assertRaises(AccessError):
+            self.env["kh.wa.day"].with_user(self.user_a).search([])
+
+        data = as_a.get_notebook(group_id=self.group.id)
+        shown = [p["id"] for group in data["sections"]["open"] for p in group["items"]]
+        self.assertEqual(shown, a1.ids)
+        self.assertEqual(data["sections"]["day_summary"], [])
+        self.assertEqual(data["sections"]["open"][0]["items"][0]["requester_phone"], "")
+
+    def test_notes_are_private_even_for_managers(self):
+        memo = self.env["kh.wa.memo"].with_user(self.manager).create({"text": "mine"})
+        other_manager = new_test_user(self.env, login="kh_wa_test_manager_2", groups="kh_wa_inbox.group_kh_wa_manager")
+        self.assertFalse(self.env["kh.wa.memo"].with_user(other_manager).search([("id", "=", memo.id)]))
+
+    def test_requester_found_by_phone(self):
+        self.user_a.partner_id.phone = "+971 50 000 7319"
+        self.upsert(self.row("p1", requester_phone="00971500007319"))
+        self.assertEqual(self.item("p1").requester_user_id, self.user_a)
+        self.user_b.partner_id.phone = "050 000 7319"
+        self.upsert(self.row("p2", requester_phone="0500007319"))
+        self.assertFalse(self.item("p2").requester_user_id, "two users with this number: left empty")
+
+    def test_get_notebook_returns_all_sections(self):
+        today = dubai_today()
+        now = fields.Datetime.to_string(fields.Datetime.now())
+        self.upsert(
+            self.row("n1", needs_manager=True, due_date=str(today - timedelta(days=2))),
+            self.row("n2", urgent=True),
+            self.row("n3", due_date=str(today - timedelta(days=1))),
+            self.row("n4", kind="deadline", due_date=str(today + timedelta(days=2))),
+            self.row("n5", state="done", done_at=now, done_note="Sent",
+                     attachments=[{"name": "a.txt", "mimetype": "text/plain", "datas": base64.b64encode(b"x").decode()}]),
+        )
+        self.env["kh.wa.day"].with_user(self.manager).upsert_days(
+            [{"date": str(today), "wa_chat_id": CHAT, "summary": "line 1\nline 2", "message_count": 12}]
+        )
+        self.env["kh.wa.memo"].with_user(self.manager).create({"text": "Call the lawyer"})
+
+        data = self.Item.get_notebook(group_id=self.group.id)
+        sections = data["sections"]
+        self.assertEqual(set(sections), {"needs_manager", "urgent", "open", "upcoming", "day_summary", "closed", "memos"})
+        self.assertEqual([p["id"] for p in sections["needs_manager"]], self.item("n1").ids)
+        self.assertEqual([p["id"] for p in sections["urgent"]], self.item("n2").ids)
+        self.assertEqual([p["id"] for g in sections["open"] for p in g["items"]], self.item("n3").ids)
+        self.assertEqual([p["id"] for p in sections["upcoming"]], self.item("n4").ids)
+        self.assertEqual(sections["day_summary"][0]["lines"], ["line 1", "line 2"])
+        self.assertEqual([p["done_note"] for p in sections["closed"]], ["Sent"])
+        self.assertEqual([m["text"] for m in sections["memos"]], ["Call the lawyer"])
+        # Counters count every matching item, wherever it is shown.
+        self.assertEqual(data["counters"], {"needs_manager": 1, "urgent": 1, "overdue": 2, "open": 4})
+        # Attachments: metadata only.
+        self.assertEqual(set(sections["closed"][0]["attachments"][0]), {"id", "name", "mimetype", "url"})
+
+    def test_get_notebook_with_5000_items_is_fast(self):
+        Item = self.env["kh.wa.item"].with_context(tracking_disable=True, mail_create_nolog=True)
+        now = fields.Datetime.now()
+        today = dubai_today()
+        vals = []
+        for i in range(5000):
+            closed = i % 10 != 0  # 500 open, 4500 closed over the last months
+            vals.append({
+                "name": f"Perf item {i}",
+                "group_id": self.group.id,
+                "source_msg_id": f"perf-{i}",
+                "asked_at": now - timedelta(hours=i),
+                "state": "done" if closed else "open",
+                "done_at": now - timedelta(hours=i - 1) if closed else False,
+                "urgent": i % 7 == 0,
+                "needs_manager": i % 11 == 0,
+                "due_date": today + timedelta(days=i % 20 - 10),
+                "source_text": "نص الرسالة الأصلية " * 10,
+                "context_text": "سياق " * 30,
+            })
+        Item.create(vals)
+        self.env.flush_all()
+        self.env.invalidate_all()
+
+        start = time.perf_counter()
+        data = self.Item.get_notebook()
+        elapsed = time.perf_counter() - start
+        _logger.info("get_notebook with 5000 items: %.3f s", elapsed)
+        self.assertGreaterEqual(data["counters"]["open"], 500)
+        self.assertLess(elapsed, 1.0)

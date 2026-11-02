@@ -6,19 +6,29 @@ same way the website does it (XML-RPC, as the website's integration user).
     python scripts/staging_check.py --install     # also install kh_crm_calculator first if missing
     python scripts/staging_check.py --production  # production: read-only checks, creates nothing
 
+With --wa-inbox the same is done for kh_wa_inbox (مفكرة القروبات), as the
+WhatsApp bot's user (wa_login / wa_key):
+
+    python scripts/staging_check.py --wa-inbox               # staging: full API test
+    python scripts/staging_check.py --wa-inbox --install     # also install kh_wa_inbox first if missing
+    python scripts/staging_check.py --wa-inbox --production  # production: read-only checks
+
 Connection details are read from %USERPROFILE%\\.khales_odoo_test.ini (a
 template is written there on first run). API keys: Odoo > avatar > My
 Preferences > Account Security > New API Key. The keys never leave that file.
 
 On staging one test lead is created (reference K-TEST-..., name starting
 with [TEST]) and removed at the end: deleted when admin_key is filled in,
-otherwise archived (the integration user can't delete leads).
+otherwise archived (the integration user can't delete leads). --wa-inbox
+creates one [TEST] group with a few items and deletes all of it at the end.
 """
 import argparse
+import base64
 import configparser
 import sys
 import time
 import xmlrpc.client
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 CONFIG = Path.home() / ".khales_odoo_test.ini"
@@ -34,6 +44,9 @@ api_key =
 # archived) and to install the module with --install.
 admin_login =
 admin_key =
+# The WhatsApp bot's user, in "مفكرة القروبات / المدير"; used by --wa-inbox.
+wa_login =
+wa_key =
 
 [production]
 url = https://YOUR-PRODUCTION-URL
@@ -42,6 +55,8 @@ api_login =
 api_key =
 admin_login =
 admin_key =
+wa_login =
+wa_key =
 """
 
 CALC_FIELDS = {
@@ -91,15 +106,15 @@ def connect(cfg, who):
     return Odoo(cfg["url"], cfg["db"], login, key) if login and key else None
 
 
-def install_module(admin):
-    mod = admin.call("ir.module.module", "search_read", [("name", "=", "kh_crm_calculator")], fields=["state"])
+def install_module(admin, name="kh_crm_calculator"):
+    mod = admin.call("ir.module.module", "search_read", [("name", "=", name)], fields=["state"])
     if mod and mod[0]["state"] == "installed":
         return
-    print("Installing kh_crm_calculator ...")
+    print(f"Installing {name} ...")
     admin.call("ir.module.module", "update_list")
-    mod_id = admin.call("ir.module.module", "search", [("name", "=", "kh_crm_calculator")])
+    mod_id = admin.call("ir.module.module", "search", [("name", "=", name)])
     if not mod_id:
-        raise RuntimeError("kh_crm_calculator not found on the server - is it deployed?")
+        raise RuntimeError(f"{name} not found on the server - is it deployed?")
     admin.call("ir.module.module", "button_immediate_install", mod_id)
 
 
@@ -188,11 +203,134 @@ def simulate_website(api, admin, report):
                 print(f"  (test lead {ref} archived - fill in admin_key to have it deleted)")
 
 
+# ---------------------------------------------------------------------------
+# kh_wa_inbox (مفكرة القروبات), as the WhatsApp bot
+# ---------------------------------------------------------------------------
+
+WA_ITEM_FIELDS = [
+    "name", "kind", "state", "urgent", "needs_manager", "group_id", "project_id", "partner_id",
+    "requester_name", "requester_phone", "requester_user_id", "assignee_id", "asked_at", "due_date",
+    "done_at", "done_note", "source_msg_id", "source_text", "context_text", "source_kind",
+    "attachment_ids", "linked_ref", "remind_on", "manager_note", "manual_fields", "age_label", "is_overdue",
+]
+WA_SECTIONS = {"needs_manager", "urgent", "open", "upcoming", "day_summary", "closed", "memos"}
+
+
+def utc(dt):
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def check_wa_setup(bot, report):
+    print("\n== Setup (what the bot relies on)")
+    fields = bot.call("kh.wa.item", "fields_get", [], attributes=["type"])
+    missing = [name for name in WA_ITEM_FIELDS if name not in fields]
+    report.check(f"kh.wa.item has all {len(WA_ITEM_FIELDS)} fields", not missing, f"missing {missing} (installed?)")
+    report.check("no transcript field", not [n for n in fields if "transcript" in n])
+    for model, method in (("kh.wa.group", "upsert_groups"), ("kh.wa.item", "upsert_items"), ("kh.wa.day", "upsert_days")):
+        result = bot.call(model, method, [])
+        report.check(f"{model}.{method}([]) answers {{ids, errors}}", result == {"ids": [], "errors": []}, str(result))
+    notebook = bot.call("kh.wa.item", "get_notebook")
+    report.check("get_notebook returns the seven sections", set(notebook["sections"]) == WA_SECTIONS,
+                 str(sorted(notebook["sections"])))
+    report.check("the bot's user is a notebook manager", notebook["is_manager"],
+                 "add it to 'مفكرة القروبات / المدير'")
+    print(f"  (quick-done threshold: {notebook['quick_done_minutes']} minutes)")
+    return notebook
+
+
+def simulate_bot(bot, report, threshold):
+    print("\n== Bot flow ([TEST] group, as the bot's user)")
+    stamp = int(time.time())
+    chat, prefix = f"test-{stamp}@g.us", f"test-{stamp}-"
+    asked = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0) - timedelta(hours=3)
+    group_id = None
+
+    def row(key, **values):
+        return {"source_msg_id": prefix + key, "wa_chat_id": chat, "name": f"[TEST] {key}",
+                "asked_at": utc(asked), **values}
+
+    def items(key):
+        return bot.call("kh.wa.item", "search_read", [("source_msg_id", "=", prefix + key)],
+                        fields=["state", "name", "source_text", "context_text", "manual_fields", "attachment_ids"])
+
+    def day_page():
+        return bot.call("kh.wa.day", "search_read", [("group_id", "=", group_id)],
+                        fields=["quick_done_count", "message_count"])
+
+    try:
+        first = bot.call("kh.wa.group", "upsert_groups",
+                         [{"wa_chat_id": chat, "name": "[TEST] notebook check", "category": "other", "color": 3}])
+        group_id = first["ids"][0] if first["ids"] else None
+        again = bot.call("kh.wa.group", "upsert_groups", [{"wa_chat_id": chat, "name": "[TEST] notebook check"}])
+        report.check("upsert_groups twice: one group", group_id and again["ids"] == [group_id], f"{first} / {again}")
+
+        file = {"name": "test.txt", "mimetype": "text/plain", "datas": base64.b64encode(b"test file").decode()}
+        one = bot.call("kh.wa.item", "upsert_items", [row("m1", attachments=[file])])
+        two = bot.call("kh.wa.item", "upsert_items", [row("m1", name="[TEST] m1 updated", attachments=[file])])
+        found = items("m1")
+        report.check("same source_msg_id twice: one item", len(found) == 1 and one["ids"] == two["ids"], f"{one} / {two}")
+        report.check("second push updates it", found and found[0]["name"] == "[TEST] m1 updated")
+        report.check("same file twice: kept once", found and len(found[0]["attachment_ids"]) == 1)
+
+        quick = row("q1", state="done", done_at=utc(asked + timedelta(minutes=max(1, threshold // 4))))
+        first, second = (bot.call("kh.wa.item", "upsert_items", [quick]) for _ in range(2))
+        pages = day_page()
+        report.check(f"done within {threshold} min: not stored", not first["ids"] and not items("q1"), str(first))
+        report.check("... counted once on the day page", [p["quick_done_count"] for p in pages] == [1], str(pages))
+        slow = row("q2", state="done", done_at=utc(asked + timedelta(minutes=threshold + 30)))
+        result = bot.call("kh.wa.item", "upsert_items", [slow])
+        report.check(f"done after {threshold + 30} min: stored", len(result["ids"]) == 1, str(result))
+
+        dubai_day = str((asked + timedelta(hours=4)).date())  # Dubai is UTC+4, no DST
+        bot.call("kh.wa.day", "upsert_days", [{"date": dubai_day, "wa_chat_id": chat, "summary": "سطر 1\nسطر 2",
+                                               "message_count": 9, "quick_done_count": 99}])
+        pages = day_page()
+        report.check("upsert_days updates the same page, ignores quick_done_count",
+                     [(p["quick_done_count"], p["message_count"]) for p in pages] == [(1, 9)], str(pages))
+
+        bot.call("kh.wa.item", "upsert_items", [row("x1")])
+        item_id = items("x1")[0]["id"]
+        bot.call("kh.wa.item", "write", [item_id], {"state": "waiting"})
+        bot.call("kh.wa.item", "upsert_items", [row("x1", state="open", name="[TEST] x1 renamed")])
+        found = items("x1")[0]
+        report.check("a state changed in Odoo survives the next upsert", found["state"] == "waiting", str(found))
+        report.check("... and other fields still follow the bot", found["name"] == "[TEST] x1 renamed")
+        report.check("... manual_fields records it", "state" in (found["manual_fields"] or ""))
+
+        bot.call("kh.wa.item", "upsert_items", [row("otp", source_text="OTP 482913",
+                                                    context_text="card 4111 1111 1111 1234")])
+        found = items("otp")[0]
+        report.check("OTP masked", found["source_text"] == "OTP ••••", found["source_text"])
+        report.check("card number masked", found["context_text"] == "card •••• 1234", found["context_text"])
+
+        batch = bot.call("kh.wa.item", "upsert_items", [row("b1"), row("b2", wa_chat_id="unknown@g.us"), row("b3")])
+        report.check("one bad row doesn't fail the batch", len(batch["ids"]) == 2
+                     and [e["index"] for e in batch["errors"]] == [1], str(batch))
+
+        notebook = bot.call("kh.wa.item", "get_notebook", group_id=group_id)
+        report.check("get_notebook(group) has the seven sections", set(notebook["sections"]) == WA_SECTIONS)
+        start = time.perf_counter()
+        bot.call("kh.wa.item", "get_notebook")
+        elapsed = time.perf_counter() - start
+        report.check(f"get_notebook round trip under 1 s ({elapsed:.2f} s)", elapsed < 1.0)
+    except xmlrpc.client.Fault as e:
+        report.check("bot flow", False, e.faultString.strip().splitlines()[-1])
+    finally:
+        if group_id:
+            item_ids = bot.call("kh.wa.item", "search", [("group_id", "=", group_id)])
+            bot.call("kh.wa.item", "unlink", item_ids)
+            bot.call("kh.wa.group", "unlink", [group_id])  # day pages and the quick-done log go with it
+            print(f"  ([TEST] group and its {len(item_ids)} items deleted)")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--production", action="store_true", help="read-only checks, creates nothing")
-    parser.add_argument("--install", action="store_true", help="install kh_crm_calculator first if missing")
+    parser.add_argument("--install", action="store_true", help="install the module first if missing")
+    parser.add_argument("--wa-inbox", action="store_true", help="test kh_wa_inbox as the WhatsApp bot")
     args = parser.parse_args()
+    if args.wa_inbox:
+        return main_wa_inbox(args)
 
     if not CONFIG.exists():
         CONFIG.write_text(TEMPLATE, encoding="utf-8")
@@ -230,6 +368,47 @@ def main():
         print("\n(production: website flow skipped, no test lead created)")
     else:
         simulate_website(api, admin, report)
+    print(f"\n{report.passed} passed, {report.failed} failed")
+    return 1 if report.failed else 0
+
+
+def main_wa_inbox(args):
+    section = "production" if args.production else "staging"
+    parser_cfg = configparser.ConfigParser()
+    parser_cfg.read(CONFIG, encoding="utf-8")
+    if section not in parser_cfg:
+        print(f"No [{section}] section in {CONFIG}.")
+        return 2
+    cfg = parser_cfg[section]
+    if not args.production and ".dev.odoo.com" not in cfg.get("url", ""):
+        print("The [staging] url is not a .dev.odoo.com build - refusing to create test data there.")
+        return 2
+
+    print(f"Testing kh_wa_inbox on {section}: {cfg['url']} (database {cfg['db']})")
+    try:
+        bot, admin = connect(cfg, "wa"), connect(cfg, "admin")
+    except Exception as e:  # noqa: BLE001 - bad URL/db/key: say so plainly
+        print(f"Could not log in: {e}")
+        return 1
+    if args.install:
+        if not admin:
+            print("--install needs admin_login / admin_key.")
+            return 2
+        install_module(admin, "kh_wa_inbox")
+    if not bot:
+        print(f"Fill in wa_login / wa_key (the WhatsApp bot's user) in {CONFIG} first.")
+        return 2
+
+    report = Report()
+    try:
+        notebook = check_wa_setup(bot, report)
+    except xmlrpc.client.Fault as e:
+        report.check("setup", False, e.faultString.strip().splitlines()[-1])
+        notebook = None
+    if args.production:
+        print("\n(production: bot flow skipped, nothing created)")
+    elif notebook:
+        simulate_bot(bot, report, notebook["quick_done_minutes"])
     print(f"\n{report.passed} passed, {report.failed} failed")
     return 1 if report.failed else 0
 

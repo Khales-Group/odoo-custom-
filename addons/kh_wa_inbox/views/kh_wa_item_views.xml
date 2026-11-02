@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_kh_wa_item_list" model="ir.ui.view">
+        <field name="name">kh.wa.item.list</field>
+        <field name="model">kh.wa.item</field>
+        <field name="arch" type="xml">
+            <list string="Notebook Items" decoration-danger="is_overdue" decoration-muted="state in ('done', 'cancel')">
+                <field name="is_overdue" column_invisible="True"/>
+                <field name="asked_at"/>
+                <field name="group_id"/>
+                <field name="name"/>
+                <field name="kind" optional="show"/>
+                <field name="requester_name" optional="show"/>
+                <field name="assignee_id" widget="many2one_avatar_user" optional="show"/>
+                <field name="age_label" optional="show"/>
+                <field name="due_date" optional="show"/>
+                <field name="urgent" optional="show"/>
+                <field name="needs_manager" optional="hide"/>
+                <field name="project_id" optional="hide"/>
+                <field name="done_note" optional="hide"/>
+                <field name="state" widget="badge"
+                       decoration-info="state == 'open'"
+                       decoration-warning="state == 'waiting'"
+                       decoration-success="state == 'done'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_kh_wa_item_kanban" model="ir.ui.view">
+        <field name="name">kh.wa.item.kanban</field>
+        <field name="model">kh.wa.item</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="state" highlight_color="group_color" quick_create="false"
+                    group_create="false" group_delete="false" group_edit="false" sample="1">
+                <field name="state"/>
+                <field name="group_color"/>
+                <field name="urgent"/>
+                <field name="needs_manager"/>
+                <field name="is_overdue"/>
+                <templates>
+                    <t t-name="card">
+                        <field name="name" class="fw-bold"/>
+                        <div class="d-flex flex-wrap gap-1 small text-muted">
+                            <field name="group_id"/>
+                            <span t-if="record.urgent.raw_value" class="badge text-bg-danger">Urgent</span>
+                            <span t-if="record.needs_manager.raw_value" class="badge text-bg-warning">Waiting for the manager</span>
+                        </div>
+                        <field name="requester_name" class="small"/>
+                        <field t-if="record.due_date.raw_value" name="due_date"
+                               t-att-class="record.is_overdue.raw_value ? 'small text-danger' : 'small'"/>
+                        <footer class="pt-1">
+                            <div class="d-flex align-items-center gap-1">
+                                <field name="activity_ids" widget="kanban_activity"/>
+                                <field name="age_label" class="small text-muted"/>
+                            </div>
+                            <div class="d-flex ms-auto">
+                                <field name="assignee_id" widget="many2one_avatar_user"/>
+                            </div>
+                        </footer>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <record id="view_kh_wa_item_form" model="ir.ui.view">
+        <field name="name">kh.wa.item.form</field>
+        <field name="model">kh.wa.item</field>
+        <field name="arch" type="xml">
+            <form string="Notebook Item">
+                <header>
+                    <button name="action_done" string="Done" type="object" class="btn-primary"
+                            invisible="state in ('done', 'cancel')"/>
+                    <button name="action_waiting" string="Waiting for Reply" type="object"
+                            invisible="state != 'open'"/>
+                    <button name="action_reopen" string="Reopen" type="object"
+                            invisible="state == 'open'"/>
+                    <button name="action_cancel" string="Cancel" type="object"
+                            invisible="state in ('done', 'cancel')"/>
+                    <field name="state" widget="statusbar" statusbar_visible="open,waiting,done"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_open_linked" type="object" class="oe_stat_button" icon="fa-link"
+                                string="Linked Record" invisible="not linked_ref"/>
+                    </div>
+                    <widget name="web_ribbon" title="Overdue" bg_color="text-bg-danger" invisible="not is_overdue"/>
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1><field name="name" placeholder="Short summary"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="group_id"/>
+                            <field name="kind"/>
+                            <field name="urgent"/>
+                            <field name="needs_manager"/>
+                            <field name="assignee_id" widget="many2one_avatar_user"/>
+                            <field name="due_date"/>
+                            <field name="remind_on"/>
+                            <field name="is_overdue" invisible="1"/>
+                        </group>
+                        <group>
+                            <field name="requester_name"/>
+                            <field name="requester_phone"/>
+                            <field name="requester_user_id"/>
+                            <field name="asked_at"/>
+                            <field name="age_label"/>
+                            <field name="project_id"/>
+                            <field name="partner_id"/>
+                            <field name="linked_ref"/>
+                        </group>
+                    </group>
+                    <group invisible="state not in ('done', 'cancel')">
+                        <field name="done_at"/>
+                        <field name="done_note"/>
+                    </group>
+                    <notebook>
+                        <page string="Message" name="message">
+                            <group>
+                                <field name="source_kind"/>
+                                <field name="source_text" nolabel="1" colspan="2" readonly="id"/>
+                            </group>
+                            <separator string="Context"/>
+                            <field name="context_text" readonly="id"/>
+                            <separator string="Attachments"/>
+                            <field name="attachment_ids" widget="many2many_binary"/>
+                        </page>
+                        <page string="Manager Note" name="manager_note" groups="kh_wa_inbox.group_kh_wa_manager">
+                            <field name="manager_note" placeholder="Only managers see this note."/>
+                        </page>
+                        <page string="Technical" name="technical" groups="kh_wa_inbox.group_kh_wa_manager">
+                            <group>
+                                <field name="source_msg_id"/>
+                                <field name="manual_fields"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_kh_wa_item_search" model="ir.ui.view">
+        <field name="name">kh.wa.item.search</field>
+        <field name="model">kh.wa.item</field>
+        <field name="arch" type="xml">
+            <search string="Notebook Items">
+                <field name="name"/>
+                <field name="source_text"/>
+                <field name="requester_name"/>
+                <field name="assignee_id"/>
+                <field name="group_id"/>
+                <field name="project_id"/>
+                <filter string="Open" name="filter_open" domain="[('state', 'in', ('open', 'waiting'))]"/>
+                <filter string="Urgent" name="filter_urgent"
+                        domain="[('urgent', '=', True), ('state', 'in', ('open', 'waiting'))]"/>
+                <filter string="Waiting for My Decision" name="filter_needs_manager"
+                        domain="[('needs_manager', '=', True), ('state', 'in', ('open', 'waiting'))]"/>
+                <filter string="Overdue" name="filter_overdue" domain="[('is_overdue', '=', True)]"/>
+                <filter string="This Week" name="filter_this_week"
+                        domain="[('asked_at', '&gt;=', (context_today() + relativedelta(weeks=-1, days=1, weekday=0)).strftime('%Y-%m-%d'))]"/>
+                <filter string="Closed" name="filter_closed" domain="[('state', 'in', ('done', 'cancel'))]"/>
+                <separator/>
+                <filter string="Assigned to Me" name="filter_mine" domain="[('assignee_id', '=', uid)]"/>
+                <group>
+                    <filter string="Group" name="groupby_group" context="{'group_by': 'group_id'}"/>
+                    <filter string="Assignee" name="groupby_assignee" context="{'group_by': 'assignee_id'}"/>
+                    <filter string="Type" name="groupby_kind" context="{'group_by': 'kind'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_kh_wa_item" model="ir.actions.act_window">
+        <field name="name">Items</field>
+        <field name="res_model">kh.wa.item</field>
+        <field name="view_mode">list,kanban,form</field>
+        <field name="search_view_id" ref="view_kh_wa_item_search"/>
+        <field name="context">{'search_default_filter_open': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Nothing to follow up</p>
+            <p>The WhatsApp bot adds an item here for each open request, pending decision, deadline or important alert.</p>
+        </field>
+    </record>
+
+    <record id="action_kh_wa_notebook" model="ir.actions.client">
+        <field name="name">مفكرة القروبات</field>
+        <field name="tag">kh_wa_inbox.notebook</field>
+    </record>
+</odoo>

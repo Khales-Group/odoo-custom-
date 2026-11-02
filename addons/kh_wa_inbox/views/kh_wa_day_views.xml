@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_kh_wa_day_list" model="ir.ui.view">
+        <field name="name">kh.wa.day.list</field>
+        <field name="model">kh.wa.day</field>
+        <field name="arch" type="xml">
+            <list string="Day Pages">
+                <field name="date"/>
+                <field name="group_id"/>
+                <field name="summary"/>
+                <field name="message_count"/>
+                <field name="quick_done_count"/>
+                <field name="visit_count"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_kh_wa_day_form" model="ir.ui.view">
+        <field name="name">kh.wa.day.form</field>
+        <field name="model">kh.wa.day</field>
+        <field name="arch" type="xml">
+            <form string="Day Page">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="date"/>
+                            <field name="group_id"/>
+                        </group>
+                        <group>
+                            <field name="message_count"/>
+                            <field name="quick_done_count"/>
+                            <field name="visit_count"/>
+                        </group>
+                    </group>
+                    <separator string="Summary"/>
+                    <field name="summary" placeholder="2-4 short lines"/>
+                    <separator string="Finished Within the Threshold"/>
+                    <field name="quick_done_ids" readonly="1">
+                        <list>
+                            <field name="source_msg_id"/>
+                            <field name="asked_at"/>
+                            <field name="done_at"/>
+                        </list>
+                    </field>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_kh_wa_day_search" model="ir.ui.view">
+        <field name="name">kh.wa.day.search</field>
+        <field name="model">kh.wa.day</field>
+        <field name="arch" type="xml">
+            <search string="Day Pages">
+                <field name="group_id"/>
+                <field name="summary"/>
+                <filter string="Date" name="filter_date" date="date"/>
+                <group>
+                    <filter string="Group" name="groupby_group" context="{'group_by': 'group_id'}"/>
+                    <filter string="Date" name="groupby_date" context="{'group_by': 'date:day'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_kh_wa_day" model="ir.actions.act_window">
+        <field name="name">Day Pages</field>
+        <field name="res_model">kh.wa.day</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No day pages yet</p>
+            <p>The WhatsApp bot writes a short summary of each group's day here.</p>
+        </field>
+    </record>
+</odoo>

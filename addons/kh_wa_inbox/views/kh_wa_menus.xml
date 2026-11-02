@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <menuitem
+        id="menu_kh_wa_root"
+        name="مفكرة القروبات"
+        sequence="6"
+        action="action_kh_wa_notebook"
+        web_icon="kh_wa_inbox,static/description/icon.png"
+        groups="group_kh_wa_user"/>
+
+    <menuitem
+        id="menu_kh_wa_notebook"
+        name="Notebook"
+        parent="menu_kh_wa_root"
+        action="action_kh_wa_notebook"
+        sequence="10"/>
+
+    <menuitem
+        id="menu_kh_wa_items"
+        name="Items"
+        parent="menu_kh_wa_root"
+        action="action_kh_wa_item"
+        sequence="20"/>
+
+    <menuitem
+        id="menu_kh_wa_config"
+        name="Configuration"
+        parent="menu_kh_wa_root"
+        sequence="90"
+        groups="group_kh_wa_manager"/>
+
+    <menuitem
+        id="menu_kh_wa_groups"
+        name="WhatsApp Groups"
+        parent="menu_kh_wa_config"
+        action="action_kh_wa_group"
+        sequence="10"/>
+
+    <menuitem
+        id="menu_kh_wa_days"
+        name="Day Pages"
+        parent="menu_kh_wa_config"
+        action="action_kh_wa_day"
+        sequence="20"/>
+
+    <!-- Odoo only lets administrators save Settings. -->
+    <menuitem
+        id="menu_kh_wa_settings"
+        name="Settings"
+        parent="menu_kh_wa_config"
+        action="action_kh_wa_settings"
+        sequence="30"
+        groups="base.group_system"/>
+</odoo>

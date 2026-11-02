@@ -1,0 +1,8 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_kh_wa_group_user,kh.wa.group user,model_kh_wa_group,group_kh_wa_user,1,0,0,0
+access_kh_wa_group_manager,kh.wa.group manager,model_kh_wa_group,group_kh_wa_manager,1,1,1,1
+access_kh_wa_item_user,kh.wa.item user,model_kh_wa_item,group_kh_wa_user,1,1,0,0
+access_kh_wa_item_manager,kh.wa.item manager,model_kh_wa_item,group_kh_wa_manager,1,1,1,1
+access_kh_wa_day_manager,kh.wa.day manager,model_kh_wa_day,group_kh_wa_manager,1,1,1,1
+access_kh_wa_quick_done_manager,kh.wa.quick.done manager,model_kh_wa_quick_done,group_kh_wa_manager,1,1,1,1
+access_kh_wa_memo_user,kh.wa.memo user,model_kh_wa_memo,group_kh_wa_user,1,1,1,1

@@ -1,0 +1,325 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="kh_wa_inbox.Notebook">
+        <div class="o_kh_wa_notebook" dir="rtl" lang="ar">
+            <div class="o_kh_wa_page">
+                <div t-if="!state.data" class="o_kh_wa_quiet o_kh_wa_failed">
+                    تعذّر تحميل المفكرة.
+                    <button class="o_kh_wa_link" t-on-click="() => this.load()">إعادة المحاولة</button>
+                </div>
+                <t t-else="">
+                    <t t-set="data" t-value="state.data"/>
+
+                    <!-- Header -->
+                    <header class="o_kh_wa_header">
+                        <div class="o_kh_wa_titlebar">
+                            <h1 class="o_kh_wa_title">مفكرة القروبات</h1>
+                            <div class="o_kh_wa_date">
+                                <t t-esc="pageDate"/>
+                                <button t-if="!isToday" class="o_kh_wa_link" t-on-click="backToToday">العودة لليوم</button>
+                            </div>
+                        </div>
+                        <div class="o_kh_wa_tools">
+                            <label class="o_kh_wa_datepick" title="فتح صفحة يوم سابق">
+                                <i class="fa fa-calendar"/>
+                                <input type="date" t-att-value="data.date" t-att-max="data.today"
+                                       aria-label="فتح صفحة يوم سابق" t-on-change="onDateChange"/>
+                            </label>
+                            <div class="o_kh_wa_search">
+                                <i class="fa fa-search"/>
+                                <input type="search" placeholder="بحث في المفكرة…" t-att-value="state.search"
+                                       aria-label="بحث" t-on-input="onSearchInput"/>
+                                <button t-if="state.search" class="o_kh_wa_link" aria-label="مسح البحث"
+                                        t-on-click="clearSearch">×</button>
+                            </div>
+                        </div>
+                        <div class="o_kh_wa_counters" role="group" aria-label="عدّادات">
+                            <t t-foreach="counters" t-as="counter" t-key="counter.key">
+                                <button t-attf-class="o_kh_wa_counter o_kh_wa_counter_{{counter.key}} {{state.filter === counter.key ? 'o_kh_wa_active' : ''}} {{data.counters[counter.key] ? '' : 'o_kh_wa_zero'}}"
+                                        t-att-aria-pressed="state.filter === counter.key ? 'true' : 'false'"
+                                        t-on-click="() => this.toggleFilter(counter.key)">
+                                    <b t-esc="data.counters[counter.key]"/>
+                                    <span t-esc="counter.label"/>
+                                </button>
+                            </t>
+                        </div>
+                        <div class="o_kh_wa_chips">
+                            <button t-attf-class="o_kh_wa_chip {{state.groupId ? '' : 'o_kh_wa_active'}}"
+                                    t-on-click="() => this.selectGroup(null)">الكل</button>
+                            <t t-foreach="data.groups" t-as="group" t-key="group.id">
+                                <button t-attf-class="o_kh_wa_chip {{state.groupId === group.id ? 'o_kh_wa_active' : ''}}"
+                                        t-on-click="() => this.selectGroup(group.id)">
+                                    <span class="o_kh_wa_dot" t-attf-style="background: {{groupColor(group.color)}}"/>
+                                    <span t-esc="group.name"/>
+                                    <span t-if="group.open_count" class="o_kh_wa_chip_count" t-esc="group.open_count"/>
+                                </button>
+                            </t>
+                        </div>
+                        <div t-if="state.failed" class="o_kh_wa_quiet">تعذّر التحديث، يُعرض آخر ما تم تحميله.</div>
+                    </header>
+
+                    <!-- Search results replace the page while searching -->
+                    <section t-if="searching" class="o_kh_wa_section">
+                        <h2 class="o_kh_wa_section_title">
+                            نتائج البحث
+                            <span class="o_kh_wa_count" t-esc="data.search_results.length"/>
+                        </h2>
+                        <div t-if="!data.search_results.length" class="o_kh_wa_quiet">لا نتائج.</div>
+                        <t t-foreach="data.search_results" t-as="item" t-key="item.id">
+                            <t t-call="kh_wa_inbox.NotebookRow"/>
+                        </t>
+                    </section>
+
+                    <div t-else="" class="o_kh_wa_columns">
+                        <t t-set="sec" t-value="view"/>
+                        <div class="o_kh_wa_column">
+                            <!-- 1. Waiting for the manager (always shown) -->
+                            <section class="o_kh_wa_section">
+                                <h2 class="o_kh_wa_section_title">
+                                    بانتظار قرارك
+                                    <span t-if="sec.needsManager.length" class="o_kh_wa_count" t-esc="sec.needsManager.length"/>
+                                </h2>
+                                <div t-if="!sec.needsManager.length" class="o_kh_wa_quiet">لا شيء بانتظار قرارك</div>
+                                <t t-foreach="sec.needsManager" t-as="item" t-key="item.id">
+                                    <t t-call="kh_wa_inbox.NotebookRow"/>
+                                </t>
+                            </section>
+
+                            <!-- 2. Urgent -->
+                            <section t-if="sec.urgent.length" class="o_kh_wa_section">
+                                <h2 class="o_kh_wa_section_title">
+                                    عاجل
+                                    <span class="o_kh_wa_count" t-esc="sec.urgent.length"/>
+                                </h2>
+                                <t t-foreach="sec.urgent" t-as="item" t-key="item.id">
+                                    <t t-call="kh_wa_inbox.NotebookRow"/>
+                                </t>
+                            </section>
+
+                            <!-- 3. Open with the team, by group, oldest first -->
+                            <section t-if="sec.open.length" class="o_kh_wa_section">
+                                <h2 class="o_kh_wa_section_title">مفتوح عند الفريق</h2>
+                                <t t-foreach="sec.open" t-as="group" t-key="group.group_id">
+                                    <h3 class="o_kh_wa_group_title">
+                                        <span class="o_kh_wa_dot" t-attf-style="background: {{groupColor(group.group_color)}}"/>
+                                        <t t-esc="group.group_name"/>
+                                        <span class="o_kh_wa_count" t-esc="group.items.length"/>
+                                    </h3>
+                                    <t t-foreach="group.items" t-as="item" t-key="item.id">
+                                        <t t-call="kh_wa_inbox.NotebookRow">
+                                            <t t-set="hideGroup" t-value="true"/>
+                                        </t>
+                                    </t>
+                                </t>
+                            </section>
+
+                            <!-- 4. Deadlines within 7 days -->
+                            <section t-if="sec.upcoming.length" class="o_kh_wa_section">
+                                <h2 class="o_kh_wa_section_title">
+                                    مواعيد خلال 7 أيام
+                                    <span class="o_kh_wa_count" t-esc="sec.upcoming.length"/>
+                                </h2>
+                                <t t-foreach="sec.upcoming" t-as="item" t-key="item.id">
+                                    <t t-call="kh_wa_inbox.NotebookRow"/>
+                                </t>
+                            </section>
+                        </div>
+
+                        <div class="o_kh_wa_column">
+                            <!-- 5. The day's summary, per group -->
+                            <section t-if="sec.daySummary.length" class="o_kh_wa_section">
+                                <h2 class="o_kh_wa_section_title" t-esc="daySummaryTitle"/>
+                                <t t-foreach="sec.daySummary" t-as="page" t-key="page.group_id">
+                                    <div class="o_kh_wa_day">
+                                        <h3 class="o_kh_wa_group_title">
+                                            <span class="o_kh_wa_dot" t-attf-style="background: {{groupColor(page.group_color)}}"/>
+                                            <t t-esc="page.group_name"/>
+                                        </h3>
+                                        <ul t-if="page.lines.length" class="o_kh_wa_day_lines">
+                                            <li t-foreach="page.lines" t-as="line" t-key="line_index" t-esc="line"/>
+                                        </ul>
+                                        <div class="o_kh_wa_day_counts">
+                                            <span>رسائل <b t-esc="page.message_count"/></span>
+                                            <span><t t-esc="quickDoneLabel"/> <b t-esc="page.quick_done_count"/></span>
+                                            <span>زيارات <b t-esc="page.visit_count"/></span>
+                                        </div>
+                                    </div>
+                                </t>
+                            </section>
+
+                            <!-- 6. Closed that day (collapsed) -->
+                            <section t-if="sec.closed.length" class="o_kh_wa_section">
+                                <h2 class="o_kh_wa_section_title">
+                                    <button class="o_kh_wa_fold" t-att-aria-expanded="state.closedOpen ? 'true' : 'false'"
+                                            t-on-click="toggleClosed">
+                                        <i t-attf-class="fa {{state.closedOpen ? 'fa-angle-down' : 'fa-angle-left'}}"/>
+                                        <t t-esc="closedTitle"/>
+                                        <span class="o_kh_wa_count" t-esc="sec.closed.length"/>
+                                    </button>
+                                </h2>
+                                <t t-if="state.closedOpen">
+                                    <t t-foreach="sec.closed" t-as="item" t-key="item.id">
+                                        <t t-call="kh_wa_inbox.NotebookRow"/>
+                                    </t>
+                                </t>
+                            </section>
+
+                            <!-- 7. My notes -->
+                            <section class="o_kh_wa_section">
+                                <h2 class="o_kh_wa_section_title">ملاحظاتي</h2>
+                                <div class="o_kh_wa_memo_add">
+                                    <i class="fa fa-plus"/>
+                                    <input type="text" placeholder="أضف ملاحظة…" t-model="state.memoDraft"
+                                           aria-label="أضف ملاحظة" t-on-keydown="onMemoKeydown"/>
+                                </div>
+                                <t t-foreach="sec.memos" t-as="memo" t-key="memo.id">
+                                    <div t-attf-class="o_kh_wa_memo {{memo.pinned ? 'o_kh_wa_pinned' : ''}}">
+                                        <input type="checkbox" class="form-check-input" aria-label="تمت"
+                                               t-on-change="() => this.finishMemo(memo)"/>
+                                        <span class="o_kh_wa_memo_text" t-esc="memo.text"/>
+                                        <button class="o_kh_wa_pin" t-att-title="memo.pinned ? 'إلغاء التثبيت' : 'تثبيت في الأعلى'"
+                                                t-att-aria-pressed="memo.pinned ? 'true' : 'false'"
+                                                t-on-click="() => this.togglePin(memo)">
+                                            <i class="fa fa-thumb-tack"/>
+                                        </button>
+                                    </div>
+                                </t>
+                            </section>
+                        </div>
+                    </div>
+                </t>
+            </div>
+        </div>
+    </t>
+
+    <!-- One line of the notebook; expands in place. Expects `item` (and
+         optionally `hideGroup`). -->
+    <t t-name="kh_wa_inbox.NotebookRow">
+        <t t-set="open" t-value="state.expanded[item.id]"/>
+        <div t-attf-class="o_kh_wa_row {{open ? 'o_kh_wa_open' : ''}} {{item.is_overdue ? 'o_kh_wa_overdue' : ''}} {{item.state === 'done' or item.state === 'cancel' ? 'o_kh_wa_closed' : ''}}">
+            <span class="o_kh_wa_stripe" t-attf-style="background: {{groupColor(item.group_color)}}"/>
+            <div class="o_kh_wa_line" role="button" tabindex="0" t-att-aria-expanded="open ? 'true' : 'false'"
+                 t-on-click="() => this.toggleRow(item)"
+                 t-on-keydown="(ev) => this.onRowKeydown(item, ev)">
+                <div class="o_kh_wa_summary">
+                    <span t-esc="item.name"/>
+                    <span t-if="item.urgent" class="o_kh_wa_flag">عاجل</span>
+                </div>
+                <div class="o_kh_wa_meta">
+                    <span t-if="!hideGroup" t-esc="item.group_name"/>
+                    <span t-if="item.assignee" t-esc="item.assignee.name"/>
+                    <span t-elif="item.state !== 'done' and item.state !== 'cancel'" class="o_kh_wa_muted">بلا مسؤول</span>
+                    <span t-if="item.state === 'waiting'">بانتظار رد</span>
+                    <t t-if="item.state === 'done' or item.state === 'cancel'">
+                        <span t-if="item.state === 'cancel'">ملغى</span>
+                        <span t-if="item.done_note" class="o_kh_wa_result" t-esc="item.done_note"/>
+                        <span t-esc="time(item.done_at)"/>
+                    </t>
+                    <span t-else="" t-esc="item.age"/>
+                    <span t-if="item.due_date" t-attf-class="o_kh_wa_due {{item.is_overdue ? 'o_kh_wa_late' : ''}}">
+                        <i class="fa fa-clock-o"/> <t t-esc="day(item.due_date)"/>
+                    </span>
+                </div>
+            </div>
+
+            <div t-if="open" class="o_kh_wa_detail">
+                <div class="o_kh_wa_asked">
+                    <span class="o_kh_wa_kind" t-esc="kindLabels[item.kind]"/>
+                    <span>سأل: <t t-esc="item.requester_name or '—'"/></span>
+                    <span t-if="item.requester_phone" class="o_kh_wa_phone" dir="ltr" t-esc="item.requester_phone"/>
+                    <span t-esc="dateTime(item.asked_at)"/>
+                </div>
+
+                <blockquote t-if="item.source_text" class="o_kh_wa_quote" t-esc="item.source_text"/>
+                <div t-elif="item.source_kind === 'voice'" class="o_kh_wa_quote"><i class="fa fa-microphone"/> رسالة صوتية</div>
+
+                <div t-if="item.context_text">
+                    <button class="o_kh_wa_link" t-on-click="() => this.toggleContext(item)">
+                        <i t-attf-class="fa {{state.contextOpen[item.id] ? 'fa-angle-down' : 'fa-angle-left'}}"/>
+                        السياق
+                    </button>
+                    <div t-if="state.contextOpen[item.id]" class="o_kh_wa_context" t-esc="item.context_text"/>
+                </div>
+
+                <div t-if="item.attachments.length" class="o_kh_wa_files">
+                    <t t-foreach="item.attachments" t-as="att" t-key="att.id">
+                        <a t-if="isImage(att)" class="o_kh_wa_thumb" t-att-href="att.url" target="_blank" t-att-title="att.name">
+                            <img t-attf-src="/web/image/{{att.id}}/160x160" t-att-alt="att.name" loading="lazy"/>
+                        </a>
+                        <span t-elif="isAudio(att)" class="o_kh_wa_voice">
+                            <i class="fa fa-microphone"/> رسالة صوتية
+                            <audio t-if="state.playing[att.id]" t-att-src="att.url" controls="controls" autoplay="autoplay"/>
+                            <button t-else="" class="o_kh_wa_link" t-on-click="() => this.play(att)">
+                                <i class="fa fa-play"/> تشغيل
+                            </button>
+                        </span>
+                        <a t-else="" class="o_kh_wa_file" t-attf-href="{{att.url}}?download=true" t-att-title="att.name">
+                            <i class="fa fa-paperclip"/> <span t-esc="att.name"/>
+                        </a>
+                    </t>
+                </div>
+
+                <div t-if="item.project or item.partner" class="o_kh_wa_muted">
+                    <span t-if="item.project">المشروع: <t t-esc="item.project"/></span>
+                    <span t-if="item.project and item.partner"> · </span>
+                    <span t-if="item.partner">جهة الاتصال: <t t-esc="item.partner"/></span>
+                </div>
+                <div t-if="item.manager_note" class="o_kh_wa_note">ملاحظتي: <t t-esc="item.manager_note"/></div>
+                <div t-if="item.remind_on" class="o_kh_wa_muted"><i class="fa fa-bell-o"/> تذكير <t t-esc="day(item.remind_on)"/></div>
+                <div t-if="item.done_note and (item.state === 'done' or item.state === 'cancel')" class="o_kh_wa_note">
+                    النتيجة: <t t-esc="item.done_note"/>
+                </div>
+
+                <button t-if="item.linked" class="o_kh_wa_action o_kh_wa_linked" t-on-click="() => this.openLinked(item)">
+                    <i class="fa fa-link"/> <t t-esc="item.linked.name"/>
+                </button>
+
+                <!-- Actions -->
+                <div class="o_kh_wa_actions">
+                    <t t-if="item.state === 'open' or item.state === 'waiting'">
+                        <button class="o_kh_wa_action o_kh_wa_primary" t-att-disabled="state.busy"
+                                t-on-click="() => this.startDone(item)">تم</button>
+                        <button t-if="item.state === 'open'" class="o_kh_wa_action" t-att-disabled="state.busy"
+                                t-on-click="() => this.setWaiting(item)">بانتظار رد</button>
+                        <button t-else="" class="o_kh_wa_action" t-att-disabled="state.busy"
+                                t-on-click="() => this.reopen(item)">مفتوح</button>
+                        <button class="o_kh_wa_action" t-att-disabled="state.busy"
+                                t-on-click="() => this.toggleRemind(item)">ذكّرني</button>
+                        <button class="o_kh_wa_action" t-att-disabled="state.busy"
+                                t-on-click="() => this.toggleAssign(item)">عيّن مسؤول</button>
+                    </t>
+                    <button t-else="" class="o_kh_wa_action" t-att-disabled="state.busy"
+                            t-on-click="() => this.reopen(item)">إعادة فتح</button>
+                    <button class="o_kh_wa_action" t-on-click="() => this.openForm(item)">فتح</button>
+                </div>
+
+                <div t-if="state.doneDraft[item.id] !== undefined" class="o_kh_wa_inline">
+                    <input type="text" class="o_kh_wa_input" placeholder="ماذا تم؟ (اختياري)"
+                           aria-label="النتيجة" t-att-value="state.doneDraft[item.id]"
+                           t-on-input="(ev) => this.onDoneInput(item, ev)"
+                           t-on-keydown="(ev) => this.onDoneKeydown(item, ev)"/>
+                    <button class="o_kh_wa_action o_kh_wa_primary" t-att-disabled="state.busy"
+                            t-on-click="() => this.confirmDone(item)">حفظ</button>
+                    <button class="o_kh_wa_action" t-on-click="() => this.cancelDone(item)">إلغاء</button>
+                </div>
+                <div t-if="state.remindOpen[item.id]" class="o_kh_wa_inline">
+                    <t t-foreach="remindOptions" t-as="option" t-key="option.key">
+                        <button class="o_kh_wa_action" t-att-disabled="state.busy"
+                                t-on-click="() => this.remind(item, option)" t-esc="option.label"/>
+                    </t>
+                </div>
+                <div t-if="state.assignOpen[item.id]" class="o_kh_wa_inline">
+                    <select class="o_kh_wa_input" aria-label="المسؤول" t-on-change="(ev) => this.assign(item, ev)">
+                        <option value="" t-att-selected="!item.assignee">— بلا مسؤول —</option>
+                        <t t-foreach="data.users" t-as="user" t-key="user.id">
+                            <option t-att-value="user.id" t-att-selected="item.assignee and item.assignee.id === user.id"
+                                    t-esc="user.name"/>
+                        </t>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </t>
+
+</templates>

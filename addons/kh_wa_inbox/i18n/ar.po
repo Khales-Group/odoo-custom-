@@ -1,0 +1,901 @@
+# Translation of Odoo Server.
+# This file contains the translation of the following modules:
+# 	* kh_wa_inbox
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Odoo Server 19.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-11-02 08:00+0000\n"
+"PO-Revision-Date: 2026-11-02 08:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: \n"
+"Plural-Forms: nplurals=6; plural=n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && n%100<=10 ? 3 : n%100>=11 ? 4 : 5;\n"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_day_form
+msgid "2-4 short lines"
+msgstr "من سطرين إلى أربعة أسطر قصيرة"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_day__summary
+msgid "2-4 short lines about the day in this group."
+msgstr "من سطرين إلى أربعة أسطر قصيرة عن يوم هذا القروب."
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__context_text
+msgid "A few messages around the original one."
+msgstr "بضع رسائل قبل الرسالة الأصلية وبعدها."
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_res_config_settings__kh_wa_quick_done_minutes
+msgid ""
+"A WhatsApp request asked and finished within this many minutes is not kept "
+"in the notebook; it only adds to the day's \"finished within the threshold\""
+" count."
+msgstr ""
+"طلب واتساب يُطلب ويُنجز خلال هذا العدد من الدقائق لا يُحفظ في المفكرة، بل "
+"يُضاف فقط إلى عدد \"أُنجز خلال المهلة\" في ملخص اليوم."
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_group__category__accounts
+msgid "Accounts"
+msgstr "الحسابات"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__message_needaction
+msgid "Action Needed"
+msgstr "إجراء مطلوب"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__active
+msgid "Active"
+msgstr "نشط"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__activity_ids
+msgid "Activities"
+msgstr "الأنشطة"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__activity_exception_decoration
+msgid "Activity Exception Decoration"
+msgstr "زخرفة استثناء النشاط"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__activity_state
+msgid "Activity State"
+msgstr "حالة النشاط"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__activity_type_icon
+msgid "Activity Type Icon"
+msgstr "أيقونة نوع النشاط"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__age_label
+msgid "Age"
+msgstr "منذ"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_item__kind__alert
+msgid "Alert"
+msgstr "تنبيه"
+
+#. module: kh_wa_inbox
+#: model:res.groups,comment:kh_wa_inbox.group_kh_wa_manager
+msgid ""
+"All items of all groups, day pages and settings. Also for the bot's "
+"integration user."
+msgstr ""
+"كل البنود في كل القروبات وصفحات الأيام والإعدادات. وهي أيضاً لمستخدم الربط "
+"الخاص بالبوت."
+
+#. module: kh_wa_inbox
+#: model:ir.model.constraint,message:kh_wa_inbox.constraint_kh_wa_group_wa_chat_id_unique
+msgid "Another group already has this WhatsApp chat id."
+msgstr "يوجد قروب آخر بمعرّف المحادثة نفسه."
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_group_form
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_group_search
+msgid "Archived"
+msgstr "مؤرشف"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__asked_at
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_quick_done__asked_at
+msgid "Asked At"
+msgstr "وقت الطلب"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__requester_name
+msgid "Asked By"
+msgstr "صاحب الطلب"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__requester_user_id
+msgid "Asked By (User)"
+msgstr "صاحب الطلب (مستخدم)"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_search
+msgid "Assigned to Me"
+msgstr "المسندة إليّ"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__assignee_id
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_search
+msgid "Assignee"
+msgstr "المسؤول"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__message_attachment_count
+msgid "Attachment Count"
+msgstr "عدد المرفقات"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__attachment_ids
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
+msgid "Attachments"
+msgstr "المرفقات"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
+msgid "Cancel"
+msgstr "إلغاء"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_item__state__cancel
+msgid "Cancelled"
+msgstr "ملغى"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__category
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_group_search
+msgid "Category"
+msgstr "الفئة"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_search
+msgid "Closed"
+msgstr "أُغلق"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__done_at
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_quick_done__done_at
+msgid "Closed At"
+msgstr "وقت الإغلاق"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__color
+msgid "Color"
+msgstr "اللون"
+
+#. module: kh_wa_inbox
+#: model:ir.ui.menu,name:kh_wa_inbox.menu_kh_wa_config
+msgid "Configuration"
+msgstr "الإعدادات"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__partner_id
+msgid "Contact"
+msgstr "جهة الاتصال"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__context_text
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
+msgid "Context"
+msgstr "السياق"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_day__create_uid
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__create_uid
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__create_uid
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_memo__create_uid
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_quick_done__create_uid
+msgid "Created by"
+msgstr "أنشئ بواسطة"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_day__create_date
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__create_date
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__create_date
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_memo__create_date
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_quick_done__create_date
+msgid "Created On"
+msgstr "أنشئ في"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_day__date
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_day_search
+msgid "Date"
+msgstr "التاريخ"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_quick_done__day_id
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_day_form
+msgid "Day Page"
+msgstr "صفحة اليوم"
+
+#. module: kh_wa_inbox
+#: model:ir.actions.act_window,name:kh_wa_inbox.action_kh_wa_day
+#: model:ir.ui.menu,name:kh_wa_inbox.menu_kh_wa_days
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_day_list
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_day_search
+msgid "Day Pages"
+msgstr "صفحات الأيام"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_item__kind__deadline
+msgid "Deadline"
+msgstr "موعد"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_item__kind__decision
+msgid "Decision needed"
+msgstr "قرار مطلوب"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_group__project_id
+msgid "Default project for this group's items."
+msgstr "المشروع الافتراضي لبنود هذا القروب."
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_day__display_name
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__display_name
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__display_name
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_memo__display_name
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_quick_done__display_name
+msgid "Display Name"
+msgstr "اسم العرض"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_item__source_kind__document
+msgid "Document"
+msgstr "مستند"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_memo__done
+#: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_item__state__done
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
+msgid "Done"
+msgstr "تم"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__due_date
+msgid "Due Date"
+msgstr "تاريخ الاستحقاق"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__manual_fields
+msgid "Edited in Odoo"
+msgstr "عُدّل في أودو"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__manual_fields
+msgid "Fields changed by a person in Odoo. The bot no longer overwrites them."
+msgstr "حقول غيّرها شخص في أودو، ولن يكتب البوت فوقها بعد ذلك."
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_day__quick_done_ids
+msgid "Finished Quickly"
+msgstr "أُنجزت بسرعة"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_day__quick_done_count
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_day_form
+msgid "Finished Within the Threshold"
+msgstr "أُنجز خلال المهلة"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__message_follower_ids
+msgid "Followers"
+msgstr "المتابعين"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__message_partner_ids
+msgid "Followers (Partners)"
+msgstr "المتابعين (الشركاء)"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__activity_type_icon
+msgid "Font awesome icon e.g. fa-tasks"
+msgstr "أيقونة من Font awesome مثال: fa-tasks"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_day_search
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_search
+msgid "Group"
+msgstr "القروب"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__group_color
+msgid "Group Color"
+msgstr "لون القروب"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.res_config_settings_view_form
+msgid "Groups Notebook"
+msgstr "مفكرة القروبات"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__has_message
+msgid "Has Message"
+msgstr "يحتوي على رسالة"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_group__category__hr
+msgid "HR"
+msgstr "الموارد البشرية"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__activity_exception_icon
+msgid "Icon"
+msgstr "الأيقونة"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__activity_exception_icon
+msgid "Icon to indicate an exception activity."
+msgstr "الأيقونة للإشارة إلى النشاط المستثنى."
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_day__id
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__id
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__id
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_memo__id
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_quick_done__id
+msgid "ID"
+msgstr "المُعرف"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__message_needaction
+msgid "If checked, new messages require your attention."
+msgstr "إذا كان محددًا، فهناك رسائل جديدة عليك رؤيتها."
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__message_has_error
+msgid "If checked, some messages have a delivery error."
+msgstr "إذا كان محددًا، فقد حدث خطأ في تسليم بعض الرسائل."
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_item__source_kind__image
+msgid "Image"
+msgstr "صورة"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__message_is_follower
+msgid "Is Follower"
+msgstr "متابع"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_memo__item_id
+msgid "Item"
+msgstr "البند"
+
+#. module: kh_wa_inbox
+#: model:ir.actions.act_window,name:kh_wa_inbox.action_kh_wa_item
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__item_ids
+#: model:ir.ui.menu,name:kh_wa_inbox.menu_kh_wa_items
+msgid "Items"
+msgstr "البنود"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__kind
+msgid "Kind"
+msgstr "النوع"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_day__write_uid
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__write_uid
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__write_uid
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_memo__write_uid
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_quick_done__write_uid
+msgid "Last Updated by"
+msgstr "آخر تحديث بواسطة"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_day__write_date
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__write_date
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__write_date
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_memo__write_date
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_quick_done__write_date
+msgid "Last Updated On"
+msgstr "آخر تحديث في"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_group__category__legal
+msgid "Legal"
+msgstr "قانوني"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__linked_ref
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
+msgid "Linked Record"
+msgstr "السجل المرتبط"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__manager_note
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
+msgid "Manager Note"
+msgstr "ملاحظة المدير"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_group__category__marketing
+msgid "Marketing"
+msgstr "التسويق"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
+msgid "Message"
+msgstr "الرسالة"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__message_has_error
+msgid "Message Delivery error"
+msgstr "خطأ في تسليم الرسائل"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__source_kind
+msgid "Message Type"
+msgstr "نوع الرسالة"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_day__message_count
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__message_ids
+msgid "Messages"
+msgstr "الرسائل"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.res_config_settings_view_form
+msgid "minutes"
+msgstr "دقيقة"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__my_activity_date_deadline
+msgid "My Activity Deadline"
+msgstr "الموعد النهائي لنشاطاتي"
+
+#. module: kh_wa_inbox
+#: model:ir.model,name:kh_wa_inbox.model_kh_wa_memo
+msgid "My Note (Groups Notebook)"
+msgstr "ملاحظتي (مفكرة القروبات)"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__name
+msgid "Name"
+msgstr "الاسم"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__activity_date_deadline
+msgid "Next Activity Deadline"
+msgstr "الموعد النهائي للنشاط التالي"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__activity_summary
+msgid "Next Activity Summary"
+msgstr "ملخص النشاط التالي"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__activity_type_id
+msgid "Next Activity Type"
+msgstr "نوع النشاط التالي"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.actions.act_window,help:kh_wa_inbox.action_kh_wa_day
+msgid "No day pages yet"
+msgstr "لا توجد صفحات أيام بعد"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.actions.act_window,help:kh_wa_inbox.action_kh_wa_group
+msgid "No groups yet"
+msgstr "لا توجد قروبات بعد"
+
+#. module: kh_wa_inbox
+#: model:ir.ui.menu,name:kh_wa_inbox.menu_kh_wa_notebook
+msgid "Notebook"
+msgstr "المفكرة"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
+msgid "Notebook Item"
+msgstr "بند المفكرة"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_list
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_search
+msgid "Notebook Items"
+msgstr "بنود المفكرة"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.actions.act_window,help:kh_wa_inbox.action_kh_wa_item
+msgid "Nothing to follow up"
+msgstr "لا شيء للمتابعة"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__message_needaction_counter
+msgid "Number of Actions"
+msgstr "عدد الإجراءات"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__message_has_error_counter
+msgid "Number of errors"
+msgstr "عدد الأخطاء"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__message_needaction_counter
+msgid "Number of messages requiring action"
+msgstr "عدد الرسائل التي تتطلب اتخاذ إجراء"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__message_has_error_counter
+msgid "Number of messages with delivery error"
+msgstr "عدد الرسائل الحادث بها خطأ في التسليم"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__done_note
+msgid "One line: what was done."
+msgstr "سطر واحد: ماذا تم."
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
+msgid "Only managers see this note."
+msgstr "لا يرى هذه الملاحظة إلا المدراء."
+
+#. module: kh_wa_inbox
+#: model:res.groups,comment:kh_wa_inbox.group_kh_wa_user
+msgid ""
+"Only the items assigned to them or that they asked. No phone numbers, no day"
+" pages, no delete."
+msgstr ""
+"البنود المسندة إليه أو التي طلبها فقط. بدون أرقام هواتف ولا صفحات أيام ولا "
+"حذف."
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_item__state__open
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_search
+msgid "Open"
+msgstr "مفتوح"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__open_count
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_group_form
+msgid "Open Items"
+msgstr "البنود المفتوحة"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__source_text
+msgid "Original Message"
+msgstr "الرسالة الأصلية"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_group__category__other
+msgid "Other"
+msgstr "أخرى"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__is_overdue
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_search
+msgid "Overdue"
+msgstr "متأخر"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_memo__user_id
+msgid "Owner"
+msgstr "المالك"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_memo__pinned
+msgid "Pinned"
+msgstr "مثبّتة"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__project_id
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__project_id
+msgid "Project"
+msgstr "المشروع"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_group__category__projects
+msgid "Projects"
+msgstr "المشاريع"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.res_config_settings_view_form
+msgid "Quick-Done Threshold"
+msgstr "مهلة الإنجاز السريع"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_res_config_settings__kh_wa_quick_done_minutes
+msgid "Quick-Done Threshold (minutes)"
+msgstr "مهلة الإنجاز السريع (بالدقائق)"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__remind_on
+msgid "Remind Me On"
+msgstr "ذكّرني في"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
+msgid "Reopen"
+msgstr "إعادة فتح"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_item__kind__request
+msgid "Request"
+msgstr "طلب"
+
+#. module: kh_wa_inbox
+#: model:ir.model,name:kh_wa_inbox.model_kh_wa_quick_done
+msgid "Request Finished Within the Threshold"
+msgstr "طلب أُنجز خلال المهلة"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__requester_phone
+msgid "Requester Phone"
+msgstr "هاتف صاحب الطلب"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_day__quick_done_count
+msgid ""
+"Requests asked and finished within the quick-done threshold (Settings). "
+"Counted by the server, once per WhatsApp message."
+msgstr ""
+"الطلبات التي طُلبت وأُنجزت خلال مهلة الإنجاز السريع (الإعدادات). يعدّها "
+"الخادم مرة واحدة لكل رسالة واتساب."
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.res_config_settings_view_form
+msgid ""
+"Requests asked and finished within this time are not kept as items; they "
+"only count in the day's summary."
+msgstr ""
+"الطلبات التي تُطلب وتُنجز خلال هذه المدة لا تُحفظ كبنود، بل تُعدّ فقط في "
+"ملخص اليوم."
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__activity_user_id
+msgid "Responsible User"
+msgstr "المستخدم المسؤول"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__done_note
+msgid "Result"
+msgstr "النتيجة"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__sequence
+msgid "Sequence"
+msgstr "التسلسل"
+
+#. module: kh_wa_inbox
+#: model:ir.actions.act_window,name:kh_wa_inbox.action_kh_wa_settings
+#: model:ir.ui.menu,name:kh_wa_inbox.menu_kh_wa_settings
+msgid "Settings"
+msgstr "الإعدادات"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
+msgid "Short summary"
+msgstr "ملخص قصير"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_day__visit_count
+msgid "Site Visits"
+msgstr "زيارات الموقع"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__source_msg_id
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_quick_done__source_msg_id
+msgid "Source Message ID"
+msgstr "معرّف الرسالة الأصلية"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__state
+msgid "State"
+msgstr "الحالة"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__activity_state
+msgid ""
+"Status based on activities\n"
+"Overdue: Due date is already passed\n"
+"Today: Activity date is today\n"
+"Planned: Future activities."
+msgstr ""
+"الأنشطة المعتمدة على الحالة\n"
+"المتأخرة: تاريخ الاستحقاق مر\n"
+"اليوم: تاريخ النشاط هو اليوم\n"
+"المخطط: الأنشطة المستقبلية."
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_day__summary
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__name
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_day_form
+msgid "Summary"
+msgstr "الملخص"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
+msgid "Technical"
+msgstr "تقني"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_memo__text
+#: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_item__source_kind__text
+msgid "Text"
+msgstr "نص"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_group__wa_chat_id
+msgid ""
+"The group's id on WhatsApp (e.g. 1203630xxxx@g.us). The bot finds the group "
+"by it."
+msgstr ""
+"معرّف القروب على واتساب (مثل 1203630xxxx@g.us). يجد البوت القروب من خلاله."
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__requester_user_id
+msgid "The Odoo user who asked, when known. They can see this item."
+msgstr "مستخدم أودو صاحب الطلب إن كان معروفاً. يستطيع رؤية هذا البند."
+
+#. module: kh_wa_inbox
+#: model_terms:ir.actions.act_window,help:kh_wa_inbox.action_kh_wa_item
+msgid ""
+"The WhatsApp bot adds an item here for each open request, pending decision, "
+"deadline or important alert."
+msgstr ""
+"يضيف بوت الواتساب هنا بنداً لكل طلب مفتوح أو قرار منتظر أو موعد أو تنبيه "
+"مهم."
+
+#. module: kh_wa_inbox
+#: model_terms:ir.actions.act_window,help:kh_wa_inbox.action_kh_wa_group
+msgid "The WhatsApp bot adds the company's groups here."
+msgstr "يضيف بوت الواتساب قروبات الشركة هنا."
+
+#. module: kh_wa_inbox
+#: model_terms:ir.actions.act_window,help:kh_wa_inbox.action_kh_wa_day
+msgid "The WhatsApp bot writes a short summary of each group's day here."
+msgstr "يكتب بوت الواتساب هنا ملخصاً قصيراً ليوم كل قروب."
+
+#. module: kh_wa_inbox
+#: model:ir.model.constraint,message:kh_wa_inbox.constraint_kh_wa_day_date_group_unique
+msgid "This group already has a page for this day."
+msgstr "لهذا القروب صفحة لهذا اليوم بالفعل."
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_search
+msgid "This Week"
+msgstr "هذا الأسبوع"
+
+#. module: kh_wa_inbox
+#: model:ir.model.constraint,message:kh_wa_inbox.constraint_kh_wa_item_source_msg_id_unique
+msgid "This WhatsApp message is already an item in the notebook."
+msgstr "رسالة الواتساب هذه موجودة كبند في المفكرة."
+
+#. module: kh_wa_inbox
+#: model:ir.model.constraint,message:kh_wa_inbox.constraint_kh_wa_quick_done_source_msg_id_unique
+msgid "This WhatsApp message is already counted."
+msgstr "رسالة الواتساب هذه محسوبة بالفعل."
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_search
+msgid "Type"
+msgstr "النوع"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__activity_exception_decoration
+msgid "Type of the exception activity on record."
+msgstr "نوع النشاط المستثنى في السجل."
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__urgent
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_kanban
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_search
+msgid "Urgent"
+msgstr "عاجل"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_day__display_name
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_group__display_name
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__display_name
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_memo__display_name
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_quick_done__display_name
+msgid ""
+"Use these keywords in the title to set new tasks:\n"
+"\n"
+"        30h Allocate 30 hours to the task\n"
+"        #tags Set tags on the task\n"
+"        @user Assign the task to a user\n"
+"        ! Set the task a medium priority\n"
+"        !! Set the task a high priority\n"
+"        !!! Set the task a urgent priority\n"
+"\n"
+"        Make sure to use the right format and order e.g. Improve the configuration screen 5h #feature #v16 @Mitchell !"
+msgstr ""
+"استخدم هذه الكلمات المفتاحية في العنوان لتعيين مهام جديدة:\n"
+"\n"
+"        30h لتخصيص 30 ساعة للمهمة\n"
+"        #tags لتعيين علامات تصنيف للمهمة\n"
+"        @user لإسناد المهمة إلى أحد المستخدمين\n"
+"        ! لتعيين أولوية متوسطة للمهمة\n"
+"        !! لتعيين أولوية عالية للمهمة\n"
+"        !!! لتعيين أولوية عاجلة للمهمة\n"
+" \n"
+"        تأكد من استخدام التنسيق والترتيب الصحيحين، على سبيل المثال: تحسين شاشة الإعدادات 5h #feature #v16 @Mitchell !"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_item__source_kind__voice
+msgid "Voice Note"
+msgstr "رسالة صوتية"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__needs_manager
+msgid "Waiting for a decision or reply from the manager."
+msgstr "بانتظار قرار أو رد من المدير."
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_search
+msgid "Waiting for My Decision"
+msgstr "بانتظار قراري"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_item__state__waiting
+msgid "Waiting for reply"
+msgstr "بانتظار رد"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
+msgid "Waiting for Reply"
+msgstr "بانتظار رد"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__needs_manager
+msgid "Waiting for the Manager"
+msgstr "بانتظار المدير"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_kanban
+msgid "Waiting for the manager"
+msgstr "بانتظار المدير"
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__wa_chat_id
+msgid "WhatsApp Chat ID"
+msgstr "معرّف محادثة واتساب"
+
+#. module: kh_wa_inbox
+#: model:ir.model,name:kh_wa_inbox.model_kh_wa_group
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_day__group_id
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__group_id
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_group_form
+msgid "WhatsApp Group"
+msgstr "قروب واتساب"
+
+#. module: kh_wa_inbox
+#: model:ir.model,name:kh_wa_inbox.model_kh_wa_day
+msgid "WhatsApp Group Day Page"
+msgstr "صفحة يوم القروب"
+
+#. module: kh_wa_inbox
+#: model:ir.actions.act_window,name:kh_wa_inbox.action_kh_wa_group
+#: model:ir.ui.menu,name:kh_wa_inbox.menu_kh_wa_groups
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_group_list
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_group_search
+msgid "WhatsApp Groups"
+msgstr "قروبات واتساب"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.res_config_settings_view_form
+msgid "WhatsApp Groups Notebook"
+msgstr "مفكرة قروبات واتساب"
+
+#. module: kh_wa_inbox
+#: model:ir.model,name:kh_wa_inbox.model_kh_wa_item
+msgid "WhatsApp Notebook Item"
+msgstr "بند في مفكرة القروبات"
