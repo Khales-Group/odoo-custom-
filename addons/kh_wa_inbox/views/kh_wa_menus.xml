@@ -2,17 +2,17 @@
 <odoo>
     <menuitem
         id="menu_kh_wa_root"
-        name="مفكرة القروبات"
+        name="Follow-up Dashboard"
         sequence="6"
-        action="action_kh_wa_notebook"
+        action="action_kh_followup_dashboard"
         web_icon="kh_wa_inbox,static/description/icon.png"
         groups="group_kh_wa_user"/>
 
     <menuitem
-        id="menu_kh_wa_notebook"
-        name="Notebook"
+        id="menu_kh_followup_dashboard"
+        name="Dashboard"
         parent="menu_kh_wa_root"
-        action="action_kh_wa_notebook"
+        action="action_kh_followup_dashboard"
         sequence="10"/>
 
     <menuitem

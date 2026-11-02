@@ -1,6 +1,6 @@
 from odoo import api, fields, models
 
-from .kh_wa_tools import run_batch
+from .kh_wa_tools import parse_utc_datetime, run_batch
 
 OPEN_STATES = ("open", "waiting")
 GROUP_ROW_FIELDS = ("name", "category", "color", "sequence", "active")
@@ -35,6 +35,7 @@ class KhWaGroup(models.Model):
     )
     sequence = fields.Integer(default=10)
     active = fields.Boolean(default=True)
+    last_message_at = fields.Datetime(string="Last Message At", help="Sent by the bot with upsert_groups.")
     item_ids = fields.One2many("kh.wa.item", "group_id", string="Items")
     open_count = fields.Integer(string="Open Items", compute="_compute_open_count")
 
@@ -65,7 +66,8 @@ class KhWaGroup(models.Model):
         """Create or update groups, keyed by wa_chat_id.
 
         Row: {"wa_chat_id"*, "name" (* when new), "category", "color",
-        "project_id", "sequence", "active"}.
+        "project_id", "sequence", "active", "last_message_at" (UTC, ISO 8601
+        or epoch; an older value than the stored one is ignored)}.
         Returns {"ids": [...], "errors": [...]}.
         """
         return run_batch(self, rows, lambda row: row.get("wa_chat_id"), self._upsert_group_row)
@@ -98,6 +100,10 @@ class KhWaGroup(models.Model):
                 warnings.append(f"project_id {project_id} not found - left unchanged")
 
         group = self.with_context(active_test=False).search([("wa_chat_id", "=", chat_id)], limit=1)
+        if row.get("last_message_at"):
+            last = parse_utc_datetime(row["last_message_at"])
+            if not group.last_message_at or last > group.last_message_at:
+                vals["last_message_at"] = last
         if group:
             group.write(vals)
             return group.id

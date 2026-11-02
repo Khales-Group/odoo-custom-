@@ -2,13 +2,10 @@
 
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
-import { Component, onMounted, onWillStart, onWillUnmount, useState } from "@odoo/owl";
+import { Component, onWillStart, onWillUpdateProps, useEffect, useState } from "@odoo/owl";
+import { DASHBOARD_SECTIONS } from "@kh_wa_inbox/dashboard/followup_dashboard";
+import { formatDateTime, formatDay, formatMoment, formatTime } from "@kh_wa_inbox/dashboard/dates";
 
-// The notebook always reads in Arabic, right to left, in Dubai time, with
-// Latin digits - whatever the user's Odoo language is.
-const ZONE = "Asia/Dubai";
-const REFRESH_MS = 60 * 1000;
-const SEARCH_DELAY_MS = 350;
 // Odoo's colour-picker palette (index 0 = no colour).
 const GROUP_COLORS = [
     "",
@@ -24,107 +21,88 @@ const GROUP_COLORS = [
     "#30C381",
     "#9365B8",
 ];
-
-const COUNTERS = [
-    { key: "needs_manager", label: "بانتظار قرارك" },
-    { key: "urgent", label: "عاجل" },
-    { key: "overdue", label: "متأخر" },
-    { key: "open", label: "مفتوح" },
-];
-// The same tests the server uses for the counters, so a counter used as a
-// filter shows exactly the items it counted.
-const COUNTER_TESTS = {
+// The same tests the server uses for the counts, so a tile used as a filter
+// shows exactly the items it counted.
+const OPEN_FILTERS = {
     needs_manager: (item) => item.needs_manager,
     urgent: (item) => item.urgent,
     overdue: (item) => item.is_overdue,
     open: () => true,
 };
+const CLOSED_FILTERS = ["closed_week", "avg_close"];
+const STATUS_LABELS = { red: "يحتاج انتباه", amber: "متابعة", green: "مستقر" };
+const BOX_NUMBERS = [
+    { key: "open", label: "مفتوح" },
+    { key: "urgent", label: "عاجل" },
+    { key: "needs_manager", label: "بانتظار قرارك" },
+    { key: "overdue", label: "متأخر" },
+];
 const REMIND_OPTIONS = [
     { key: "tomorrow", label: "غداً" },
     { key: "3days", label: "بعد 3 أيام" },
     { key: "next_week", label: "الأسبوع القادم" },
 ];
 const KIND_LABELS = { request: "طلب", decision: "قرار مطلوب", deadline: "موعد", alert: "تنبيه" };
-const STATE_LABELS = { open: "مفتوح", waiting: "بانتظار رد", done: "تم", cancel: "ملغى" };
+const SYNC_ALERT = "البيانات متأخرة";
 
-function arabic(dt) {
-    return dt.reconfigure({ locale: "ar", numberingSystem: "latn" });
-}
-
-function fromUtc(value) {
-    return value ? arabic(luxon.DateTime.fromSQL(value, { zone: "utc" }).setZone(ZONE)) : null;
-}
-
-function fromDay(value) {
-    return value ? arabic(luxon.DateTime.fromISO(value, { zone: ZONE })) : null;
-}
-
-export class GroupsNotebook extends Component {
-    static template = "kh_wa_inbox.Notebook";
+/**
+ * The WhatsApp groups part of لوحة المتابعة: six tiles, one box per group
+ * and the follow-up lists. Everything on it comes from one get_dashboard
+ * call. Expanded rows, drafts and open boxes live outside the data, so a
+ * refresh never closes or moves anything.
+ */
+export class WhatsAppSection extends Component {
+    static template = "kh_wa_inbox.WhatsAppSection";
     static props = ["*"];
 
     setup() {
         this.orm = useService("orm");
         this.action = useService("action");
         this.notification = useService("notification");
-        this.counters = COUNTERS;
+        this.ui = useService("ui");
+        this.boxNumbers = BOX_NUMBERS;
+        this.statusLabels = STATUS_LABELS;
         this.remindOptions = REMIND_OPTIONS;
         this.kindLabels = KIND_LABELS;
-        this.stateLabels = STATE_LABELS;
         this.state = useState({
             data: null,
             failed: false,
-            date: null, // null = today
             groupId: null,
-            filter: null, // one of the counter keys
-            search: "",
-            // Per item id, kept across refreshes:
+            filter: null, // a tile key
             expanded: {},
             contextOpen: {},
             doneDraft: {}, // id -> text while the "تم" box is open
             remindOpen: {},
             assignOpen: {},
             playing: {}, // attachment id -> true once "play" was tapped
+            boxOpen: {}, // phone: group boxes unfolded
             closedOpen: false,
             memoDraft: "",
             busy: false,
         });
         this.requestId = 0;
-        this.onVisibilityChange = () => {
-            if (!document.hidden) {
-                this.load();
+        onWillStart(() => this.load(this.props));
+        onWillUpdateProps((next) => {
+            if (next.date !== this.props.date || next.search !== this.props.search || next.tick !== this.props.tick) {
+                return this.load(next);
             }
-        };
-
-        onWillStart(() => this.load());
-        onMounted(() => {
-            this.timer = setInterval(() => {
-                if (!document.hidden) {
-                    this.load();
-                }
-            }, REFRESH_MS);
-            document.addEventListener("visibilitychange", this.onVisibilityChange);
         });
-        onWillUnmount(() => {
-            clearInterval(this.timer);
-            clearTimeout(this.searchTimer);
-            document.removeEventListener("visibilitychange", this.onVisibilityChange);
-        });
+        // Only once rendered: changing the frame while this part is still
+        // starting would make the frame start it again.
+        useEffect(
+            (sync) => sync && this.publishSync(sync),
+            () => [this.state.data && this.state.data.last_sync]
+        );
     }
 
     // ---- loading ---------------------------------------------------------
 
-    /**
-     * Fetches the whole page in one call. Only the latest request is used,
-     * and the expanded rows, drafts and scroll position live outside the
-     * data, so a refresh never closes or jumps anything.
-     */
-    async load() {
+    async load(props = this.props) {
         const requestId = ++this.requestId;
-        const search = this.state.search.trim();
+        const search = (props.search || "").trim();
         try {
-            const data = await this.orm.call("kh.wa.item", "get_notebook", [], {
-                date: this.state.date,
+            const data = await this.orm.call("kh.wa.item", "get_dashboard", [], {
+                date: props.date || null,
                 group_id: this.state.groupId,
                 search: search.length >= 2 ? search : null,
             });
@@ -133,10 +111,20 @@ export class GroupsNotebook extends Component {
                 this.state.failed = false;
             }
         } catch {
-            // A missed refresh (phone offline...) keeps the last page on screen.
+            // A missed refresh (phone offline...) keeps the last data on screen.
             if (requestId === this.requestId) {
                 this.state.failed = true;
             }
+        }
+    }
+
+    publishSync(sync) {
+        if (this.props.setHeaderNote) {
+            this.props.setHeaderNote("whatsapp", {
+                text: sync.at ? `آخر تحديث للبيانات: ${sync.label}` : sync.label,
+                level: sync.level,
+                alert: sync.at && sync.level === "late" ? SYNC_ALERT : "",
+            });
         }
     }
 
@@ -146,8 +134,12 @@ export class GroupsNotebook extends Component {
         return Boolean(this.state.data && this.state.data.search_results);
     }
 
+    get showingClosedWeek() {
+        return CLOSED_FILTERS.includes(this.state.filter);
+    }
+
     matches(item) {
-        const test = COUNTER_TESTS[this.state.filter];
+        const test = OPEN_FILTERS[this.state.filter];
         return !test || test(item);
     }
 
@@ -157,30 +149,68 @@ export class GroupsNotebook extends Component {
         return {
             needsManager: keep(sections.needs_manager),
             urgent: keep(sections.urgent),
+            upcoming: keep(sections.upcoming),
             open: sections.open
                 .map((group) => ({ ...group, items: keep(group.items) }))
                 .filter((group) => group.items.length),
-            upcoming: keep(sections.upcoming),
             daySummary: sections.day_summary,
             closed: sections.closed,
             memos: sections.memos,
         };
     }
 
+    /** "أُغلق هذا الأسبوع" when a closing tile is the filter. */
+    get closedWeekItems() {
+        const items = [...this.state.data.closed_week];
+        if (this.state.filter === "avg_close") {
+            const took = (item) => luxon.DateTime.fromSQL(item.done_at) - luxon.DateTime.fromSQL(item.asked_at);
+            items.sort((a, b) => took(b) - took(a));
+        }
+        return items;
+    }
+
+    get tiles() {
+        const k = this.state.data.kpis;
+        const avg = k.avg_close.duration;
+        return [
+            { key: "needs_manager", value: k.needs_manager.value, label: "بانتظار قرارك",
+              note: k.needs_manager.oldest ? `أقدمها ${k.needs_manager.oldest}` : "" },
+            { key: "urgent", value: k.urgent.value, label: "عاجل" },
+            { key: "overdue", value: k.overdue.value, label: "متأخر",
+              note: k.overdue.oldest ? `أقدمها ${k.overdue.oldest}` : "" },
+            { key: "open", value: k.open.value, label: "مفتوح" },
+            { key: "closed_week", value: k.closed_week.value, label: "أُغلق هذا الأسبوع" },
+            { key: "avg_close", value: avg ? avg.value : "—", unit: avg ? avg.unit : "",
+              label: "متوسط مدة الإغلاق هذا الأسبوع", empty: !avg },
+        ];
+    }
+
+    get fullBoxes() {
+        return this.state.data.boxes.filter((box) => !box.compact);
+    }
+
+    get compactBoxes() {
+        return this.state.data.boxes.filter((box) => box.compact);
+    }
+
+    get selectedGroup() {
+        return this.state.data.groups.find((group) => group.id === this.state.groupId);
+    }
+
     get isToday() {
         return this.state.data.date === this.state.data.today;
     }
 
-    get pageDate() {
-        return fromDay(this.state.data.date).toFormat("cccc d LLLL yyyy");
+    get dayLabel() {
+        return this.isToday ? "اليوم" : formatDay(this.state.data.date);
     }
 
     get closedTitle() {
-        return this.isToday ? "أُغلق اليوم" : `أُغلق ${fromDay(this.state.data.date).toFormat("cccc d LLLL")}`;
+        return this.isToday ? "أُغلق اليوم" : `أُغلق ${formatDay(this.state.data.date)}`;
     }
 
     get daySummaryTitle() {
-        return this.isToday ? "ملخص اليوم" : `ملخص ${fromDay(this.state.data.date).toFormat("cccc d LLLL")}`;
+        return this.isToday ? "ملخص اليوم" : `ملخص ${formatDay(this.state.data.date)}`;
     }
 
     get quickDoneLabel() {
@@ -193,18 +223,19 @@ export class GroupsNotebook extends Component {
     }
 
     dateTime(value) {
-        const dt = fromUtc(value);
-        return dt ? dt.toFormat("cccc d LLLL، HH:mm") : "";
+        return formatDateTime(value);
     }
 
     time(value) {
-        const dt = fromUtc(value);
-        return dt ? dt.toFormat("HH:mm") : "";
+        return formatTime(value);
     }
 
     day(value) {
-        const dt = fromDay(value);
-        return dt ? dt.toFormat("cccc d LLLL") : "";
+        return formatDay(value);
+    }
+
+    moment(value) {
+        return formatMoment(value);
     }
 
     isImage(attachment) {
@@ -215,7 +246,7 @@ export class GroupsNotebook extends Component {
         return attachment.mimetype.startsWith("audio/");
     }
 
-    // ---- header ----------------------------------------------------------
+    // ---- tiles, groups ---------------------------------------------------
 
     toggleFilter(key) {
         this.state.filter = this.state.filter === key ? null : key;
@@ -223,30 +254,23 @@ export class GroupsNotebook extends Component {
 
     selectGroup(groupId) {
         this.state.groupId = groupId;
-        this.load();
+        return this.load();
     }
 
-    onDateChange(ev) {
-        const value = ev.target.value;
-        this.state.date = value && value !== this.state.data.today ? value : null;
-        this.load();
+    onBoxClick(box) {
+        // Phone: a tap unfolds the box; desktop: the whole page follows the group.
+        if (this.ui.isSmall) {
+            this.state.boxOpen[box.group_id] = !this.state.boxOpen[box.group_id];
+        } else if (this.state.groupId !== box.group_id) {
+            this.selectGroup(box.group_id);
+        }
     }
 
-    backToToday() {
-        this.state.date = null;
-        this.load();
-    }
-
-    onSearchInput(ev) {
-        this.state.search = ev.target.value;
-        clearTimeout(this.searchTimer);
-        this.searchTimer = setTimeout(() => this.load(), SEARCH_DELAY_MS);
-    }
-
-    clearSearch() {
-        this.state.search = "";
-        clearTimeout(this.searchTimer);
-        this.load();
+    onBoxKeydown(box, ev) {
+        if (ev.key === "Enter" || ev.key === " ") {
+            ev.preventDefault();
+            this.onBoxClick(box);
+        }
     }
 
     // ---- rows ------------------------------------------------------------
@@ -262,12 +286,12 @@ export class GroupsNotebook extends Component {
         }
     }
 
-    toggleClosed() {
-        this.state.closedOpen = !this.state.closedOpen;
-    }
-
     toggleContext(item) {
         this.state.contextOpen[item.id] = !this.state.contextOpen[item.id];
+    }
+
+    toggleClosed() {
+        this.state.closedOpen = !this.state.closedOpen;
     }
 
     async run(item, method, kwargs = {}) {
@@ -397,4 +421,8 @@ export class GroupsNotebook extends Component {
     }
 }
 
-registry.category("actions").add("kh_wa_inbox.notebook", GroupsNotebook);
+registry.category(DASHBOARD_SECTIONS).add(
+    "whatsapp",
+    { component: WhatsAppSection, title: "قروبات الواتساب" },
+    { sequence: 10 }
+);

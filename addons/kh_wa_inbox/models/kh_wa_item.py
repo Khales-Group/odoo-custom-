@@ -7,6 +7,7 @@ from datetime import timedelta
 
 from odoo import api, fields, models
 
+from .kh_wa_board import duration_text
 from .kh_wa_tools import (
     arabic_age,
     dubai_day_bounds,
@@ -453,11 +454,17 @@ class KhWaItem(models.Model):
         today in Dubai. group_id: only this group. search: also return up to
         50 matching items, closed ones included.
         """
+        return self._build_notebook(date, group_id, search)[0]
+
+    def _build_notebook(self, date, group_id, search, with_week=False):
+        """(get_notebook's result, what get_dashboard needs to add to it).
+        with_week also fetches the items closed since Monday (Dubai)."""
         today = dubai_today()
         day = parse_date(date) or today
         now = utc_now()
         is_manager = self.env.user.has_group("kh_wa_inbox.group_kh_wa_manager")
-        group_domain = [("group_id", "=", int(group_id))] if group_id else []
+        group_id = int(group_id) if group_id else False
+        group_domain = [("group_id", "=", group_id)] if group_id else []
         fetch = self._notebook_fetch_fields(is_manager)
 
         open_items = self.search_fetch(
@@ -468,6 +475,14 @@ class KhWaItem(models.Model):
             group_domain + [("state", "in", CLOSED_STATES), ("done_at", ">=", start), ("done_at", "<", end)],
             fetch, order="done_at desc, id desc",
         )
+        week_start = today - timedelta(days=today.weekday())  # Monday
+        week_start_utc = dubai_day_bounds(week_start)[0]
+        closed_week = self.browse()
+        if with_week:
+            closed_week = self.search_fetch(
+                group_domain + [("state", "in", CLOSED_STATES), ("done_at", ">=", week_start_utc)],
+                fetch, order="done_at desc, id desc",
+            )
         found = self.browse()
         search = (search or "").strip()
         if len(search) >= 2:
@@ -478,7 +493,7 @@ class KhWaItem(models.Model):
                                 ("assignee_id.name", "ilike", search)],
                 fetch, order="asked_at desc, id desc", limit=SEARCH_LIMIT,
             )
-        payloads = self._notebook_payloads(open_items | closed_items | found, now, today, is_manager)
+        payloads = self._notebook_payloads(open_items | closed_items | closed_week | found, now, today, is_manager)
 
         cutoff = today + timedelta(days=7)
         counters = {"needs_manager": 0, "urgent": 0, "overdue": 0, "open": 0}
@@ -502,7 +517,9 @@ class KhWaItem(models.Model):
         needs_manager.sort(key=lambda p: not p["urgent"])
         upcoming.sort(key=lambda p: p["due_date"])
 
-        groups = self.env["kh.wa.group"].search_fetch([], ["name", "color", "category", "sequence"])
+        groups = self.env["kh.wa.group"].search_fetch(
+            [], ["name", "color", "category", "sequence", "last_message_at"],
+        )
         open_counts = dict(self._read_group([("state", "in", OPEN_STATES)], ["group_id"], ["__count"]))
         group_list = [
             {"id": g.id, "name": g.name, "color": g.color, "category": g.category, "open_count": open_counts.get(g, 0)}
@@ -514,7 +531,7 @@ class KhWaItem(models.Model):
             for gid, items in sorted(open_by_group.items(), key=lambda kv: group_order.get(kv[0], len(group_order)))
         ]
 
-        return {
+        result = {
             "today": fields.Date.to_string(today),
             "date": fields.Date.to_string(day),
             "is_manager": is_manager,
@@ -533,6 +550,12 @@ class KhWaItem(models.Model):
             },
             "search_results": [payloads[item.id] for item in found] if len(search) >= 2 else False,
         }
+        context = {
+            "today": today, "day": day, "now": now, "is_manager": is_manager, "group_id": group_id,
+            "group_domain": group_domain, "week_start": week_start, "week_start_utc": week_start_utc,
+            "open_items": open_items, "closed_week": closed_week, "payloads": payloads, "groups": groups,
+        }
+        return result, context
 
     @api.model
     def _notebook_fetch_fields(self, is_manager):
@@ -582,6 +605,8 @@ class KhWaItem(models.Model):
                 "age": arabic_age(item.asked_at, now),
                 "due_date": fields.Date.to_string(item.due_date) or False,
                 "done_at": fields.Datetime.to_string(item.done_at) or False,
+                "took": duration_text((item.done_at - item.asked_at).total_seconds())
+                if item.done_at and item.asked_at and item.state in CLOSED_STATES else "",
                 "done_note": item.done_note or "",
                 "source_text": item.source_text or "",
                 "context_text": item.context_text or "",

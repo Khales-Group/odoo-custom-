@@ -173,23 +173,55 @@ def _ar_count(n, one, two, few, many):
     return f"{n} {many}"
 
 
-def arabic_age(then, now=None):
+def arabic_age(then, now=None, prefix="منذ"):
+    """'منذ 3 أيام' (or 'قبل 4 دقائق' with prefix='قبل')."""
     if not then:
         return ""
     minutes = int(((now or utc_now()) - then).total_seconds() // 60)
     if minutes < 1:
         return "الآن"
     if minutes < 60:
-        return "منذ " + _ar_count(minutes, "دقيقة", "دقيقتين", "دقائق", "دقيقة")
+        return f"{prefix} " + _ar_count(minutes, "دقيقة", "دقيقتين", "دقائق", "دقيقة")
     hours = minutes // 60
     if hours < 24:
-        return "منذ " + _ar_count(hours, "ساعة", "ساعتين", "ساعات", "ساعة")
-    days = hours // 24
+        return f"{prefix} " + _ar_count(hours, "ساعة", "ساعتين", "ساعات", "ساعة")
+    return f"{prefix} " + arabic_days(hours // 24)
+
+
+def arabic_days(days):
+    """'يومين', '3 أيام', 'شهر'... (without 'منذ')."""
     if days < 30:
-        return "منذ " + _ar_count(days, "يوم", "يومين", "أيام", "يوماً")
+        return _ar_count(days, "يوم", "يومين", "أيام", "يوماً")
     if days < 365:
-        return "منذ " + _ar_count(min(days // 30, 11), "شهر", "شهرين", "أشهر", "شهراً")
-    return "منذ " + _ar_count(days // 365, "سنة", "سنتين", "سنوات", "سنة")
+        return _ar_count(min(days // 30, 11), "شهر", "شهرين", "أشهر", "شهراً")
+    return _ar_count(days // 365, "سنة", "سنتين", "سنوات", "سنة")
+
+
+# ---------------------------------------------------------------------------
+# When the bot last delivered data (the dashboard's "آخر تحديث للبيانات")
+# ---------------------------------------------------------------------------
+
+LAST_SYNC_PARAM = "kh_wa_inbox.last_sync_at"
+
+
+def stamp_last_sync(env):
+    """Stored at most once a minute: every ir.config_parameter write clears
+    Odoo's caches, and the header only shows minutes anyway."""
+    params = env["ir.config_parameter"].sudo()
+    now = utc_now()
+    try:
+        last = parse_utc_datetime(params.get_param(LAST_SYNC_PARAM))
+    except ValueError:
+        last = False
+    if not last or not timedelta(0) <= now - last < timedelta(minutes=1):
+        params.set_param(LAST_SYNC_PARAM, now.strftime("%Y-%m-%d %H:%M:%S"))
+
+
+def read_last_sync(env):
+    try:
+        return parse_utc_datetime(env["ir.config_parameter"].sudo().get_param(LAST_SYNC_PARAM))
+    except ValueError:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -205,10 +237,12 @@ def run_batch(model, rows, key_of, handler):
     {"index", "key", "error", "saved"}: saved=True is only a warning about a
     row that was stored anyway (e.g. an unknown assignee login).
     Never None in the result: Odoo's XML-RPC can't send it.
+    When at least one row went through, the time is kept as the last sync.
     """
     ids, errors = [], []
     if not isinstance(rows, (list, tuple)):
         return {"ids": ids, "errors": [{"index": False, "key": False, "error": "rows must be a list", "saved": False}]}
+    succeeded = 0
     for index, row in enumerate(rows):
         key = (key_of(row) if isinstance(row, dict) else False) or False
         warnings = []
@@ -221,9 +255,12 @@ def run_batch(model, rows, key_of, handler):
             _logger.warning("%s: row %s (%s) skipped: %s", model._name, index, key, e)
             errors.append({"index": index, "key": key, "error": str(e) or type(e).__name__, "saved": False})
             continue
+        succeeded += 1
         if record_id:
             ids.append(record_id)
         for warning in warnings:
             _logger.info("%s: row %s (%s): %s", model._name, index, key, warning)
             errors.append({"index": index, "key": key, "error": warning, "saved": True})
+    if succeeded:
+        stamp_last_sync(model.env)
     return {"ids": ids, "errors": errors}

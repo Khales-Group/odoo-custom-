@@ -10,6 +10,7 @@ With --wa-inbox the same is done for kh_wa_inbox (مفكرة القروبات), 
 WhatsApp bot's user (wa_login / wa_key):
 
     python scripts/staging_check.py --wa-inbox               # staging: full API test
+    python scripts/staging_check.py --wa-inbox --read-only   # staging: only checks that write nothing
     python scripts/staging_check.py --wa-inbox --install     # also install kh_wa_inbox first if missing
     python scripts/staging_check.py --wa-inbox --production  # production: read-only checks
 
@@ -235,7 +236,48 @@ def check_wa_setup(bot, report):
     report.check("the bot's user is a notebook manager", notebook["is_manager"],
                  "add it to 'مفكرة القروبات / المدير'")
     print(f"  (quick-done threshold: {notebook['quick_done_minutes']} minutes)")
+    check_wa_dashboard(bot, report, notebook)
     return notebook
+
+
+WA_TILES = {"needs_manager", "urgent", "overdue", "open", "closed_week", "avg_close"}
+STATUS_ORDER = {"red": 0, "amber": 1, "green": 2}
+
+
+def check_wa_dashboard(bot, report, notebook):
+    """Read-only: the follow-up dashboard's numbers agree with each other."""
+    print("\n== Follow-up dashboard (get_dashboard, read-only)")
+    start = time.perf_counter()
+    board = bot.call("kh.wa.item", "get_dashboard")
+    elapsed = time.perf_counter() - start
+    report.check(f"get_dashboard round trip under 1 s ({elapsed:.2f} s)", elapsed < 1.0)
+    report.check("same seven sections as get_notebook", set(board["sections"]) == WA_SECTIONS)
+    report.check("six tiles", set(board["kpis"]) == WA_TILES, str(sorted(board["kpis"])))
+    sync = board["last_sync"]
+    print(f"  (last sync: {sync['label']}, level {sync['level']})")
+    report.check("last sync has a label and a level", sync["label"] and sync["level"] in ("ok", "warn", "late"))
+    kpis, boxes, counters = board["kpis"], board["boxes"], board["counters"]
+    for key in ("needs_manager", "urgent", "overdue", "open"):
+        total = sum(box["counts"][key] for box in boxes)
+        report.check(f"tile '{key}' = counter = sum of the boxes ({kpis[key]['value']})",
+                     kpis[key]["value"] == counters[key] == notebook["counters"][key] == total,
+                     f"tile {kpis[key]['value']}, counter {counters[key]}, boxes {total}")
+    report.check("closed this week = its list",
+                 kpis["closed_week"]["value"] == len(board["closed_week"]) or len(board["closed_week"]) == 200)
+    wrong = [box["name"] for box in boxes
+             if (box["status"] == "red") != bool(box["counts"]["urgent"] or box["counts"]["needs_manager"]
+                                                 or box["counts"]["overdue"])]
+    report.check("each box's status matches its numbers", not wrong, str(wrong))
+    order = [(box["compact"], STATUS_ORDER[box["status"]]) for box in boxes]
+    report.check("boxes: needing attention first, one-line boxes last", order == sorted(order), str(order))
+    report.check("at most 3 items per box, the rest as '+N'",
+                 all(len(b["top"]) <= 3 and b["more"] == max(b["counts"]["open"] - 3, 0) for b in boxes))
+    if boxes:
+        first = boxes[0]
+        picked = bot.call("kh.wa.item", "get_dashboard", group_id=first["group_id"])
+        report.check(f"picking a group narrows everything to it ({first['name']})",
+                     [b["group_id"] for b in picked["boxes"]] == [first["group_id"]]
+                     and picked["kpis"]["open"]["value"] == first["counts"]["open"], str(picked["kpis"]["open"]))
 
 
 def simulate_bot(bot, report, threshold):
@@ -309,6 +351,16 @@ def simulate_bot(bot, report, threshold):
 
         notebook = bot.call("kh.wa.item", "get_notebook", group_id=group_id)
         report.check("get_notebook(group) has the seven sections", set(notebook["sections"]) == WA_SECTIONS)
+        bot.call("kh.wa.group", "upsert_groups", [{"wa_chat_id": chat, "last_message_at": utc(asked + timedelta(hours=2))}])
+        board = bot.call("kh.wa.item", "get_dashboard", group_id=group_id)
+        box = board["boxes"][0] if board["boxes"] else {}
+        report.check("get_dashboard(group): its box, with last_message_at",
+                     box.get("group_id") == group_id and box.get("last_message_at") == utc(asked + timedelta(hours=2)),
+                     str(box.get("last_message_at")))
+        open_ids = bot.call("kh.wa.item", "search", [("group_id", "=", group_id), ("state", "in", ["open", "waiting"])])
+        report.check("... its box counts the group's open items", box.get("counts", {}).get("open") == len(open_ids))
+        report.check("... and the upserts refreshed the last sync", board["last_sync"]["level"] == "ok",
+                     str(board["last_sync"]))
         start = time.perf_counter()
         bot.call("kh.wa.item", "get_notebook")
         elapsed = time.perf_counter() - start
@@ -328,6 +380,7 @@ def main():
     parser.add_argument("--production", action="store_true", help="read-only checks, creates nothing")
     parser.add_argument("--install", action="store_true", help="install the module first if missing")
     parser.add_argument("--wa-inbox", action="store_true", help="test kh_wa_inbox as the WhatsApp bot")
+    parser.add_argument("--read-only", action="store_true", help="with --wa-inbox: only checks that write nothing")
     args = parser.parse_args()
     if args.wa_inbox:
         return main_wa_inbox(args)
@@ -405,8 +458,8 @@ def main_wa_inbox(args):
     except xmlrpc.client.Fault as e:
         report.check("setup", False, e.faultString.strip().splitlines()[-1])
         notebook = None
-    if args.production:
-        print("\n(production: bot flow skipped, nothing created)")
+    if args.production or args.read_only:
+        print(f"\n({'production' if args.production else 'read-only'}: bot flow skipped, nothing created)")
     elif notebook:
         simulate_bot(bot, report, notebook["quick_done_minutes"])
     print(f"\n{report.passed} passed, {report.failed} failed")

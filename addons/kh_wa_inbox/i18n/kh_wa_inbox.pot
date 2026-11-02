@@ -6,8 +6,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 19.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-02 08:00+0000\n"
-"PO-Revision-Date: 2026-11-02 08:00+0000\n"
+"POT-Creation-Date: 2026-11-02 12:00+0000\n"
+"PO-Revision-Date: 2026-11-02 12:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: \n"
 "MIME-Version: 1.0\n"
@@ -206,6 +206,11 @@ msgid "Created On"
 msgstr ""
 
 #. module: kh_wa_inbox
+#: model:ir.ui.menu,name:kh_wa_inbox.menu_kh_followup_dashboard
+msgid "Dashboard"
+msgstr ""
+
+#. module: kh_wa_inbox
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_day__date
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_day_search
 msgid "Date"
@@ -285,6 +290,12 @@ msgstr ""
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_day__quick_done_count
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_day_form
 msgid "Finished Within the Threshold"
+msgstr ""
+
+#. module: kh_wa_inbox
+#: model:ir.actions.client,name:kh_wa_inbox.action_kh_followup_dashboard
+#: model:ir.ui.menu,name:kh_wa_inbox.menu_kh_wa_root
+msgid "Follow-up Dashboard"
 msgstr ""
 
 #. module: kh_wa_inbox
@@ -382,6 +393,11 @@ msgstr ""
 #. module: kh_wa_inbox
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__kind
 msgid "Kind"
+msgstr ""
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__last_message_at
+msgid "Last Message At"
 msgstr ""
 
 #. module: kh_wa_inbox
@@ -488,11 +504,6 @@ msgstr ""
 #. module: kh_wa_inbox
 #: model_terms:ir.actions.act_window,help:kh_wa_inbox.action_kh_wa_group
 msgid "No groups yet"
-msgstr ""
-
-#. module: kh_wa_inbox
-#: model:ir.ui.menu,name:kh_wa_inbox.menu_kh_wa_notebook
-msgid "Notebook"
 msgstr ""
 
 #. module: kh_wa_inbox
@@ -655,6 +666,11 @@ msgstr ""
 #. module: kh_wa_inbox
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__done_note
 msgid "Result"
+msgstr ""
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_group__last_message_at
+msgid "Sent by the bot with upsert_groups."
 msgstr ""
 
 #. module: kh_wa_inbox

@@ -185,8 +185,10 @@
         </field>
     </record>
 
-    <record id="action_kh_wa_notebook" model="ir.actions.client">
-        <field name="name">مفكرة القروبات</field>
-        <field name="tag">kh_wa_inbox.notebook</field>
+    <!-- The follow-up dashboard (frame + parts registered in the
+         kh_followup_dashboard_sections registry; this module adds WhatsApp). -->
+    <record id="action_kh_followup_dashboard" model="ir.actions.client">
+        <field name="name">Follow-up Dashboard</field>
+        <field name="tag">kh_followup_dashboard</field>
     </record>
 </odoo>

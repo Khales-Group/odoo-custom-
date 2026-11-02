@@ -1,0 +1,160 @@
+// لوحة المتابعة: the frame. Calm and tidy: colours come from Bootstrap's CSS
+// variables (dark mode works); colour is only used where it means something.
+// The page is RTL, so spacing uses logical properties (Bootstrap's me-/ms-
+// utilities are physical in Odoo's LTR build).
+
+.o_kh_fd {
+    --kh-paper: color-mix(in srgb, var(--bs-body-bg, #fff) 96%, #e9dcc0);
+    --kh-card: var(--bs-body-bg, #fff);
+    --kh-rule: var(--bs-border-color-translucent, rgba(0, 0, 0, 0.1));
+    --kh-line: var(--bs-border-color, #dee2e6);
+    --kh-text: var(--bs-body-color, #212529);
+    --kh-muted: var(--bs-secondary-color, #6c757d);
+    --kh-red: var(--bs-danger, #d23f3a);
+    --kh-red-text: var(--bs-danger-text-emphasis, #842029);
+    --kh-red-bg: var(--bs-danger-bg-subtle, #f8d7da);
+    --kh-amber-text: var(--bs-warning-text-emphasis, #664d03);
+    --kh-amber-bg: var(--bs-warning-bg-subtle, #fff3cd);
+    --kh-green-text: var(--bs-success-text-emphasis, #0a3622);
+    --kh-green-bg: var(--bs-success-bg-subtle, #d1e7dd);
+
+    height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    background: var(--kh-paper);
+    color: var(--kh-text);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    text-align: start;
+
+    button {
+        font: inherit;
+        color: inherit;
+    }
+}
+
+.o_kh_fd_page {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 1.5rem 1.25rem 4rem;
+}
+
+.o_kh_fd_header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--kh-line);
+}
+
+.o_kh_fd_title {
+    margin: 0;
+    font-size: 1.6rem;
+    font-weight: 700;
+}
+
+.o_kh_fd_subtitle {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 1rem;
+    margin-top: 0.15rem;
+    color: var(--kh-muted);
+}
+
+.o_kh_fd_note {
+    &.o_kh_fd_note_warn {
+        color: var(--kh-amber-text);
+    }
+
+    &.o_kh_fd_note_late {
+        color: var(--kh-red-text);
+    }
+}
+
+.o_kh_fd_alert {
+    margin-inline-start: 0.5rem;
+    padding: 0 0.5rem;
+    border-radius: 999px;
+    background: var(--kh-red-bg);
+    font-weight: 600;
+}
+
+.o_kh_fd_tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.o_kh_fd_field {
+    min-height: 2.25rem;
+    border: 1px solid var(--kh-line);
+    border-radius: 0.375rem;
+    background: var(--kh-card);
+    color: var(--kh-text);
+    padding: 0.2rem 0.6rem;
+
+    &:focus-within,
+    &:focus {
+        border-color: var(--kh-text);
+        outline: none;
+    }
+}
+
+.o_kh_fd_search {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 16rem;
+
+    input {
+        flex: 1 1 auto;
+        min-width: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        outline: none;
+    }
+}
+
+.o_kh_fd_link {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: var(--kh-muted);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+    cursor: pointer;
+}
+
+.o_kh_fd_part {
+    margin-top: 1.75rem;
+}
+
+.o_kh_fd_part_title {
+    margin: 0 0 0.75rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--kh-muted);
+}
+
+@media (max-width: 767.98px) {
+    .o_kh_fd_page {
+        padding: 1rem 1rem 3rem;
+    }
+
+    .o_kh_fd_title {
+        font-size: 1.35rem;
+    }
+
+    .o_kh_fd_tools,
+    .o_kh_fd_search {
+        width: 100%;
+    }
+
+    .o_kh_fd_search {
+        flex: 1 1 auto;
+    }
+}

@@ -11,6 +11,7 @@
                 <field name="category"/>
                 <field name="project_id" optional="show"/>
                 <field name="open_count"/>
+                <field name="last_message_at" optional="show"/>
                 <field name="wa_chat_id" optional="hide"/>
                 <field name="active" column_invisible="True"/>
             </list>
@@ -41,6 +42,7 @@
                         </group>
                         <group>
                             <field name="wa_chat_id"/>
+                            <field name="last_message_at"/>
                             <field name="sequence"/>
                             <field name="active" invisible="1"/>
                         </group>

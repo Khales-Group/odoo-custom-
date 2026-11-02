@@ -7,7 +7,7 @@ from odoo import fields
 from odoo.exceptions import AccessError
 from odoo.tests import TransactionCase, new_test_user, tagged
 
-from odoo.addons.kh_wa_inbox.models.kh_wa_tools import dubai_date, dubai_today, mask_text
+from odoo.addons.kh_wa_inbox.models.kh_wa_tools import dubai_date, dubai_today, mask_text, read_last_sync
 
 _logger = logging.getLogger(__name__)
 
@@ -260,9 +260,94 @@ class TestKhWaInbox(TransactionCase):
         self.env.flush_all()
         self.env.invalidate_all()
 
-        start = time.perf_counter()
-        data = self.Item.get_notebook()
-        elapsed = time.perf_counter() - start
-        _logger.info("get_notebook with 5000 items: %.3f s", elapsed)
-        self.assertGreaterEqual(data["counters"]["open"], 500)
-        self.assertLess(elapsed, 1.0)
+        for method in ("get_notebook", "get_dashboard"):
+            self.env.invalidate_all()
+            start = time.perf_counter()
+            data = getattr(self.Item, method)()
+            elapsed = time.perf_counter() - start
+            _logger.info("%s with 5000 items: %.3f s", method, elapsed)
+            self.assertGreaterEqual(data["counters"]["open"], 500)
+            self.assertLess(elapsed, 1.0, method)
+
+    # ------------------------------------------------------------------
+    # The follow-up dashboard
+    # ------------------------------------------------------------------
+
+    def test_get_dashboard(self):
+        now = fields.Datetime.now()
+        today = dubai_today()
+        week_start = today - timedelta(days=today.weekday())
+        self.env["kh.wa.group"].with_user(self.manager).upsert_groups([
+            {"wa_chat_id": CHAT, "last_message_at": fields.Datetime.to_string(now)},
+            {"wa_chat_id": "test-calm@g.us", "name": "Calm (test)", "sequence": 1},
+            {"wa_chat_id": "test-old@g.us", "name": "Old (test)", "sequence": 2},
+            {"wa_chat_id": "test-quiet@g.us", "name": "Quiet (test)", "sequence": 3,
+             "last_message_at": "2020-01-01 00:00:00"},
+        ])
+        self.upsert(
+            self.row("d1", needs_manager=True),
+            self.row("d2", urgent=True),
+            self.row("d3"), self.row("d4"), self.row("d5"),
+            self.row("d6", state="done", done_at=fields.Datetime.to_string(now)),
+            self.row("c1", wa_chat_id="test-calm@g.us"),
+            self.row("o1", wa_chat_id="test-old@g.us",
+                     asked_at=fields.Datetime.to_string(now - timedelta(days=5))),
+        )
+        self.env["kh.wa.day"].with_user(self.manager).upsert_days(
+            [{"date": str(today), "wa_chat_id": CHAT, "summary": "first line\nsecond", "message_count": 140}]
+        )
+
+        data = self.Item.get_dashboard()
+        boxes = {box["group_id"]: box for box in data["boxes"]}
+        ids = {name: self.env["kh.wa.group"].search([("wa_chat_id", "=", chat)]).id for name, chat in
+               (("legal", CHAT), ("calm", "test-calm@g.us"), ("old", "test-old@g.us"), ("quiet", "test-quiet@g.us"))}
+        self.assertEqual(
+            [boxes[ids[n]]["status"] for n in ("legal", "old", "calm", "quiet")], ["red", "amber", "green", "green"],
+        )
+        self.assertTrue(boxes[ids["quiet"]]["compact"], "nothing open, no messages this week: one line")
+        order = [box["group_id"] for box in data["boxes"]]
+        self.assertLess(order.index(ids["legal"]), order.index(ids["old"]), "needs attention first")
+        self.assertLess(order.index(ids["old"]), order.index(ids["calm"]))
+        compact = [box["compact"] for box in data["boxes"]]
+        self.assertEqual(compact, sorted(compact), "one-line boxes at the end")
+
+        legal = boxes[ids["legal"]]
+        self.assertEqual(legal["counts"], {"open": 5, "urgent": 1, "needs_manager": 1, "overdue": 0})
+        self.assertEqual([t["id"] for t in legal["top"]][:2], [self.item("d1").id, self.item("d2").id])
+        self.assertEqual(legal["more"], 2)
+        self.assertTrue(legal["last_message_at"])
+        self.assertEqual((legal["day"]["message_count"], legal["day"]["first_line"]), (140, "first line"))
+        opened_this_week = dubai_date(self.asked) >= week_start
+        self.assertEqual(legal["week"], {"opened": 6 if opened_this_week else 0, "closed": 1})
+
+        picked = self.Item.get_dashboard(group_id=self.group.id)
+        kpis = picked["kpis"]
+        self.assertEqual(
+            [kpis[k]["value"] for k in ("needs_manager", "urgent", "overdue", "open", "closed_week")], [1, 1, 0, 5, 1],
+        )
+        self.assertTrue(kpis["needs_manager"]["oldest"])
+        self.assertEqual(kpis["avg_close"]["duration"], {"value": "3", "unit": "ساعات"})
+        self.assertEqual([box["group_id"] for box in picked["boxes"]], self.group.ids)
+        self.assertEqual(picked["group_days"][0]["lines"], ["first line", "second"])
+        self.assertEqual(len(picked["closed_week"]), 1)
+        self.assertEqual(set(picked["sections"]), set(self.Item.get_notebook()["sections"]))
+
+        self.assertEqual(picked["last_sync"]["level"], "ok")
+        self.assertTrue(read_last_sync(self.env))
+
+    def test_dashboard_for_a_user(self):
+        self.upsert(self.row("u1", assignee_login=self.user_a.login, urgent=True), self.row("u2", urgent=True))
+        self.env["kh.wa.day"].with_user(self.manager).upsert_days(
+            [{"date": str(dubai_today()), "wa_chat_id": CHAT, "summary": "secret", "message_count": 9}]
+        )
+        data = self.env["kh.wa.item"].with_user(self.user_a).get_dashboard(group_id=self.group.id)
+        self.assertEqual((data["kpis"]["open"]["value"], data["kpis"]["urgent"]["value"]), (1, 1))
+        self.assertEqual(data["boxes"][0]["counts"]["open"], 1)
+        self.assertFalse(data["boxes"][0]["day"], "no day pages for users")
+        self.assertEqual(data["group_days"], [])
+
+    def test_last_message_only_moves_forward(self):
+        Group = self.env["kh.wa.group"].with_user(self.manager)
+        Group.upsert_groups([{"wa_chat_id": CHAT, "last_message_at": "2026-11-02 08:00:00"}])
+        Group.upsert_groups([{"wa_chat_id": CHAT, "last_message_at": "2026-11-01 08:00:00"}])
+        self.assertEqual(fields.Datetime.to_string(self.group.last_message_at), "2026-11-02 08:00:00")
