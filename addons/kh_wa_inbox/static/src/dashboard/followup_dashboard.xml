@@ -2,43 +2,68 @@
 <templates xml:space="preserve">
 
     <t t-name="kh_wa_inbox.FollowupDashboard">
-        <div class="o_kh_fd" dir="rtl" lang="ar">
-            <div class="o_kh_fd_page">
-                <header class="o_kh_fd_header">
-                    <div class="o_kh_fd_heading">
-                        <h1 class="o_kh_fd_title">لوحة المتابعة</h1>
-                        <div class="o_kh_fd_subtitle">
-                            <span t-esc="pageDate"/>
-                            <button t-if="state.date" class="o_kh_fd_link" t-on-click="backToToday">العودة لليوم</button>
-                            <t t-foreach="notes" t-as="note" t-key="note_index">
-                                <span t-attf-class="o_kh_fd_note o_kh_fd_note_{{note.level or 'ok'}}">
-                                    <t t-esc="note.text"/>
-                                    <b t-if="note.alert" class="o_kh_fd_alert" t-esc="note.alert"/>
-                                </span>
-                            </t>
+        <div t-attf-class="o_kh_fd {{state.drawer ? 'o_kh_fd_drawer_open' : ''}}" dir="rtl" lang="ar">
+            <div class="o_kh_fd_backdrop" t-on-click="closeDrawer"/>
+
+            <!-- Sidebar: one section per part -->
+            <aside class="o_kh_fd_sidebar" aria-label="التنقل">
+                <div class="o_kh_fd_brand">
+                    <div class="o_kh_fd_brand_title">لوحة المتابعة</div>
+                    <div class="o_kh_fd_brand_date" t-esc="pageDate"/>
+                </div>
+                <nav class="o_kh_fd_nav">
+                    <t t-foreach="parts" t-as="p" t-key="p.key">
+                        <section class="o_kh_fd_nav_part">
+                            <h2 class="o_kh_fd_nav_label" t-esc="p.part.title"/>
+                            <t t-component="p.part.Sidebar" store="p.store" partKey="p.key"
+                               active="state.active === p.key" frame="frame"/>
+                        </section>
+                    </t>
+                </nav>
+                <div t-if="notes.length" class="o_kh_fd_sidebar_foot">
+                    <t t-foreach="notes" t-as="note" t-key="note_index">
+                        <div t-attf-class="o_kh_fd_note o_kh_fd_note_{{note.level or 'ok'}}">
+                            <span class="o_kh_fd_note_dot"/>
+                            <span>
+                                <t t-esc="note.text"/>
+                                <b t-if="note.alert" class="o_kh_fd_alert" t-esc="note.alert"/>
+                            </span>
                         </div>
+                    </t>
+                </div>
+            </aside>
+
+            <!-- Main area -->
+            <div class="o_kh_fd_main">
+                <header class="o_kh_fd_topbar">
+                    <button class="o_kh_fd_menu" aria-label="القائمة" t-on-click="openDrawer">
+                        <i class="fa fa-bars"/>
+                    </button>
+                    <div class="o_kh_fd_heading">
+                        <h1 class="o_kh_fd_title">
+                            <span class="o_kh_fd_title_text" t-esc="heading.title"/>
+                            <span t-if="heading.count !== undefined" class="o_kh_fd_title_count" t-esc="heading.count"/>
+                        </h1>
+                        <div t-if="heading.sub" class="o_kh_fd_subtitle" t-esc="heading.sub"/>
                     </div>
                     <div class="o_kh_fd_tools">
+                        <div class="o_kh_fd_field o_kh_fd_search">
+                            <input type="search" placeholder="بحث في البنود…" aria-label="بحث"
+                                   t-att-value="state.searchInput" t-on-input="onSearchInput"/>
+                            <button t-if="state.searchInput" class="o_kh_fd_clear" aria-label="مسح البحث"
+                                    t-on-click="clearSearch">×</button>
+                        </div>
                         <input type="date" class="o_kh_fd_field o_kh_fd_datepick" t-att-value="state.date or today"
                                t-att-max="today" aria-label="فتح صفحة يوم سابق" title="فتح صفحة يوم سابق"
                                t-on-change="onDateChange"/>
-                        <div class="o_kh_fd_field o_kh_fd_search">
-                            <input type="search" placeholder="بحث…" aria-label="بحث"
-                                   t-att-value="state.searchInput" t-on-input="onSearchInput"/>
-                            <button t-if="state.searchInput" class="o_kh_fd_link" aria-label="مسح البحث"
-                                    t-on-click="clearSearch">مسح</button>
-                        </div>
+                        <button t-if="state.date" class="o_kh_fd_link" t-on-click="backToToday">اليوم</button>
                     </div>
                 </header>
-
-                <t t-foreach="sections" t-as="entry" t-key="entry[0]">
-                    <section class="o_kh_fd_part" t-att-data-part="entry[0]">
-                        <h2 t-if="entry[1].title" class="o_kh_fd_part_title" t-esc="entry[1].title"/>
-                        <t t-component="entry[1].component"
-                           date="state.date" search="state.search" tick="state.tick"
-                           setHeaderNote="setHeaderNote"/>
-                    </section>
-                </t>
+                <div class="o_kh_fd_content">
+                    <t t-if="activePart">
+                        <t t-component="activePart.part.Main" store="activePart.store" frame="frame"/>
+                    </t>
+                </div>
             </div>
         </div>
     </t>

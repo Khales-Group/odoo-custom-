@@ -1,21 +1,27 @@
 /** @odoo-module **/
 
 import { registry } from "@web/core/registry";
-import { Component, onMounted, onWillUnmount, useState } from "@odoo/owl";
+import { useService } from "@web/core/utils/hooks";
+import { Component, onMounted, onWillStart, onWillUnmount, useExternalListener, useState } from "@odoo/owl";
 import { dubaiToday, formatLongDay } from "./dates";
 
 /**
- * لوحة المتابعة: a frame for follow-up parts. A module adds a part with
+ * لوحة المتابعة: a sidebar and a main area, shared by follow-up parts.
+ * A module adds a part with
  *
  *     registry.category("kh_followup_dashboard_sections").add("key", {
- *         component: MyPart,   // gets date, search, tick, setHeaderNote
- *         title: "…",          // shown above the part (optional)
+ *         title: "…",                       // its heading in the sidebar
+ *         makeStore: (services) => store,   // services: orm, action, notification
+ *         Sidebar: Component,               // props: store, partKey, active, frame
+ *         Main: Component,                  // props: store, frame
  *     }, { sequence: 10 });
  *
- * The frame owns the header (title, today's date, the day picker, search)
- * and a 60-second refresh tick. Each part loads its own data when date,
- * search or tick change, and can put a line in the header with
- * setHeaderNote(key, { text, level: "ok" | "warn" | "late", alert }).
+ * The store is shared by the part's two components. The frame calls
+ * store.load({ date, search }) at start, every 60 seconds and when the day
+ * or the search change, and reads store.heading ({ title, count, sub }) for
+ * the top bar and store.headerNote ({ text, level, alert }) for the foot of
+ * the sidebar. A part's Sidebar calls frame.open(partKey) when the user
+ * picks one of its entries.
  */
 export const DASHBOARD_SECTIONS = "kh_followup_dashboard_sections";
 const REFRESH_MS = 60 * 1000;
@@ -26,32 +32,48 @@ export class FollowupDashboard extends Component {
     static props = ["*"];
 
     setup() {
-        this.sections = registry.category(DASHBOARD_SECTIONS).getEntries();
+        const services = {
+            orm: useService("orm"),
+            action: useService("action"),
+            notification: useService("notification"),
+        };
+        this.parts = registry
+            .category(DASHBOARD_SECTIONS)
+            .getEntries()
+            .map(([key, part]) => {
+                const store = part.makeStore(services);
+                return { key, part, store, view: useState(store) };
+            });
         this.state = useState({
+            active: this.parts.length ? this.parts[0].key : null,
             date: null, // null = today
             search: "", // what the parts search for (after a short pause)
             searchInput: "",
-            tick: 0,
-            notes: {},
+            drawer: false, // phone: the sidebar is open
         });
-        this.setHeaderNote = (key, note) => {
-            const current = this.state.notes[key];
-            const same = current && note && ["text", "level", "alert"].every((k) => current[k] === note[k]);
-            if (!same) {
-                this.state.notes[key] = note;
-            }
+        // What the parts get to talk to the frame.
+        this.frame = {
+            open: (partKey) => {
+                this.state.active = partKey;
+                this.state.drawer = false;
+                if (this.state.search) {
+                    this.clearSearch();
+                }
+            },
         };
         this.onVisibilityChange = () => {
             if (!document.hidden) {
-                this.refresh();
+                this.reload();
             }
         };
+        useExternalListener(window, "keydown", (ev) => {
+            if (ev.key === "Escape" && this.state.drawer) {
+                this.state.drawer = false;
+            }
+        });
+        onWillStart(() => this.reload());
         onMounted(() => {
-            this.timer = setInterval(() => {
-                if (!document.hidden) {
-                    this.refresh();
-                }
-            }, REFRESH_MS);
+            this.timer = setInterval(() => !document.hidden && this.reload(), REFRESH_MS);
             document.addEventListener("visibilitychange", this.onVisibilityChange);
         });
         onWillUnmount(() => {
@@ -59,6 +81,24 @@ export class FollowupDashboard extends Component {
             clearTimeout(this.searchTimer);
             document.removeEventListener("visibilitychange", this.onVisibilityChange);
         });
+    }
+
+    reload() {
+        const query = { date: this.state.date, search: this.state.search };
+        return Promise.all(this.parts.map((part) => part.view.load(query)));
+    }
+
+    get activePart() {
+        return this.parts.find((part) => part.key === this.state.active);
+    }
+
+    get heading() {
+        const part = this.activePart;
+        return (part && part.view.heading) || { title: "لوحة المتابعة" };
+    }
+
+    get notes() {
+        return this.parts.map((part) => part.view.headerNote).filter(Boolean);
     }
 
     get today() {
@@ -69,21 +109,23 @@ export class FollowupDashboard extends Component {
         return formatLongDay(this.state.date || this.today);
     }
 
-    get notes() {
-        return Object.values(this.state.notes).filter(Boolean);
+    openDrawer() {
+        this.state.drawer = true;
     }
 
-    refresh() {
-        this.state.tick++;
+    closeDrawer() {
+        this.state.drawer = false;
     }
 
     onDateChange(ev) {
         const value = ev.target.value;
         this.state.date = value && value !== this.today ? value : null;
+        this.reload();
     }
 
     backToToday() {
         this.state.date = null;
+        this.reload();
     }
 
     onSearchInput(ev) {
@@ -91,6 +133,7 @@ export class FollowupDashboard extends Component {
         clearTimeout(this.searchTimer);
         this.searchTimer = setTimeout(() => {
             this.state.search = this.state.searchInput.trim();
+            this.reload();
         }, SEARCH_DELAY_MS);
     }
 
@@ -98,6 +141,7 @@ export class FollowupDashboard extends Component {
         clearTimeout(this.searchTimer);
         this.state.searchInput = "";
         this.state.search = "";
+        this.reload();
     }
 }
 

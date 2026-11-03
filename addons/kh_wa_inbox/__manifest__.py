@@ -1,6 +1,6 @@
 {
     "name": "Khales Follow-up Dashboard: WhatsApp Groups",
-    "version": "19.0.1.2.0",
+    "version": "19.0.1.3.0",
     "summary": "لوحة المتابعة: what is asked, decided and promised in the company's WhatsApp groups",
     "description": """
 Khales Follow-up Dashboard: WhatsApp Groups (لوحة المتابعة)
@@ -11,10 +11,12 @@ and promised in the company's WhatsApp groups. Only what needs follow-up is
 kept: open requests, decisions someone is waiting for, deadlines and
 important alerts.
 
-The dashboard is a frame: its parts are registered in the OWL registry
-``kh_followup_dashboard_sections``. This module provides the frame and the
-WhatsApp part (six tiles, one box per group, the follow-up lists); other
-modules can add parts (projects, CRM, ...) the same way.
+The dashboard is a frame with a sidebar: its parts are registered in the OWL
+registry ``kh_followup_dashboard_sections`` (a store, a Sidebar component for
+the part's entries and a Main component for its pages). This module
+provides the frame and the WhatsApp part (overview with six tiles and the
+groups table; lists beside the selected item; my notes); other modules can
+add parts (projects, CRM, ...) the same way.
 
 Odoo never talks to WhatsApp and calls no AI. An external bot reads the
 groups, filters them and pushes ready-made items over XML-RPC, as a user in
@@ -66,6 +68,7 @@ sees anything. No users are added by the module.
             "kh_wa_inbox/static/src/dashboard/followup_dashboard.js",
             "kh_wa_inbox/static/src/dashboard/followup_dashboard.xml",
             "kh_wa_inbox/static/src/whatsapp/wa_section.scss",
+            "kh_wa_inbox/static/src/whatsapp/wa_store.js",
             "kh_wa_inbox/static/src/whatsapp/wa_section.js",
             "kh_wa_inbox/static/src/whatsapp/wa_section.xml",
         ],

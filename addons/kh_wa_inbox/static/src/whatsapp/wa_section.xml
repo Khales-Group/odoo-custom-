@@ -1,284 +1,379 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <templates xml:space="preserve">
 
-    <t t-name="kh_wa_inbox.WhatsAppSection">
-        <div class="o_kh_wa">
-            <div t-if="!state.data" class="o_kh_wa_quiet">
-                تعذّر تحميل بيانات القروبات.
-                <button class="o_kh_fd_link" t-on-click="() => this.load()">إعادة المحاولة</button>
-            </div>
-            <t t-else="">
-                <t t-set="data" t-value="state.data"/>
-                <div t-if="state.failed" class="o_kh_wa_quiet">تعذّر التحديث، يُعرض آخر ما تم تحميله.</div>
-
-                <!-- Six tiles; each picks the list below -->
-                <div class="o_kh_wa_tiles" role="tablist" aria-label="المؤشرات">
-                    <t t-foreach="tiles" t-as="tile" t-key="tile.key">
-                        <t t-set="value" t-value="tileValue(tile)"/>
-                        <button role="tab"
-                                t-attf-class="o_kh_wa_tile o_kh_wa_tile_{{tile.key}} {{!searching and activeTab === tile.key ? 'o_kh_wa_active' : ''}} {{value and value !== '—' ? '' : 'o_kh_wa_zero'}}"
-                                t-att-aria-selected="!searching and activeTab === tile.key ? 'true' : 'false'"
-                                t-on-click="() => this.selectTab(tile.key)">
-                            <span class="o_kh_wa_tile_value">
-                                <t t-esc="value"/>
-                                <small t-if="tileUnit(tile)" t-esc="tileUnit(tile)"/>
-                            </span>
-                            <span class="o_kh_wa_tile_label">
-                                <t t-esc="tile.label"/>
-                                <span t-if="tileNote(tile)" class="o_kh_wa_tile_note"> · <t t-esc="tileNote(tile)"/></span>
-                            </span>
-                        </button>
-                    </t>
-                </div>
-
-                <!-- One compact card per group; a click narrows the page to it -->
-                <div class="o_kh_wa_cards">
-                    <t t-foreach="cards" t-as="box" t-key="box.group_id">
-                        <div t-attf-class="o_kh_wa_card {{box.selected ? 'o_kh_wa_selected' : ''}}"
-                             role="button" tabindex="0" t-att-aria-pressed="box.selected ? 'true' : 'false'"
-                             t-on-click="() => this.selectGroup(box.group_id)"
-                             t-on-keydown="(ev) => this.onCardKeydown(box, ev)">
-                            <span class="o_kh_wa_stripe" t-attf-style="background: {{groupColor(box.color)}}"/>
-                            <b class="o_kh_wa_card_name o_kh_wa_ellipsis" t-esc="box.name" t-att-title="box.name"/>
-                            <div class="o_kh_wa_card_last">
-                                <span t-attf-class="o_kh_wa_status o_kh_wa_status_{{box.status}}">
-                                    <span class="o_kh_wa_status_dot"/><t t-esc="statusLabels[box.status]"/>
-                                </span>
-                                <span class="o_kh_wa_ellipsis">
-                                    <t t-if="box.last_message_at">· آخر رسالة <t t-esc="moment(box.last_message_at)"/></t>
-                                    <t t-else="">· لا رسائل بعد</t>
-                                </span>
-                            </div>
-                            <div class="o_kh_wa_card_numbers">
-                                <t t-foreach="cardNumbers" t-as="number" t-key="number.key">
-                                    <div t-attf-class="o_kh_wa_number {{box.counts[number.key] ? '' : 'o_kh_wa_zero'}} {{number.key === 'overdue' and box.counts.overdue ? 'o_kh_wa_late' : ''}}"
-                                         t-att-title="number.title or number.label">
-                                        <b t-esc="box.counts[number.key]"/>
-                                        <span t-esc="number.label"/>
-                                    </div>
-                                </t>
-                            </div>
-                        </div>
-                    </t>
-                    <t t-foreach="quietCards" t-as="box" t-key="box.group_id">
-                        <button class="o_kh_wa_card o_kh_wa_card_quiet" t-on-click="() => this.selectGroup(box.group_id)">
-                            <span class="o_kh_wa_stripe" t-attf-style="background: {{groupColor(box.color)}}"/>
-                            <b class="o_kh_wa_ellipsis" t-esc="box.name"/>
-                            <span class="o_kh_wa_muted">لا طلبات هذا الأسبوع</span>
-                        </button>
-                    </t>
-                </div>
-
-                <!-- Narrow screens: the picked group's details right under the cards -->
-                <div t-if="selectedBox" class="o_kh_wa_narrow_only">
-                    <t t-call="kh_wa_inbox.WaGroupDetail"><t t-set="box" t-value="selectedBox"/></t>
-                </div>
-
-                <div class="o_kh_wa_layout">
-                    <!-- The list picked by the tiles -->
-                    <section class="o_kh_wa_main">
-                        <div class="o_kh_wa_list_head">
-                            <h3 class="o_kh_wa_list_title">
-                                <t t-esc="listTitle"/>
-                                <span class="o_kh_wa_count" t-esc="listItems.length"/>
-                            </h3>
-                            <span t-if="listNote" class="o_kh_wa_muted" t-esc="listNote"/>
-                            <button t-if="selectedBox" class="o_kh_wa_pill" t-on-click="() => this.selectGroup(selectedBox.group_id)"
-                                    title="عرض كل القروبات">
-                                <span class="o_kh_wa_dot" t-attf-style="background: {{groupColor(selectedBox.color)}}"/>
-                                <t t-esc="selectedBox.name"/>
-                                <span aria-hidden="true">×</span>
-                            </button>
-                        </div>
-                        <div t-if="!listItems.length" class="o_kh_wa_empty" t-esc="emptyText"/>
-                        <t t-elif="groupedList">
-                            <t t-foreach="listGroups" t-as="group" t-key="group.group_id">
-                                <h4 class="o_kh_wa_group_title">
-                                    <span class="o_kh_wa_dot" t-attf-style="background: {{groupColor(group.color)}}"/>
-                                    <t t-esc="group.name"/>
-                                    <span class="o_kh_wa_count" t-esc="group.items.length"/>
-                                </h4>
-                                <div class="o_kh_wa_list o_kh_wa_list_nogroup">
-                                    <t t-foreach="group.items" t-as="item" t-key="item.id">
-                                        <t t-call="kh_wa_inbox.WaRow"/>
-                                    </t>
-                                </div>
-                            </t>
-                        </t>
-                        <div t-else="" t-attf-class="o_kh_wa_list {{state.groupId ? 'o_kh_wa_list_nogroup' : ''}}">
-                            <t t-foreach="listItems" t-as="item" t-key="item.id">
-                                <t t-call="kh_wa_inbox.WaRow"/>
-                            </t>
-                        </div>
-                    </section>
-
-                    <!-- Side column -->
-                    <aside class="o_kh_wa_aside">
-                        <div t-if="selectedBox" class="o_kh_wa_wide_only">
-                            <t t-call="kh_wa_inbox.WaGroupDetail"><t t-set="box" t-value="selectedBox"/></t>
-                        </div>
-
-                        <div t-if="upcoming.length" class="o_kh_wa_panel">
-                            <h3 class="o_kh_wa_panel_title">مواعيد خلال 7 أيام <span class="o_kh_wa_count" t-esc="upcoming.length"/></h3>
-                            <t t-foreach="upcoming" t-as="item" t-key="item.id">
-                                <button class="o_kh_wa_mini" t-on-click="() => this.focusItem(item.id)">
-                                    <span t-attf-class="o_kh_wa_mini_date {{item.is_overdue ? 'o_kh_wa_late' : ''}}" t-esc="day(item.due_date)"/>
-                                    <span class="o_kh_wa_ellipsis" t-esc="item.name"/>
-                                </button>
-                            </t>
-                        </div>
-
-                        <div t-if="!selectedBox and data.sections.day_summary.length" class="o_kh_wa_panel">
-                            <h3 class="o_kh_wa_panel_title">ملخص <t t-esc="dayLabel"/></h3>
-                            <t t-foreach="data.sections.day_summary" t-as="page" t-key="page.group_id">
-                                <div class="o_kh_wa_day">
-                                    <div class="o_kh_wa_day_group">
-                                        <span class="o_kh_wa_dot" t-attf-style="background: {{groupColor(page.group_color)}}"/>
-                                        <b t-esc="page.group_name"/>
-                                    </div>
-                                    <ul t-if="page.lines.length" class="o_kh_wa_day_lines">
-                                        <li t-foreach="page.lines" t-as="line" t-key="line_index" t-esc="line"/>
-                                    </ul>
-                                    <div class="o_kh_wa_day_counts">
-                                        <span>رسائل <b t-esc="page.message_count"/></span>
-                                        <span><t t-esc="quickDoneLabel"/> <b t-esc="page.quick_done_count"/></span>
-                                        <span>زيارات <b t-esc="page.visit_count"/></span>
-                                    </div>
-                                </div>
-                            </t>
-                        </div>
-
-                        <div t-if="data.sections.closed.length" class="o_kh_wa_panel">
-                            <button class="o_kh_wa_panel_title o_kh_wa_fold" t-att-aria-expanded="state.closedOpen ? 'true' : 'false'"
-                                    t-on-click="toggleClosed">
-                                <i t-attf-class="fa {{state.closedOpen ? 'fa-angle-down' : 'fa-angle-left'}}"/>
-                                أُغلق <t t-esc="dayLabel"/>
-                                <span class="o_kh_wa_count" t-esc="data.sections.closed.length"/>
-                            </button>
-                            <t t-if="state.closedOpen">
-                                <t t-foreach="data.sections.closed" t-as="item" t-key="item.id">
-                                    <button class="o_kh_wa_mini o_kh_wa_mini_closed" t-on-click="() => this.focusClosed(item.id)">
-                                        <span class="o_kh_wa_ellipsis" t-esc="item.name"/>
-                                        <span t-if="item.done_note" class="o_kh_wa_ellipsis o_kh_wa_muted" t-esc="item.done_note"/>
-                                    </button>
-                                </t>
-                            </t>
-                        </div>
-
-                        <div class="o_kh_wa_panel">
-                            <h3 class="o_kh_wa_panel_title">ملاحظاتي</h3>
-                            <input type="text" class="o_kh_wa_memo_add" placeholder="أضف ملاحظة…" t-model="state.memoDraft"
-                                   aria-label="أضف ملاحظة" t-on-keydown="onMemoKeydown"/>
-                            <t t-foreach="data.sections.memos" t-as="memo" t-key="memo.id">
-                                <div t-attf-class="o_kh_wa_memo {{memo.pinned ? 'o_kh_wa_pinned' : ''}}">
-                                    <input type="checkbox" class="form-check-input" aria-label="تمت"
-                                           t-on-change="() => this.finishMemo(memo)"/>
-                                    <span class="o_kh_wa_memo_text" t-esc="memo.text"/>
-                                    <button class="o_kh_wa_pin" t-att-title="memo.pinned ? 'إلغاء التثبيت' : 'تثبيت في الأعلى'"
-                                            t-att-aria-pressed="memo.pinned ? 'true' : 'false'"
-                                            t-on-click="() => this.togglePin(memo)">
-                                        <i class="fa fa-thumb-tack"/>
-                                    </button>
-                                </div>
-                            </t>
-                        </div>
-                    </aside>
-                </div>
+    <!-- ===== Sidebar entries ===== -->
+    <t t-name="kh_wa_inbox.WhatsAppSidebar">
+        <div class="o_kh_wa_nav">
+            <t t-foreach="views" t-as="v" t-key="v.key">
+                <t t-set="n" t-value="count(v.key)"/>
+                <button t-attf-class="o_kh_fd_nav_item {{isCurrent(v.key) ? 'o_kh_fd_current' : ''}}"
+                        t-att-aria-current="isCurrent(v.key) ? 'page' : false" t-on-click="() => this.go(v.key)">
+                    <span class="o_kh_fd_nav_text" t-esc="v.label"/>
+                    <span t-if="n !== null and n !== undefined"
+                          t-attf-class="o_kh_fd_badge {{v.key === 'overdue' and n ? 'o_kh_fd_badge_red' : ''}} {{n ? '' : 'o_kh_fd_badge_zero'}}"
+                          t-esc="n"/>
+                </button>
+            </t>
+            <div t-if="store.navGroups.length" class="o_kh_fd_nav_sub">القروبات</div>
+            <t t-foreach="store.navGroups" t-as="box" t-key="box.group_id">
+                <button t-attf-class="o_kh_fd_nav_item {{isCurrentGroup(box) ? 'o_kh_fd_current' : ''}} {{box.counts.open ? '' : 'o_kh_fd_nav_quiet'}}"
+                        t-att-aria-current="isCurrentGroup(box) ? 'page' : false" t-on-click="() => this.openGroup(box)">
+                    <span class="o_kh_fd_swatch" t-attf-style="background: {{store.groupColor(box.color)}}"/>
+                    <span class="o_kh_fd_nav_text" t-esc="box.name"/>
+                    <span t-if="box.counts.open" t-attf-class="o_kh_fd_badge o_kh_fd_badge_{{box.status}}"
+                          t-att-title="statusLabel(box)" t-esc="box.counts.open"/>
+                </button>
             </t>
         </div>
     </t>
 
-    <!-- The picked group, in the side column (desktop) or under the cards (phone). -->
-    <t t-name="kh_wa_inbox.WaGroupDetail">
-        <div class="o_kh_wa_panel o_kh_wa_group_detail">
-            <span class="o_kh_wa_stripe" t-attf-style="background: {{groupColor(box.color)}}"/>
-            <div class="o_kh_wa_detail_head">
-                <h3 class="o_kh_wa_panel_title o_kh_wa_ellipsis" t-esc="box.name"/>
-                <button class="o_kh_wa_close" title="عرض كل القروبات" aria-label="عرض كل القروبات"
-                        t-on-click="() => this.selectGroup(box.group_id)">×</button>
+    <!-- ===== Main area ===== -->
+    <t t-name="kh_wa_inbox.WhatsAppMain">
+        <div t-attf-class="o_kh_wa o_kh_wa_mode_{{store.data ? store.mode : 'none'}}">
+            <div t-if="!store.data" class="o_kh_wa_message">
+                تعذّر تحميل بيانات القروبات.
+                <button class="o_kh_fd_link" t-on-click="() => this.store.load()">إعادة المحاولة</button>
             </div>
-            <dl class="o_kh_wa_facts">
-                <dt>آخر رسالة</dt>
-                <dd><t t-if="box.last_message_at" t-esc="moment(box.last_message_at)"/><t t-else="">—</t></dd>
-                <dt>هذا الأسبوع</dt>
-                <dd>فُتح <b t-esc="box.week.opened"/> · أُغلق <b t-esc="box.week.closed"/></dd>
-                <t t-if="box.day">
-                    <dt t-esc="dayLabel"/>
-                    <dd><b t-esc="box.day.message_count"/> رسالة · <t t-esc="quickDoneLabel"/> <b t-esc="box.day.quick_done_count"/> · زيارات <b t-esc="box.day.visit_count"/></dd>
-                </t>
-            </dl>
-            <button t-if="box.oldest" class="o_kh_wa_oldest" t-on-click="() => this.focusItem(box.oldest.id)">
-                <span class="o_kh_wa_muted">أقدم طلب مفتوح · <t t-esc="box.oldest.age"/></span>
-                <span t-esc="box.oldest.name"/>
-            </button>
-            <div t-if="data.group_days.length" class="o_kh_wa_days">
-                <div class="o_kh_wa_days_title">آخر 7 أيام</div>
-                <t t-foreach="data.group_days" t-as="page" t-key="page.date">
-                    <div class="o_kh_wa_day_row">
-                        <span class="o_kh_wa_day_date" t-esc="day(page.date)"/>
-                        <span class="o_kh_wa_day_counts">
-                            <span><b t-esc="page.message_count"/> رسالة</span>
-                            <span><b t-esc="page.quick_done_count"/> سريع</span>
-                            <span><b t-esc="page.visit_count"/> زيارة</span>
+            <t t-else="">
+                <div t-if="store.failed" class="o_kh_wa_banner">تعذّر التحديث، يُعرض آخر ما تم تحميله.</div>
+                <t t-if="store.mode === 'overview'" t-call="kh_wa_inbox.WaOverview"/>
+                <t t-elif="store.mode === 'notes'" t-call="kh_wa_inbox.WaNotes"/>
+                <t t-else="" t-call="kh_wa_inbox.WaSplit"/>
+            </t>
+        </div>
+    </t>
+
+    <!-- ===== Overview ===== -->
+    <t t-name="kh_wa_inbox.WaOverview">
+        <t t-set="data" t-value="store.data"/>
+        <div class="o_kh_wa_overview">
+            <div class="o_kh_wa_tiles">
+                <t t-foreach="tiles" t-as="tile" t-key="tile.key">
+                    <t t-set="value" t-value="tileValue(tile)"/>
+                    <button t-attf-class="o_kh_wa_tile o_kh_wa_tile_{{tile.key}} {{value and value !== '—' ? '' : 'o_kh_wa_zero'}}"
+                            t-on-click="() => this.openTile(tile)">
+                        <span class="o_kh_wa_tile_label" t-esc="tile.label"/>
+                        <span class="o_kh_wa_tile_value">
+                            <t t-esc="value"/>
+                            <small t-if="tileUnit(tile)" t-esc="tileUnit(tile)"/>
                         </span>
-                        <span t-if="page.lines.length" class="o_kh_wa_day_text" t-esc="page.lines.join(' · ')"/>
-                    </div>
+                        <span class="o_kh_wa_tile_note" t-esc="tileNote(tile) or ' '"/>
+                    </button>
                 </t>
+            </div>
+
+            <section class="o_kh_wa_card">
+                <header class="o_kh_wa_card_head">
+                    <h2>القروبات</h2>
+                    <span class="o_kh_wa_muted">حسب ما يحتاج انتباهاً</span>
+                </header>
+                <div class="o_kh_wa_table" role="table">
+                    <div class="o_kh_wa_tr o_kh_wa_th" role="row">
+                        <span role="columnheader">القروب</span>
+                        <span role="columnheader">الحالة</span>
+                        <span role="columnheader" class="o_kh_wa_num">مفتوح</span>
+                        <span role="columnheader" class="o_kh_wa_num">عاجل</span>
+                        <span role="columnheader" class="o_kh_wa_num">بانتظار قرارك</span>
+                        <span role="columnheader" class="o_kh_wa_num">متأخر</span>
+                        <span role="columnheader">أقدم طلب مفتوح</span>
+                        <span role="columnheader">هذا الأسبوع</span>
+                    </div>
+                    <t t-foreach="data.boxes" t-as="box" t-key="box.group_id">
+                        <button class="o_kh_wa_tr" role="row" t-on-click="() => this.store.openGroup(box.group_id)">
+                            <span class="o_kh_wa_td_group" role="cell">
+                                <span class="o_kh_fd_swatch" t-attf-style="background: {{color(box.color)}}"/>
+                                <span class="o_kh_wa_cell_stack">
+                                    <b class="o_kh_wa_ellipsis" t-esc="box.name"/>
+                                    <small class="o_kh_wa_muted o_kh_wa_ellipsis">
+                                        <t t-if="box.last_message_at">آخر رسالة <t t-esc="moment(box.last_message_at)"/></t>
+                                        <t t-else="">لا رسائل بعد</t>
+                                    </small>
+                                </span>
+                            </span>
+                            <span role="cell">
+                                <span t-attf-class="o_kh_wa_status o_kh_wa_status_{{box.status}}" t-esc="statusLabels[box.status]"/>
+                            </span>
+                            <t t-foreach="['open', 'urgent', 'needs_manager', 'overdue']" t-as="key" t-key="key">
+                                <span role="cell" t-attf-class="o_kh_wa_num {{box.counts[key] ? '' : 'o_kh_wa_zero'}} {{key === 'overdue' and box.counts.overdue ? 'o_kh_wa_late' : ''}}"
+                                      t-esc="box.counts[key]"/>
+                            </t>
+                            <span role="cell" class="o_kh_wa_cell_stack">
+                                <t t-if="box.oldest">
+                                    <span class="o_kh_wa_ellipsis" t-esc="box.oldest.name"/>
+                                    <small class="o_kh_wa_muted" t-esc="box.oldest.age"/>
+                                </t>
+                                <span t-else="" class="o_kh_wa_muted">—</span>
+                            </span>
+                            <span role="cell" class="o_kh_wa_muted">
+                                فُتح <b t-esc="box.week.opened"/> · أُغلق <b t-esc="box.week.closed"/>
+                            </span>
+                        </button>
+                    </t>
+                </div>
+            </section>
+
+            <div class="o_kh_wa_overview_grid">
+                <section class="o_kh_wa_card">
+                    <header class="o_kh_wa_card_head">
+                        <h2>مواعيد خلال 7 أيام</h2>
+                        <span class="o_kh_wa_muted" t-esc="store.upcoming.length"/>
+                    </header>
+                    <div t-if="!store.upcoming.length" class="o_kh_wa_card_empty">لا مواعيد قريبة.</div>
+                    <t t-foreach="store.upcoming" t-as="item" t-key="item.id">
+                        <button class="o_kh_wa_mini" t-on-click="() => this.openUpcoming(item)">
+                            <span t-attf-class="o_kh_wa_mini_date {{item.is_overdue ? 'o_kh_wa_late' : ''}}" t-esc="day(item.due_date)"/>
+                            <span class="o_kh_wa_ellipsis" t-esc="item.name"/>
+                            <small class="o_kh_wa_muted" t-esc="item.group_name"/>
+                        </button>
+                    </t>
+                </section>
+
+                <section class="o_kh_wa_card">
+                    <header class="o_kh_wa_card_head">
+                        <h2>ملخص <t t-esc="store.dayLabel"/></h2>
+                    </header>
+                    <div t-if="!data.sections.day_summary.length" class="o_kh_wa_card_empty">لا يوجد ملخص لهذا اليوم.</div>
+                    <t t-foreach="data.sections.day_summary" t-as="page" t-key="page.group_id">
+                        <div class="o_kh_wa_day">
+                            <div class="o_kh_wa_day_group">
+                                <span class="o_kh_fd_swatch" t-attf-style="background: {{color(page.group_color)}}"/>
+                                <b t-esc="page.group_name"/>
+                                <small class="o_kh_wa_muted">
+                                    <t t-esc="page.message_count"/> رسالة · <t t-esc="store.quickDoneLabel"/> <t t-esc="page.quick_done_count"/> · زيارات <t t-esc="page.visit_count"/>
+                                </small>
+                            </div>
+                            <ul t-if="page.lines.length" class="o_kh_wa_day_lines">
+                                <li t-foreach="page.lines" t-as="line" t-key="line_index" t-esc="line"/>
+                            </ul>
+                        </div>
+                    </t>
+                </section>
+
+                <section class="o_kh_wa_card">
+                    <header class="o_kh_wa_card_head">
+                        <h2>أُغلق <t t-esc="store.dayLabel"/></h2>
+                        <span class="o_kh_wa_muted" t-esc="data.sections.closed.length"/>
+                    </header>
+                    <div t-if="!data.sections.closed.length" class="o_kh_wa_card_empty">لم يُغلق شيء.</div>
+                    <t t-foreach="data.sections.closed" t-as="item" t-key="item.id">
+                        <button class="o_kh_wa_mini" t-on-click="() => this.openClosed(item)">
+                            <span class="o_kh_wa_ellipsis" t-esc="item.name"/>
+                            <small class="o_kh_wa_muted o_kh_wa_ellipsis" t-esc="item.done_note or item.group_name"/>
+                        </button>
+                    </t>
+                </section>
             </div>
         </div>
     </t>
 
-    <!-- One line of the list; only one is open at a time. Expects `item`. -->
+    <!-- ===== A list and its item ===== -->
+    <t t-name="kh_wa_inbox.WaSplit">
+        <t t-set="item" t-value="store.selectedItem"/>
+        <t t-set="box" t-value="store.groupId ? store.selectedBox : null"/>
+        <div t-attf-class="o_kh_wa_split {{item or store.groupSummaryOpen ? 'o_kh_wa_has_detail' : ''}}">
+            <section class="o_kh_wa_listpane" aria-label="القائمة">
+                <!-- A picked group: its line and the filters inside it -->
+                <div t-if="box" class="o_kh_wa_listhead o_kh_wa_listhead_row">
+                    <div class="o_kh_wa_segments" role="tablist">
+                        <t t-foreach="groupFilters" t-as="key" t-key="key">
+                            <button role="tab" t-attf-class="o_kh_wa_segment {{store.groupFilter === key ? 'o_kh_wa_active' : ''}}"
+                                    t-att-aria-selected="store.groupFilter === key ? 'true' : 'false'"
+                                    t-on-click="() => this.store.setGroupFilter(key)">
+                                <t t-esc="store.groupFilterLabel(key)"/>
+                                <span class="o_kh_wa_segment_count" t-esc="store.groupFilterCount(key)"/>
+                            </button>
+                        </t>
+                    </div>
+                    <button class="o_kh_fd_link o_kh_wa_narrow_only" t-on-click="showGroupSummary">ملخص القروب</button>
+                </div>
+                <div t-elif="store.listKey === 'closed_week'" class="o_kh_wa_listhead">
+                    <div class="o_kh_wa_segments" role="tablist">
+                        <button t-attf-class="o_kh_wa_segment {{store.closedSort === 'recent' ? 'o_kh_wa_active' : ''}}"
+                                t-on-click="() => this.setClosedSort('recent')">الأحدث</button>
+                        <button t-attf-class="o_kh_wa_segment {{store.closedSort === 'longest' ? 'o_kh_wa_active' : ''}}"
+                                t-on-click="() => this.setClosedSort('longest')">الأطول مدة</button>
+                    </div>
+                    <span t-if="store.data.kpis.avg_close.duration" class="o_kh_wa_muted">
+                        المتوسط <t t-esc="store.data.kpis.avg_close.duration.value"/> <t t-esc="store.data.kpis.avg_close.duration.unit"/>
+                    </span>
+                </div>
+
+                <div class="o_kh_wa_list" role="listbox" aria-label="البنود">
+                    <div t-if="!store.flatList.length" class="o_kh_wa_empty" t-esc="store.emptyText"/>
+                    <t t-elif="store.listGroups">
+                        <t t-foreach="store.listGroups" t-as="group" t-key="group.group_id">
+                            <div class="o_kh_wa_list_group">
+                                <span class="o_kh_fd_swatch" t-attf-style="background: {{color(group.color)}}"/>
+                                <t t-esc="group.name"/>
+                                <span class="o_kh_wa_muted" t-esc="group.items.length"/>
+                            </div>
+                            <t t-foreach="group.items" t-as="row" t-key="row.id">
+                                <t t-call="kh_wa_inbox.WaRow"><t t-set="hideGroup" t-value="true"/></t>
+                            </t>
+                        </t>
+                    </t>
+                    <t t-else="">
+                        <t t-foreach="store.listItems" t-as="row" t-key="row.id">
+                            <t t-call="kh_wa_inbox.WaRow"><t t-set="hideGroup" t-value="store.groupId"/></t>
+                        </t>
+                    </t>
+                </div>
+            </section>
+
+            <div class="o_kh_wa_detail_backdrop" t-on-click="() => this.store.closeDetail()"/>
+            <section class="o_kh_wa_detailpane" aria-label="التفاصيل">
+                <t t-if="item" t-call="kh_wa_inbox.WaDetail"/>
+                <t t-elif="box" t-call="kh_wa_inbox.WaGroupSummary"/>
+                <div t-else="" class="o_kh_wa_detail_empty">
+                    <div>اختر بنداً من القائمة لعرض تفاصيله</div>
+                    <small class="o_kh_wa_muted">↑ ↓ للتنقل · Esc للإغلاق</small>
+                </div>
+            </section>
+        </div>
+    </t>
+
+    <!-- One row of a list. Expects `row` (and optionally `hideGroup`). -->
     <t t-name="kh_wa_inbox.WaRow">
-        <t t-set="open" t-value="state.openId === item.id"/>
-        <t t-set="closed" t-value="isClosed(item)"/>
-        <div t-attf-class="o_kh_wa_row {{open ? 'o_kh_wa_open' : ''}} {{item.is_overdue ? 'o_kh_wa_overdue' : ''}} {{closed ? 'o_kh_wa_closed' : ''}}">
-            <span class="o_kh_wa_stripe" t-attf-style="background: {{groupColor(item.group_color)}}"/>
-            <div class="o_kh_wa_line" role="button" tabindex="0" t-att-aria-expanded="open ? 'true' : 'false'"
-                 t-on-click="() => this.toggleRow(item)" t-on-keydown="(ev) => this.onRowKeydown(item, ev)">
-                <span class="o_kh_wa_title">
-                    <span class="o_kh_wa_title_text" t-esc="item.name"/>
-                    <span t-if="item.urgent" class="o_kh_wa_flag">عاجل</span>
-                    <span t-if="item.state === 'waiting'" class="o_kh_wa_tag">بانتظار رد</span>
-                    <span t-if="item.state === 'cancel'" class="o_kh_wa_tag">ملغى</span>
+        <t t-set="closedRow" t-value="store.isClosed(row)"/>
+        <t t-set="whoText" t-value="store.who(row)"/>
+        <div t-attf-class="o_kh_wa_row {{store.selectedId === row.id ? 'o_kh_wa_selected' : ''}} {{closedRow ? 'o_kh_wa_closed' : ''}}"
+             role="option" tabindex="0" t-att-aria-selected="store.selectedId === row.id ? 'true' : 'false'"
+             t-on-click="() => this.store.select(row)" t-on-keydown="(ev) => this.onRowKeydown(row, ev)">
+            <span class="o_kh_wa_row_swatch" t-attf-style="background: {{color(row.group_color)}}"/>
+            <div class="o_kh_wa_row_top">
+                <span class="o_kh_wa_row_title" t-esc="row.name"/>
+                <span class="o_kh_wa_row_when" t-esc="closedRow ? moment(row.done_at) : row.age"/>
+            </div>
+            <div class="o_kh_wa_row_meta">
+                <span t-if="row.urgent" class="o_kh_wa_flag o_kh_wa_flag_red">عاجل</span>
+                <span t-if="row.needs_manager and store.listKey !== 'needs_manager'" class="o_kh_wa_flag">قرارك</span>
+                <span t-if="row.state === 'waiting'" class="o_kh_wa_flag">بانتظار رد</span>
+                <span t-if="row.state === 'cancel'" class="o_kh_wa_flag">ملغى</span>
+                <span t-if="!hideGroup" t-esc="row.group_name"/>
+                <span t-if="whoText" t-attf-class="{{row.assignee ? '' : 'o_kh_wa_unassigned'}}" t-esc="whoText"/>
+                <span t-if="!closedRow and row.due_date" t-attf-class="{{row.is_overdue ? 'o_kh_wa_late' : ''}}">
+                    الموعد <t t-esc="day(row.due_date)"/>
                 </span>
-                <span class="o_kh_wa_cell o_kh_wa_cell_group" t-esc="item.group_name"/>
-                <span t-attf-class="o_kh_wa_cell o_kh_wa_cell_who {{!item.assignee ? 'o_kh_wa_unassigned' : ''}}"
-                      t-esc="who(item)"/>
-                <span class="o_kh_wa_cell o_kh_wa_cell_when" t-esc="closed ? moment(item.done_at) : item.age"/>
-                <span t-attf-class="o_kh_wa_cell o_kh_wa_cell_due {{item.is_overdue ? 'o_kh_wa_late' : ''}}">
-                    <t t-if="closed and item.took">استغرق <t t-esc="item.took"/></t>
-                    <t t-elif="!closed and item.due_date" t-esc="day(item.due_date)"/>
-                </span>
+                <span t-if="closedRow and row.took">استغرق <t t-esc="row.took"/></span>
+            </div>
+        </div>
+    </t>
+
+    <!-- The selected item. Expects `item`. -->
+    <t t-name="kh_wa_inbox.WaDetail">
+        <t t-set="closedItem" t-value="store.isClosed(item)"/>
+        <article class="o_kh_wa_detail">
+            <header class="o_kh_wa_detail_head">
+                <button class="o_kh_wa_back" t-on-click="() => this.store.closeDetail()" aria-label="رجوع">رجوع</button>
+                <div class="o_kh_wa_chips">
+                    <span class="o_kh_wa_chip" t-esc="kindLabels[item.kind]"/>
+                    <span t-if="item.needs_manager" class="o_kh_wa_chip o_kh_wa_chip_strong">بانتظار قرارك</span>
+                    <span t-if="item.urgent" class="o_kh_wa_chip o_kh_wa_chip_red">عاجل</span>
+                    <span t-if="item.is_overdue" class="o_kh_wa_chip o_kh_wa_chip_red">متأخر</span>
+                    <span t-if="item.state === 'waiting'" class="o_kh_wa_chip">بانتظار رد</span>
+                    <span t-if="item.state === 'done'" class="o_kh_wa_chip o_kh_wa_chip_green">تم</span>
+                    <span t-if="item.state === 'cancel'" class="o_kh_wa_chip">ملغى</span>
+                </div>
+                <h2 class="o_kh_wa_detail_title" t-esc="item.name"/>
+                <div class="o_kh_wa_detail_sub">
+                    <span class="o_kh_fd_swatch" t-attf-style="background: {{color(item.group_color)}}"/>
+                    <span t-esc="item.group_name"/>
+                    <span class="o_kh_wa_muted">· <t t-esc="dateTime(item.asked_at)"/> (<t t-esc="item.age"/>)</span>
+                </div>
+            </header>
+
+            <div class="o_kh_wa_actionbar">
+                <div class="o_kh_wa_actions">
+                    <t t-if="!closedItem">
+                        <button t-attf-class="o_kh_wa_btn o_kh_wa_btn_primary {{store.panel === 'done' ? 'o_kh_wa_pressed' : ''}}"
+                                t-att-disabled="store.busy" t-on-click="() => this.store.togglePanel('done')">تم</button>
+                        <button t-if="item.state === 'open'" class="o_kh_wa_btn" t-att-disabled="store.busy"
+                                t-on-click="() => this.store.setWaiting(item)">بانتظار رد</button>
+                        <button t-else="" class="o_kh_wa_btn" t-att-disabled="store.busy"
+                                t-on-click="() => this.store.reopen(item)">إعادة لمفتوح</button>
+                        <button t-attf-class="o_kh_wa_btn {{store.panel === 'remind' ? 'o_kh_wa_pressed' : ''}}"
+                                t-att-disabled="store.busy" t-on-click="() => this.store.togglePanel('remind')">ذكّرني</button>
+                        <button t-attf-class="o_kh_wa_btn {{store.panel === 'assign' ? 'o_kh_wa_pressed' : ''}}"
+                                t-att-disabled="store.busy" t-on-click="() => this.store.togglePanel('assign')">عيّن مسؤول</button>
+                    </t>
+                    <button t-else="" class="o_kh_wa_btn" t-att-disabled="store.busy"
+                            t-on-click="() => this.store.reopen(item)">إعادة فتح</button>
+                    <span class="o_kh_wa_actions_gap"/>
+                    <button t-if="item.linked" class="o_kh_wa_btn o_kh_wa_btn_quiet" t-on-click="() => this.store.openLinked(item)">
+                        <t t-esc="item.linked.name"/>
+                    </button>
+                    <button class="o_kh_wa_btn o_kh_wa_btn_quiet" t-on-click="() => this.store.openForm(item)">فتح البند</button>
+                </div>
+                <div t-if="store.panel === 'done'" class="o_kh_wa_panel">
+                    <input type="text" class="o_kh_wa_input" placeholder="ماذا تم؟ (اختياري)" aria-label="النتيجة"
+                           t-att-value="store.doneDraft" t-on-input="onDoneInput"
+                           t-on-keydown="(ev) => this.onDoneKeydown(item, ev)"/>
+                    <button class="o_kh_wa_btn o_kh_wa_btn_primary" t-att-disabled="store.busy"
+                            t-on-click="() => this.store.confirmDone(item)">حفظ</button>
+                </div>
+                <div t-if="store.panel === 'remind'" class="o_kh_wa_panel">
+                    <t t-foreach="remindOptions" t-as="option" t-key="option.key">
+                        <button class="o_kh_wa_btn" t-att-disabled="store.busy"
+                                t-on-click="() => this.store.remind(item, option.key)" t-esc="option.label"/>
+                    </t>
+                </div>
+                <div t-if="store.panel === 'assign'" class="o_kh_wa_panel">
+                    <select class="o_kh_wa_input" aria-label="المسؤول" t-on-change="(ev) => this.onAssign(item, ev)">
+                        <option value="" t-att-selected="!item.assignee">— بلا مسؤول —</option>
+                        <t t-foreach="store.data.users" t-as="person" t-key="person.id">
+                            <option t-att-value="person.id" t-att-selected="item.assignee and item.assignee.id === person.id"
+                                    t-esc="person.name"/>
+                        </t>
+                    </select>
+                </div>
             </div>
 
-            <div t-if="open" class="o_kh_wa_detail">
-                <div class="o_kh_wa_asked">
-                    <span class="o_kh_wa_kind" t-esc="kindLabels[item.kind]"/>
-                    <span>سأل: <t t-esc="item.requester_name or '—'"/></span>
-                    <span t-if="item.requester_phone" class="o_kh_wa_phone" dir="ltr" t-esc="item.requester_phone"/>
-                    <span t-esc="dateTime(item.asked_at)"/>
-                    <span t-if="item.due_date">الموعد: <t t-esc="day(item.due_date)"/></span>
-                </div>
+            <dl class="o_kh_wa_facts">
+                <dt>سأل</dt>
+                <dd><t t-esc="item.requester_name or '—'"/>
+                    <span t-if="item.requester_phone" class="o_kh_wa_muted o_kh_wa_phone" dir="ltr"> <t t-esc="item.requester_phone"/></span></dd>
+                <dt>المسؤول</dt>
+                <dd><t t-if="item.assignee" t-esc="item.assignee.name"/><span t-else="" class="o_kh_wa_muted">بلا مسؤول</span></dd>
+                <t t-if="item.due_date">
+                    <dt>الموعد</dt>
+                    <dd t-attf-class="{{item.is_overdue ? 'o_kh_wa_late' : ''}}" t-esc="day(item.due_date)"/>
+                </t>
+                <t t-if="closedItem">
+                    <dt>أُغلق</dt>
+                    <dd><t t-esc="dateTime(item.done_at)"/><t t-if="item.took"> · استغرق <t t-esc="item.took"/></t></dd>
+                </t>
+                <t t-if="item.project"><dt>المشروع</dt><dd t-esc="item.project"/></t>
+                <t t-if="item.partner"><dt>جهة الاتصال</dt><dd t-esc="item.partner"/></t>
+                <t t-if="item.remind_on"><dt>التذكير</dt><dd t-esc="day(item.remind_on)"/></t>
+            </dl>
 
+            <section t-if="item.done_note and closedItem" class="o_kh_wa_block">
+                <h3>النتيجة</h3>
+                <p class="o_kh_wa_text" t-esc="item.done_note"/>
+            </section>
+            <section class="o_kh_wa_block">
+                <h3>الرسالة الأصلية</h3>
                 <blockquote t-if="item.source_text" class="o_kh_wa_quote" t-esc="item.source_text"/>
-                <div t-elif="item.source_kind === 'voice'" class="o_kh_wa_quote">رسالة صوتية</div>
-
-                <div t-if="item.context_text">
-                    <button class="o_kh_fd_link" t-on-click="toggleContext">
-                        <i t-attf-class="fa {{state.contextOpen ? 'fa-angle-down' : 'fa-angle-left'}}"/> السياق
-                    </button>
-                    <div t-if="state.contextOpen" class="o_kh_wa_context" t-esc="item.context_text"/>
-                </div>
-
-                <div t-if="item.attachments.length" class="o_kh_wa_files">
+                <p t-elif="item.source_kind === 'voice'" class="o_kh_wa_muted">رسالة صوتية</p>
+                <p t-else="" class="o_kh_wa_muted">—</p>
+            </section>
+            <section t-if="item.context_text" class="o_kh_wa_block">
+                <button class="o_kh_wa_fold" t-att-aria-expanded="store.contextOpen ? 'true' : 'false'"
+                        t-on-click="toggleContext">
+                    <i t-attf-class="fa {{store.contextOpen ? 'fa-angle-down' : 'fa-angle-left'}}"/> السياق
+                </button>
+                <div t-if="store.contextOpen" class="o_kh_wa_context" t-esc="item.context_text"/>
+            </section>
+            <section t-if="item.attachments.length" class="o_kh_wa_block">
+                <h3>المرفقات</h3>
+                <div class="o_kh_wa_files">
                     <t t-foreach="item.attachments" t-as="att" t-key="att.id">
                         <a t-if="isImage(att)" class="o_kh_wa_thumb" t-att-href="att.url" target="_blank" t-att-title="att.name">
                             <img t-attf-src="/web/image/{{att.id}}/160x160" t-att-alt="att.name" loading="lazy"/>
                         </a>
-                        <span t-elif="isAudio(att)" class="o_kh_wa_voice">
+                        <span t-elif="isAudio(att)" class="o_kh_wa_file">
                             رسالة صوتية
-                            <audio t-if="state.playing[att.id]" t-att-src="att.url" controls="controls" autoplay="autoplay"/>
+                            <audio t-if="store.playing[att.id]" t-att-src="att.url" controls="controls" autoplay="autoplay"/>
                             <button t-else="" class="o_kh_fd_link" t-on-click="() => this.play(att)">تشغيل</button>
                         </span>
                         <a t-else="" class="o_kh_wa_file" t-attf-href="{{att.url}}?download=true" t-att-title="att.name">
@@ -286,59 +381,81 @@
                         </a>
                     </t>
                 </div>
+            </section>
+            <section t-if="item.manager_note" class="o_kh_wa_block">
+                <h3>ملاحظتي</h3>
+                <p class="o_kh_wa_text" t-esc="item.manager_note"/>
+            </section>
+        </article>
+    </t>
 
-                <div t-if="item.project or item.partner or item.remind_on" class="o_kh_wa_asked">
-                    <span t-if="item.project">المشروع: <t t-esc="item.project"/></span>
-                    <span t-if="item.partner">جهة الاتصال: <t t-esc="item.partner"/></span>
-                    <span t-if="item.remind_on">تذكير <t t-esc="day(item.remind_on)"/></span>
-                </div>
-                <div t-if="item.manager_note" class="o_kh_wa_note">ملاحظتي: <t t-esc="item.manager_note"/></div>
-                <div t-if="item.done_note and closed" class="o_kh_wa_note">النتيجة: <t t-esc="item.done_note"/></div>
-
-                <div class="o_kh_wa_actions">
-                    <t t-if="!closed">
-                        <button t-attf-class="o_kh_wa_action o_kh_wa_primary {{state.panel === 'done' ? 'o_kh_wa_active' : ''}}"
-                                t-att-disabled="state.busy" t-on-click="() => this.togglePanel('done')">تم</button>
-                        <button t-if="item.state === 'open'" class="o_kh_wa_action" t-att-disabled="state.busy"
-                                t-on-click="() => this.setWaiting(item)">بانتظار رد</button>
-                        <button t-else="" class="o_kh_wa_action" t-att-disabled="state.busy"
-                                t-on-click="() => this.reopen(item)">مفتوح</button>
-                        <button t-attf-class="o_kh_wa_action {{state.panel === 'remind' ? 'o_kh_wa_active' : ''}}"
-                                t-att-disabled="state.busy" t-on-click="() => this.togglePanel('remind')">ذكّرني</button>
-                        <button t-attf-class="o_kh_wa_action {{state.panel === 'assign' ? 'o_kh_wa_active' : ''}}"
-                                t-att-disabled="state.busy" t-on-click="() => this.togglePanel('assign')">عيّن مسؤول</button>
-                    </t>
-                    <button t-else="" class="o_kh_wa_action" t-att-disabled="state.busy"
-                            t-on-click="() => this.reopen(item)">إعادة فتح</button>
-                    <button t-if="item.linked" class="o_kh_wa_action" t-on-click="() => this.openLinked(item)">
-                        فتح: <t t-esc="item.linked.name"/>
-                    </button>
-                    <button class="o_kh_wa_action o_kh_wa_action_end" t-on-click="() => this.openForm(item)">فتح البند</button>
-                </div>
-
-                <div t-if="state.panel === 'done'" class="o_kh_wa_inline">
-                    <input type="text" class="o_kh_wa_input" placeholder="ماذا تم؟ (اختياري)" aria-label="النتيجة"
-                           t-att-value="state.doneDraft" t-on-input="onDoneInput"
-                           t-on-keydown="(ev) => this.onDoneKeydown(item, ev)"/>
-                    <button class="o_kh_wa_action o_kh_wa_primary" t-att-disabled="state.busy"
-                            t-on-click="() => this.confirmDone(item)">حفظ</button>
-                </div>
-                <div t-if="state.panel === 'remind'" class="o_kh_wa_inline">
-                    <t t-foreach="remindOptions" t-as="option" t-key="option.key">
-                        <button class="o_kh_wa_action" t-att-disabled="state.busy"
-                                t-on-click="() => this.remind(item, option)" t-esc="option.label"/>
-                    </t>
-                </div>
-                <div t-if="state.panel === 'assign'" class="o_kh_wa_inline">
-                    <select class="o_kh_wa_input" aria-label="المسؤول" t-on-change="(ev) => this.assign(item, ev)">
-                        <option value="" t-att-selected="!item.assignee">— بلا مسؤول —</option>
-                        <t t-foreach="data.users" t-as="person" t-key="person.id">
-                            <option t-att-value="person.id" t-att-selected="item.assignee and item.assignee.id === person.id"
-                                    t-esc="person.name"/>
-                        </t>
-                    </select>
-                </div>
+    <!-- A picked group, while no item is selected. Expects `box`. -->
+    <t t-name="kh_wa_inbox.WaGroupSummary">
+        <article class="o_kh_wa_detail">
+            <header class="o_kh_wa_detail_head">
+                <button class="o_kh_wa_back" t-on-click="() => this.store.closeDetail()" aria-label="رجوع">رجوع</button>
+                <h3 class="o_kh_wa_summary_title">ملخص القروب</h3>
+            </header>
+            <div class="o_kh_wa_stats">
+                <t t-foreach="['open', 'urgent', 'needs_manager', 'overdue']" t-as="key" t-key="key">
+                    <div t-attf-class="o_kh_wa_stat {{box.counts[key] ? '' : 'o_kh_wa_zero'}} {{key === 'overdue' and box.counts.overdue ? 'o_kh_wa_late' : ''}}">
+                        <b t-esc="box.counts[key]"/>
+                        <span t-esc="statLabel(key)"/>
+                    </div>
+                </t>
             </div>
+            <dl class="o_kh_wa_facts">
+                <dt>آخر رسالة</dt>
+                <dd><t t-if="box.last_message_at" t-esc="moment(box.last_message_at)"/><t t-else="">—</t></dd>
+                <dt>هذا الأسبوع</dt>
+                <dd>فُتح <b t-esc="box.week.opened"/> · أُغلق <b t-esc="box.week.closed"/></dd>
+                <t t-if="box.day">
+                    <dt t-esc="store.dayLabel"/>
+                    <dd><t t-esc="box.day.message_count"/> رسالة · <t t-esc="store.quickDoneLabel"/> <t t-esc="box.day.quick_done_count"/> · زيارات <t t-esc="box.day.visit_count"/></dd>
+                </t>
+            </dl>
+            <section t-if="box.oldest" class="o_kh_wa_block">
+                <h3>أقدم طلب مفتوح · <t t-esc="box.oldest.age"/></h3>
+                <button class="o_kh_wa_linkrow" t-on-click="() => this.openOldest(box)">
+                    <t t-esc="box.oldest.name"/>
+                </button>
+            </section>
+            <section t-if="store.data.group_days.length" class="o_kh_wa_block">
+                <h3>آخر 7 أيام</h3>
+                <t t-foreach="store.data.group_days" t-as="page" t-key="page.date">
+                    <div class="o_kh_wa_dayrow">
+                        <div class="o_kh_wa_dayrow_head">
+                            <b t-esc="day(page.date)"/>
+                            <small class="o_kh_wa_muted"><t t-esc="page.message_count"/> رسالة · <t t-esc="page.quick_done_count"/> سريع · <t t-esc="page.visit_count"/> زيارة</small>
+                        </div>
+                        <div t-if="page.lines.length" class="o_kh_wa_muted" t-esc="page.lines.join(' · ')"/>
+                    </div>
+                </t>
+            </section>
+        </article>
+    </t>
+
+    <!-- ===== My notes ===== -->
+    <t t-name="kh_wa_inbox.WaNotes">
+        <div class="o_kh_wa_notes">
+            <section class="o_kh_wa_card">
+                <input type="text" class="o_kh_wa_input o_kh_wa_memo_add" placeholder="أضف ملاحظة واضغط Enter…"
+                       aria-label="أضف ملاحظة" t-att-value="store.memoDraft" t-on-input="onMemoInput"
+                       t-on-keydown="onMemoKeydown"/>
+                <div t-if="!store.data.sections.memos.length" class="o_kh_wa_card_empty">لا ملاحظات.</div>
+                <t t-foreach="store.data.sections.memos" t-as="memo" t-key="memo.id">
+                    <div t-attf-class="o_kh_wa_memo {{memo.pinned ? 'o_kh_wa_pinned' : ''}}">
+                        <input type="checkbox" class="form-check-input" aria-label="تمت"
+                               t-on-change="() => this.store.finishMemo(memo)"/>
+                        <span class="o_kh_wa_memo_text" t-esc="memo.text"/>
+                        <button class="o_kh_wa_pin" t-att-title="memo.pinned ? 'إلغاء التثبيت' : 'تثبيت في الأعلى'"
+                                t-att-aria-pressed="memo.pinned ? 'true' : 'false'"
+                                t-on-click="() => this.store.togglePin(memo)">
+                            <i class="fa fa-thumb-tack"/>
+                        </button>
+                    </div>
+                </t>
+            </section>
         </div>
     </t>
 
