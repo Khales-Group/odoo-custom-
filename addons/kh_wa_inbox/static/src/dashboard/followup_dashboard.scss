@@ -1,22 +1,28 @@
-// لوحة المتابعة: the frame. Calm and tidy: colours come from Bootstrap's CSS
-// variables (dark mode works); colour is only used where it means something.
-// The page is RTL, so spacing uses logical properties (Bootstrap's me-/ms-
-// utilities are physical in Odoo's LTR build).
+// لوحة المتابعة: the frame. Calm and tidy; colour is only used where it
+// means something. Odoo 19 names Bootstrap's CSS variables without the "bs-"
+// prefix (--body-bg, --border-color...), and its dark theme recompiles this
+// file, so cards use $o-view-background-color (white, or the dark sheet
+// colour). The page is RTL, so spacing uses logical properties (Bootstrap's
+// me-/ms- utilities are physical in Odoo's LTR build).
+
+$o-view-background-color: white !default; // set by Odoo before this file
 
 .o_kh_fd {
-    --kh-paper: color-mix(in srgb, var(--bs-body-bg, #fff) 96%, #e9dcc0);
-    --kh-card: var(--bs-body-bg, #fff);
-    --kh-rule: var(--bs-border-color-translucent, rgba(0, 0, 0, 0.1));
-    --kh-line: var(--bs-border-color, #dee2e6);
-    --kh-text: var(--bs-body-color, #212529);
-    --kh-muted: var(--bs-secondary-color, #6c757d);
-    --kh-red: var(--bs-danger, #d23f3a);
-    --kh-red-text: var(--bs-danger-text-emphasis, #842029);
-    --kh-red-bg: var(--bs-danger-bg-subtle, #f8d7da);
-    --kh-amber-text: var(--bs-warning-text-emphasis, #664d03);
-    --kh-amber-bg: var(--bs-warning-bg-subtle, #fff3cd);
-    --kh-green-text: var(--bs-success-text-emphasis, #0a3622);
-    --kh-green-bg: var(--bs-success-bg-subtle, #d1e7dd);
+    --kh-paper: var(--body-bg, #f9fafb);
+    --kh-card: #{$o-view-background-color};
+    --kh-line: var(--border-color, #d8dadd);
+    --kh-rule: color-mix(in srgb, var(--border-color, #d8dadd) 60%, transparent);
+    --kh-text: var(--body-color, #111827);
+    --kh-muted: var(--secondary-color, rgba(17, 24, 39, 0.72));
+    --kh-red: var(--danger, #d44c59);
+    --kh-red-text: var(--danger-text-emphasis, #551e24);
+    --kh-red-bg: var(--danger-bg-subtle, #f6dbde);
+    --kh-amber: var(--warning, #e99d00);
+    --kh-amber-text: var(--warning-text-emphasis, #5d3f00);
+    --kh-amber-bg: var(--warning-bg-subtle, #fbebcc);
+    --kh-green: var(--success, #28a745);
+    --kh-green-text: var(--success-text-emphasis, #10431c);
+    --kh-green-bg: var(--success-bg-subtle, #d4edda);
 
     height: 100%;
     overflow-y: auto;
@@ -31,12 +37,19 @@
         font: inherit;
         color: inherit;
     }
+
+    h1,
+    h2,
+    h3,
+    h4 {
+        color: inherit;
+    }
 }
 
 .o_kh_fd_page {
-    max-width: 1320px;
+    max-width: 1680px;
     margin: 0 auto;
-    padding: 1.5rem 1.25rem 4rem;
+    padding: 1.25rem 1.75rem 4rem;
 }
 
 .o_kh_fd_header {
@@ -130,12 +143,12 @@
 }
 
 .o_kh_fd_part {
-    margin-top: 1.75rem;
+    margin-top: 1.25rem;
 }
 
 .o_kh_fd_part_title {
-    margin: 0 0 0.75rem;
-    font-size: 0.85rem;
+    margin: 0 0 0.6rem;
+    font-size: 0.78rem;
     font-weight: 700;
     color: var(--kh-muted);
 }
@@ -149,12 +162,19 @@
         font-size: 1.35rem;
     }
 
-    .o_kh_fd_tools,
-    .o_kh_fd_search {
+    .o_kh_fd_tools {
         width: 100%;
+        flex-wrap: nowrap;
+    }
+
+    .o_kh_fd_datepick {
+        flex: 0 0 auto;
+        width: 9.5rem;
     }
 
     .o_kh_fd_search {
         flex: 1 1 auto;
+        width: auto;
+        min-width: 0;
     }
 }

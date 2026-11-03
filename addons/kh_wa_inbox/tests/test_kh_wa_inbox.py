@@ -327,7 +327,8 @@ class TestKhWaInbox(TransactionCase):
         )
         self.assertTrue(kpis["needs_manager"]["oldest"])
         self.assertEqual(kpis["avg_close"]["duration"], {"value": "3", "unit": "ساعات"})
-        self.assertEqual([box["group_id"] for box in picked["boxes"]], self.group.ids)
+        self.assertEqual([box["group_id"] for box in picked["boxes"] if box["selected"]], self.group.ids)
+        self.assertEqual(len(picked["boxes"]), len(data["boxes"]), "every group keeps its card")
         self.assertEqual(picked["group_days"][0]["lines"], ["first line", "second"])
         self.assertEqual(len(picked["closed_week"]), 1)
         self.assertEqual(set(picked["sections"]), set(self.Item.get_notebook()["sections"]))
@@ -342,9 +343,19 @@ class TestKhWaInbox(TransactionCase):
         )
         data = self.env["kh.wa.item"].with_user(self.user_a).get_dashboard(group_id=self.group.id)
         self.assertEqual((data["kpis"]["open"]["value"], data["kpis"]["urgent"]["value"]), (1, 1))
-        self.assertEqual(data["boxes"][0]["counts"]["open"], 1)
-        self.assertFalse(data["boxes"][0]["day"], "no day pages for users")
+        box = next(b for b in data["boxes"] if b["group_id"] == self.group.id)
+        self.assertEqual(box["counts"]["open"], 1)
+        self.assertFalse(box["day"], "no day pages for users")
         self.assertEqual(data["group_days"], [])
+
+    def test_archived_group_with_open_items_keeps_its_card(self):
+        self.upsert(self.row("a1"), self.row("a2", urgent=True))
+        self.group.active = False
+        data = self.Item.get_dashboard()
+        box = next((b for b in data["boxes"] if b["group_id"] == self.group.id), None)
+        self.assertTrue(box, "its open items still need a home")
+        self.assertEqual(box["counts"]["open"], 2)
+        self.assertEqual(sum(b["counts"]["open"] for b in data["boxes"]), data["kpis"]["open"]["value"])
 
     def test_last_message_only_moves_forward(self):
         Group = self.env["kh.wa.group"].with_user(self.manager)

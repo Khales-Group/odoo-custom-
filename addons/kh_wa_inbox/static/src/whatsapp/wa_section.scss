@@ -1,4 +1,8 @@
 // The WhatsApp groups part of لوحة المتابعة. Uses the frame's --kh-* colours.
+// Wide screens: tiles, a row of group cards, then the list beside a side
+// column that stays in view. Narrower screens stack them.
+
+$wide: 1100px; // list + side column side by side from here
 
 .o_kh_wa {
     font-variant-numeric: tabular-nums;
@@ -21,11 +25,6 @@
     white-space: nowrap;
 }
 
-.o_kh_wa_nowrap {
-    flex: 0 0 auto;
-    white-space: nowrap;
-}
-
 .o_kh_wa_count {
     color: var(--kh-muted);
     font-weight: 400;
@@ -34,8 +33,8 @@
 .o_kh_wa_dot {
     flex: 0 0 auto;
     display: inline-block;
-    width: 0.55rem;
-    height: 0.55rem;
+    width: 0.5rem;
+    height: 0.5rem;
     border-radius: 50%;
 }
 
@@ -47,12 +46,33 @@
     width: 3px;
 }
 
-// ---- tiles ----------------------------------------------------------------
+.o_kh_wa_late {
+    color: var(--kh-red);
+}
+
+.o_kh_wa_wide_only {
+    display: none;
+}
+
+@media (min-width: $wide) {
+    .o_kh_wa_wide_only {
+        display: block;
+    }
+
+    .o_kh_wa_narrow_only {
+        display: none;
+    }
+}
+
+// ---- tiles: one strip, six cells --------------------------------------------
 
 .o_kh_wa_tiles {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.75rem;
+    border: 1px solid var(--kh-line);
+    border-radius: 0.6rem;
+    background: var(--kh-card);
+    overflow: hidden;
 }
 
 @media (min-width: 768px) {
@@ -71,27 +91,30 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.15rem;
+    gap: 0.1rem;
     min-width: 0;
-    padding: 0.8rem 1rem;
-    border: 1px solid var(--kh-line);
-    border-radius: 0.5rem;
-    background: var(--kh-card);
+    padding: 0.75rem 1rem 0.7rem;
+    border: 0;
+    border-inline-start: 1px solid var(--kh-rule);
+    border-top: 1px solid var(--kh-rule);
+    margin-inline-start: -1px; // hide the first column's border
+    margin-top: -1px; // and the first row's
+    background: transparent;
     text-align: start;
     cursor: pointer;
 
     &:hover {
-        border-color: var(--kh-muted);
+        background: color-mix(in srgb, var(--kh-text) 3%, transparent);
     }
 
     &.o_kh_wa_active {
-        border-color: var(--kh-text);
-        box-shadow: inset 0 0 0 1px var(--kh-text);
+        background: color-mix(in srgb, var(--kh-text) 5%, transparent);
+        box-shadow: inset 0 -3px 0 var(--kh-text);
     }
 }
 
 .o_kh_wa_tile_value {
-    font-size: 1.9rem;
+    font-size: 1.75rem;
     font-weight: 700;
     line-height: 1.15;
 
@@ -119,76 +142,34 @@
     white-space: nowrap;
     font-size: 0.78rem;
     color: var(--kh-muted);
-}
 
-// ---- group chips ------------------------------------------------------------
-
-.o_kh_wa_chips {
-    display: flex;
-    gap: 0.4rem;
-    margin-top: 1.25rem;
-    padding-bottom: 0.25rem;
-    overflow-x: auto;
-    scrollbar-width: none;
-
-    &::-webkit-scrollbar {
-        display: none;
+    .o_kh_wa_active & {
+        color: var(--kh-text);
     }
 }
 
-.o_kh_wa_chip {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.15rem 0.75rem;
-    border: 1px solid var(--kh-line);
-    border-radius: 999px;
-    background: transparent;
-    font-size: 0.85rem;
-    cursor: pointer;
+// ---- group cards ------------------------------------------------------------------
 
-    &.o_kh_wa_active {
-        border-color: var(--kh-text);
-        font-weight: 600;
-    }
-}
-
-// ---- group boxes ------------------------------------------------------------
-
-$box-rows: 6; // head, numbers, oldest, top items, day, week
-
-.o_kh_wa_boxes {
+.o_kh_wa_cards {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr));
+    gap: 0.75rem;
     margin-top: 1rem;
 }
 
-@media (min-width: 768px) {
-    .o_kh_wa_boxes {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-}
-
-@media (min-width: 1200px) {
-    .o_kh_wa_boxes {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-}
-
-.o_kh_wa_box {
+.o_kh_wa_card {
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 0.65rem;
+    gap: 0.15rem;
     min-width: 0;
-    padding: 0.9rem 1.1rem;
-    padding-inline-start: 1.25rem;
+    padding: 0.65rem 0.9rem 0.6rem;
+    padding-inline-start: 1.1rem;
     border: 1px solid var(--kh-line);
     border-radius: 0.5rem;
     background: var(--kh-card);
     overflow: hidden;
+    text-align: start;
     cursor: pointer;
     outline: none;
 
@@ -199,80 +180,28 @@ $box-rows: 6; // head, numbers, oldest, top items, day, week
 
     &.o_kh_wa_selected {
         border-color: var(--kh-text);
-        cursor: default;
+        box-shadow: inset 0 0 0 1px var(--kh-text);
     }
 }
 
-// Wide screens: every box's lines sit on shared rows, so the same line
-// lines up across the boxes of a row.
-@media (min-width: 768px) {
-    @supports (grid-template-rows: subgrid) {
-        .o_kh_wa_boxes {
-            row-gap: 0;
-        }
-
-        .o_kh_wa_box {
-            display: grid;
-            grid-row: span $box-rows;
-            grid-template-rows: subgrid;
-            row-gap: 0.65rem;
-            margin-bottom: 1rem;
-        }
-    }
+.o_kh_wa_card_name {
+    font-size: 0.95rem;
 }
 
-.o_kh_wa_box_head {
+.o_kh_wa_card_last {
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 0.75rem;
-}
-
-.o_kh_wa_box_name {
+    align-items: center;
+    gap: 0.3rem;
     min-width: 0;
-
-    b {
-        font-size: 1rem;
-    }
-}
-
-.o_kh_wa_box_last {
-    display: block;
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     color: var(--kh-muted);
 }
 
-.o_kh_wa_status {
-    flex: 0 0 auto;
-    padding: 0.05rem 0.6rem;
-    border-radius: 999px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    white-space: nowrap;
-
-    &.o_kh_wa_status_red {
-        background: var(--kh-red-bg);
-        color: var(--kh-red-text);
-    }
-
-    &.o_kh_wa_status_amber {
-        background: var(--kh-amber-bg);
-        color: var(--kh-amber-text);
-    }
-
-    &.o_kh_wa_status_green {
-        background: var(--kh-green-bg);
-        color: var(--kh-green-text);
-    }
-}
-
-.o_kh_wa_box_numbers {
+.o_kh_wa_card_numbers {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.5rem;
-    padding: 0.5rem 0;
-    border-top: 1px solid var(--kh-rule);
-    border-bottom: 1px solid var(--kh-rule);
+    gap: 0.25rem;
+    margin-top: 0.35rem;
 }
 
 .o_kh_wa_number {
@@ -281,7 +210,7 @@ $box-rows: 6; // head, numbers, oldest, top items, day, week
     min-width: 0;
 
     b {
-        font-size: 1.35rem;
+        font-size: 1.15rem;
         font-weight: 700;
         line-height: 1.2;
     }
@@ -290,7 +219,7 @@ $box-rows: 6; // head, numbers, oldest, top items, day, week
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        font-size: 0.72rem;
+        font-size: 0.7rem;
         color: var(--kh-muted);
     }
 
@@ -304,100 +233,40 @@ $box-rows: 6; // head, numbers, oldest, top items, day, week
     }
 }
 
-.o_kh_wa_box_more {
-    min-width: 0;
-    font-size: 0.85rem;
+.o_kh_wa_status {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.72rem;
+    white-space: nowrap;
+    color: var(--kh-muted);
 }
 
-.o_kh_wa_box_oldest {
-    display: flex;
-    flex-direction: column;
-}
+.o_kh_wa_status_dot {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
 
-.o_kh_wa_box_top {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-}
+    .o_kh_wa_status_red & {
+        background: var(--kh-red);
+    }
 
-.o_kh_wa_box_item {
-    display: flex;
-    align-items: baseline;
-    gap: 0.6rem;
-    min-width: 0;
+    .o_kh_wa_status_amber & {
+        background: var(--kh-amber);
+    }
 
-    .o_kh_wa_ellipsis {
-        flex: 1 1 auto;
+    .o_kh_wa_status_green & {
+        background: var(--kh-green);
     }
 }
 
-.o_kh_wa_box_day .o_kh_wa_day_counts {
-    margin-bottom: 0.1rem;
-}
-
-.o_kh_wa_box_week b {
-    font-weight: 600;
-}
-
-.o_kh_wa_phone_only {
-    display: none;
-}
-
-// Folded to one line: nothing open and no messages this week.
-.o_kh_wa_quiet_groups {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.5rem;
-    margin-top: 0.75rem;
-}
-
-@media (min-width: 768px) {
-    .o_kh_wa_quiet_groups {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-}
-
-@media (min-width: 1200px) {
-    .o_kh_wa_quiet_groups {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-}
-
-.o_kh_wa_quiet_group {
-    position: relative;
-    min-width: 0;
-    padding: 0.45rem 1rem;
-    padding-inline-start: 1.25rem;
-    border: 1px solid var(--kh-line);
-    border-radius: 0.5rem;
+.o_kh_wa_card_quiet {
+    justify-content: center;
+    gap: 0;
     background: transparent;
     color: var(--kh-muted);
     font-size: 0.85rem;
-    text-align: start;
-    overflow: hidden;
-    cursor: pointer;
-}
-
-// ---- the picked group's last days ---------------------------------------------
-
-.o_kh_wa_day_row {
-    display: grid;
-    grid-template-columns: 10rem minmax(0, 1fr);
-    gap: 1rem;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid var(--kh-rule);
-}
-
-.o_kh_wa_day_date {
-    font-weight: 600;
-}
-
-.o_kh_wa_day_counts {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0 1rem;
-    font-size: 0.82rem;
-    color: var(--kh-muted);
 
     b {
         color: var(--kh-text);
@@ -405,83 +274,150 @@ $box-rows: 6; // head, numbers, oldest, top items, day, week
     }
 }
 
-// ---- detail lists -------------------------------------------------------------
+// ---- list + side column -------------------------------------------------------------
 
-.o_kh_wa_columns {
+.o_kh_wa_layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    column-gap: 3rem;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
 }
 
-@media (min-width: 992px) {
-    .o_kh_wa_columns {
-        grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+@media (min-width: $wide) {
+    .o_kh_wa_layout {
+        grid-template-columns: minmax(0, 1fr) 21rem;
+        gap: 2rem;
+        align-items: start;
+    }
+
+    .o_kh_wa_aside {
+        position: sticky;
+        top: 1rem;
+        max-height: calc(100vh - 2rem);
+        overflow-y: auto;
+        scrollbar-width: thin;
     }
 }
 
-.o_kh_wa_section {
-    margin-top: 2rem;
+@media (min-width: 768px) and (max-width: $wide - 0.02px) {
+    .o_kh_wa_aside {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+        align-items: start;
+
+        .o_kh_wa_panel {
+            margin: 0;
+        }
+    }
 }
 
-.o_kh_wa_section_title {
+.o_kh_wa_list_head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--kh-line);
+}
+
+.o_kh_wa_list_title {
     display: flex;
     align-items: baseline;
     gap: 0.5rem;
-    margin: 0 0 0.25rem;
-    padding-bottom: 0.4rem;
-    border-bottom: 1px solid var(--kh-line);
-    font-size: 0.95rem;
+    margin: 0;
+    font-size: 1.05rem;
     font-weight: 700;
+}
+
+.o_kh_wa_pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-inline-start: auto;
+    padding: 0.1rem 0.7rem;
+    border: 1px solid var(--kh-line);
+    border-radius: 999px;
+    background: var(--kh-card);
+    font-size: 0.82rem;
+    cursor: pointer;
+
+    &:hover {
+        border-color: var(--kh-text);
+    }
+}
+
+.o_kh_wa_empty {
+    padding: 2.5rem 0;
+    text-align: center;
+    color: var(--kh-muted);
 }
 
 .o_kh_wa_group_title {
     display: flex;
     align-items: center;
     gap: 0.45rem;
-    margin: 1rem 0 0;
-    font-size: 0.85rem;
-    font-weight: 600;
+    margin: 1.25rem 0 0.1rem;
+    font-size: 0.82rem;
+    font-weight: 700;
     color: var(--kh-muted);
 }
 
-.o_kh_wa_fold {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 0.5rem;
-    background: none;
-    border: 0;
-    padding: 0;
-    font-weight: 700;
-    cursor: pointer;
-}
+// ---- rows: one line, columns that line up -------------------------------------------
 
 .o_kh_wa_row {
     position: relative;
     border-bottom: 1px solid var(--kh-rule);
-    padding-inline-start: 0.9rem;
+    padding-inline-start: 0.85rem;
 
-    .o_kh_wa_stripe {
-        top: 0.75rem;
-        bottom: 0.75rem;
+    > .o_kh_wa_stripe {
+        top: 0.7rem;
+        bottom: auto;
+        height: 1.1rem;
         border-radius: 2px;
     }
 
-    &.o_kh_wa_closed .o_kh_wa_summary {
+    &:hover {
+        background: color-mix(in srgb, var(--kh-text) 2.5%, transparent);
+    }
+
+    &.o_kh_wa_open {
+        background: var(--kh-card);
+        box-shadow: 0 0 0 1px var(--kh-line);
+        border-radius: 0.4rem;
+        border-bottom-color: transparent;
+        margin: 0.35rem 0;
+    }
+
+    &.o_kh_wa_closed .o_kh_wa_title_text {
         color: var(--kh-muted);
     }
 }
 
 .o_kh_wa_line {
-    padding: 0.6rem 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 8.5rem 7.5rem 6rem 7.5rem;
+    gap: 1rem;
+    align-items: baseline;
+    padding-block: 0.55rem;
+    padding-inline-end: 0.75rem;
     cursor: pointer;
     outline: none;
 
     &:focus-visible {
         box-shadow: inset 0 -2px 0 var(--kh-text);
     }
+
+    .o_kh_wa_list_nogroup & {
+        grid-template-columns: minmax(0, 1fr) 7.5rem 6rem 7.5rem;
+    }
 }
 
-.o_kh_wa_summary {
+.o_kh_wa_list_nogroup .o_kh_wa_cell_group {
+    display: none;
+}
+
+.o_kh_wa_title {
     display: flex;
     align-items: baseline;
     gap: 0.5rem;
@@ -489,7 +425,7 @@ $box-rows: 6; // head, numbers, oldest, top items, day, week
     font-weight: 500;
 }
 
-.o_kh_wa_summary_text {
+.o_kh_wa_title_text {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -498,51 +434,63 @@ $box-rows: 6; // head, numbers, oldest, top items, day, week
     .o_kh_wa_open & {
         white-space: normal;
         overflow-wrap: anywhere;
+        font-weight: 600;
     }
 }
 
-.o_kh_wa_flag {
+.o_kh_wa_flag,
+.o_kh_wa_tag {
     flex: 0 0 auto;
-    font-size: 0.75rem;
-    color: var(--kh-red);
-}
-
-.o_kh_wa_meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0 0.9rem;
-    font-size: 0.82rem;
-    color: var(--kh-muted);
-}
-
-.o_kh_wa_due.o_kh_wa_late,
-.o_kh_wa_overdue .o_kh_wa_due {
-    color: var(--kh-red);
+    font-size: 0.72rem;
     font-weight: 600;
 }
 
-.o_kh_wa_result {
-    color: var(--kh-text);
+.o_kh_wa_flag {
+    color: var(--kh-red);
+}
+
+.o_kh_wa_tag {
+    color: var(--kh-muted);
+}
+
+.o_kh_wa_unassigned {
+    font-style: italic;
+}
+
+.o_kh_wa_cell {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.8rem;
+    color: var(--kh-muted);
+
+    &.o_kh_wa_late {
+        color: var(--kh-red);
+        font-weight: 600;
+    }
 }
 
 .o_kh_wa_detail {
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
-    padding: 0.1rem 0 1rem;
+    padding-bottom: 0.9rem;
+    padding-inline-end: 0.75rem;
     font-size: 0.9rem;
 }
 
 .o_kh_wa_asked {
     display: flex;
     flex-wrap: wrap;
-    gap: 0 0.9rem;
+    gap: 0 1rem;
     color: var(--kh-muted);
-    font-size: 0.82rem;
+    font-size: 0.8rem;
 }
 
 .o_kh_wa_kind {
     color: var(--kh-text);
+    font-weight: 600;
 }
 
 .o_kh_wa_phone {
@@ -616,7 +564,7 @@ $box-rows: 6; // head, numbers, oldest, top items, day, week
     padding: 0.15rem 0.8rem;
     border: 1px solid var(--kh-line);
     border-radius: 0.35rem;
-    background: transparent;
+    background: var(--kh-card);
     font-size: 0.85rem;
     cursor: pointer;
 
@@ -633,10 +581,22 @@ $box-rows: 6; // head, numbers, oldest, top items, day, week
         border-color: var(--kh-text);
         font-weight: 600;
     }
+
+    &.o_kh_wa_active {
+        background: var(--kh-text);
+        border-color: var(--kh-text);
+        color: var(--kh-card);
+    }
 }
 
-.o_kh_wa_linked {
-    align-self: flex-start;
+.o_kh_wa_action_end {
+    margin-inline-start: auto;
+}
+
+.o_kh_wa_inline {
+    padding: 0.5rem;
+    border-radius: 0.4rem;
+    background: color-mix(in srgb, var(--kh-text) 4%, transparent);
 }
 
 .o_kh_wa_input {
@@ -650,26 +610,207 @@ $box-rows: 6; // head, numbers, oldest, top items, day, week
     color: var(--kh-text);
 }
 
+// ---- side column panels --------------------------------------------------------------
+
+.o_kh_wa_panel {
+    position: relative;
+    margin-bottom: 1rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--kh-line);
+    border-radius: 0.5rem;
+    background: var(--kh-card);
+    overflow: hidden;
+}
+
+.o_kh_wa_panel_title {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    margin: 0 0 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.o_kh_wa_fold {
+    width: 100%;
+    margin: 0;
+    background: none;
+    border: 0;
+    padding: 0;
+    text-align: start;
+    cursor: pointer;
+}
+
+.o_kh_wa_mini {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    padding: 0.4rem 0;
+    border: 0;
+    border-top: 1px solid var(--kh-rule);
+    background: none;
+    text-align: start;
+    font-size: 0.85rem;
+    cursor: pointer;
+
+    &:hover .o_kh_wa_ellipsis:first-of-type {
+        text-decoration: underline;
+    }
+}
+
+.o_kh_wa_mini_date {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--kh-muted);
+
+    &.o_kh_wa_late {
+        color: var(--kh-red);
+    }
+}
+
+.o_kh_wa_group_detail {
+    padding-inline-start: 1.2rem;
+}
+
+.o_kh_wa_detail_head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+
+    .o_kh_wa_panel_title {
+        font-size: 1rem;
+    }
+}
+
+.o_kh_wa_close {
+    flex: 0 0 auto;
+    width: 1.75rem;
+    height: 1.75rem;
+    border: 1px solid var(--kh-line);
+    border-radius: 50%;
+    background: none;
+    line-height: 1;
+    color: var(--kh-muted);
+    cursor: pointer;
+
+    &:hover {
+        color: var(--kh-text);
+        border-color: var(--kh-text);
+    }
+}
+
+.o_kh_wa_facts {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.2rem 1rem;
+    margin: 0 0 0.6rem;
+    font-size: 0.82rem;
+
+    dt {
+        font-weight: 400;
+        color: var(--kh-muted);
+    }
+
+    dd {
+        margin: 0;
+    }
+}
+
+.o_kh_wa_oldest {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    padding: 0.5rem 0.6rem;
+    border: 0;
+    border-radius: 0.4rem;
+    background: color-mix(in srgb, var(--kh-text) 4%, transparent);
+    text-align: start;
+    font-size: 0.85rem;
+    cursor: pointer;
+
+    span:first-child {
+        font-size: 0.75rem;
+    }
+}
+
+.o_kh_wa_days {
+    margin-top: 0.75rem;
+}
+
+.o_kh_wa_days_title {
+    margin-bottom: 0.25rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--kh-muted);
+}
+
+.o_kh_wa_day_row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 0.75rem;
+    padding: 0.35rem 0;
+    border-top: 1px solid var(--kh-rule);
+    font-size: 0.8rem;
+}
+
+.o_kh_wa_day_date {
+    font-weight: 600;
+}
+
+.o_kh_wa_day_text {
+    flex: 1 0 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--kh-muted);
+}
+
+.o_kh_wa_day_counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 0.8rem;
+    font-size: 0.78rem;
+    color: var(--kh-muted);
+
+    b {
+        color: var(--kh-text);
+        font-weight: 600;
+    }
+}
+
 .o_kh_wa_day {
-    padding-bottom: 0.6rem;
-    border-bottom: 1px solid var(--kh-rule);
+    padding: 0.5rem 0;
+    border-top: 1px solid var(--kh-rule);
+}
+
+.o_kh_wa_day_group {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
 }
 
 .o_kh_wa_day_lines {
-    margin: 0.3rem 0 0.4rem;
+    margin: 0.25rem 0;
     padding-inline-start: 1.1rem;
+    font-size: 0.85rem;
 }
 
 .o_kh_wa_memo_add {
-    border-bottom: 1px solid var(--kh-rule);
+    width: 100%;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--kh-line);
+    border-radius: 0.35rem;
+    background: transparent;
+    color: var(--kh-text);
+    outline: none;
 
-    input {
-        width: 100%;
-        border: 0;
-        background: transparent;
-        color: var(--kh-text);
-        padding: 0.55rem 0;
-        outline: none;
+    &:focus {
+        border-color: var(--kh-text);
     }
 }
 
@@ -677,8 +818,13 @@ $box-rows: 6; // head, numbers, oldest, top items, day, week
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    padding: 0.5rem 0;
+    padding: 0.45rem 0;
     border-bottom: 1px solid var(--kh-rule);
+    font-size: 0.88rem;
+
+    &:last-child {
+        border-bottom: 0;
+    }
 
     .form-check-input {
         flex: 0 0 auto;
@@ -699,7 +845,7 @@ $box-rows: 6; // head, numbers, oldest, top items, day, week
     border: 0;
     padding: 0.25rem;
     color: var(--kh-muted);
-    opacity: 0.45;
+    opacity: 0.4;
     cursor: pointer;
 
     &:hover,
@@ -712,25 +858,55 @@ $box-rows: 6; // head, numbers, oldest, top items, day, week
     font-weight: 600;
 }
 
-// ---- phone ----------------------------------------------------------------------
+// ---- phone ----------------------------------------------------------------------------
 
 @media (max-width: 767.98px) {
-    // Boxes fold to name, status and the four numbers; a tap unfolds them.
-    .o_kh_wa_box:not(.o_kh_wa_box_open) .o_kh_wa_box_more {
-        display: none;
-    }
-
-    .o_kh_wa_phone_only {
-        display: inline;
-        margin-inline-start: 0.75rem;
+    .o_kh_wa_tile {
+        padding: 0.6rem 0.8rem;
     }
 
     .o_kh_wa_tile_value {
-        font-size: 1.6rem;
+        font-size: 1.45rem;
     }
 
-    .o_kh_wa_day_row {
-        grid-template-columns: minmax(0, 1fr);
-        gap: 0.1rem;
+    .o_kh_wa_cards {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem;
+    }
+
+    .o_kh_wa_card {
+        padding: 0.55rem 0.7rem;
+        padding-inline-start: 0.95rem;
+    }
+
+    .o_kh_wa_status {
+        font-size: 0;
+        gap: 0;
+    }
+
+    // Two lines: the title, then the details in a row.
+    .o_kh_wa_line,
+    .o_kh_wa_list_nogroup .o_kh_wa_line {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.1rem 0.8rem;
+        padding-inline-end: 0.25rem;
+    }
+
+    .o_kh_wa_title {
+        flex: 1 0 100%;
+    }
+
+    .o_kh_wa_cell {
+        flex: 0 1 auto;
+        font-size: 0.78rem;
+    }
+
+    .o_kh_wa_cell:empty {
+        display: none;
+    }
+
+    .o_kh_wa_action_end {
+        margin-inline-start: 0;
     }
 }

@@ -275,8 +275,9 @@ def check_wa_dashboard(bot, report, notebook):
     if boxes:
         first = boxes[0]
         picked = bot.call("kh.wa.item", "get_dashboard", group_id=first["group_id"])
-        report.check(f"picking a group narrows everything to it ({first['name']})",
-                     [b["group_id"] for b in picked["boxes"]] == [first["group_id"]]
+        report.check(f"picking a group narrows the tiles to it, every card stays ({first['name']})",
+                     [b["group_id"] for b in picked["boxes"] if b["selected"]] == [first["group_id"]]
+                     and len(picked["boxes"]) == len(boxes)
                      and picked["kpis"]["open"]["value"] == first["counts"]["open"], str(picked["kpis"]["open"]))
 
 
@@ -353,7 +354,7 @@ def simulate_bot(bot, report, threshold):
         report.check("get_notebook(group) has the seven sections", set(notebook["sections"]) == WA_SECTIONS)
         bot.call("kh.wa.group", "upsert_groups", [{"wa_chat_id": chat, "last_message_at": utc(asked + timedelta(hours=2))}])
         board = bot.call("kh.wa.item", "get_dashboard", group_id=group_id)
-        box = board["boxes"][0] if board["boxes"] else {}
+        box = next((b for b in board["boxes"] if b["group_id"] == group_id), {})
         report.check("get_dashboard(group): its box, with last_message_at",
                      box.get("group_id") == group_id and box.get("last_message_at") == utc(asked + timedelta(hours=2)),
                      str(box.get("last_message_at")))

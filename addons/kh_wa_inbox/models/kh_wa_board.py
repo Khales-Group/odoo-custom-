@@ -103,7 +103,7 @@ def group_boxes(groups, open_items, closed_week, week_opened, day_pages, week_me
     open_items / closed_week: item payloads. week_opened: {group id: items asked since Monday}.
     day_pages: {group id: the selected day's page dict} (managers only).
     week_messages: {group id: messages since Monday} or None when unknown (no access to day pages).
-    selected: a group was picked, so its box is never folded to one line.
+    selected: the picked group's id (its box is marked and never folded to one line).
     """
     open_by_group, closed_by_group = defaultdict(list), defaultdict(int)
     for payload in open_items:
@@ -134,7 +134,8 @@ def group_boxes(groups, open_items, closed_week, week_opened, day_pages, week_me
             "name": group["name"],
             "color": group["color"],
             "status": box_status(counts, _dt(oldest["asked_at"]) if oldest else None, now),
-            "compact": bool(quiet and not selected),
+            "selected": group["id"] == selected,
+            "compact": bool(quiet and group["id"] != selected),
             "last_message_at": last.strftime("%Y-%m-%d %H:%M:%S") if last else False,
             "counts": counts,
             "oldest": {"age": oldest["age"], "name": oldest["name"], "id": oldest["id"]} if oldest else False,

@@ -467,9 +467,10 @@ class KhWaItem(models.Model):
         group_domain = [("group_id", "=", group_id)] if group_id else []
         fetch = self._notebook_fetch_fields(is_manager)
 
-        open_items = self.search_fetch(
-            group_domain + [("state", "in", OPEN_STATES)], fetch, order="asked_at asc, id asc",
-        )
+        # All open items: the dashboard's group cards need every group even
+        # when one is picked; the lists use the picked group's share.
+        open_all = self.search_fetch([("state", "in", OPEN_STATES)], fetch, order="asked_at asc, id asc")
+        open_items = open_all.filtered(lambda i: i.group_id.id == group_id) if group_id else open_all
         start, end = dubai_day_bounds(day)
         closed_items = self.search_fetch(
             group_domain + [("state", "in", CLOSED_STATES), ("done_at", ">=", start), ("done_at", "<", end)],
@@ -477,12 +478,12 @@ class KhWaItem(models.Model):
         )
         week_start = today - timedelta(days=today.weekday())  # Monday
         week_start_utc = dubai_day_bounds(week_start)[0]
-        closed_week = self.browse()
+        closed_week_all = self.browse()
         if with_week:
-            closed_week = self.search_fetch(
-                group_domain + [("state", "in", CLOSED_STATES), ("done_at", ">=", week_start_utc)],
-                fetch, order="done_at desc, id desc",
+            closed_week_all = self.search_fetch(
+                [("state", "in", CLOSED_STATES), ("done_at", ">=", week_start_utc)], fetch, order="done_at desc, id desc",
             )
+        closed_week = closed_week_all.filtered(lambda i: i.group_id.id == group_id) if group_id else closed_week_all
         found = self.browse()
         search = (search or "").strip()
         if len(search) >= 2:
@@ -493,7 +494,7 @@ class KhWaItem(models.Model):
                                 ("assignee_id.name", "ilike", search)],
                 fetch, order="asked_at desc, id desc", limit=SEARCH_LIMIT,
             )
-        payloads = self._notebook_payloads(open_items | closed_items | closed_week | found, now, today, is_manager)
+        payloads = self._notebook_payloads(open_all | closed_items | closed_week_all | found, now, today, is_manager)
 
         cutoff = today + timedelta(days=7)
         counters = {"needs_manager": 0, "urgent": 0, "overdue": 0, "open": 0}
@@ -517,8 +518,10 @@ class KhWaItem(models.Model):
         needs_manager.sort(key=lambda p: not p["urgent"])
         upcoming.sort(key=lambda p: p["due_date"])
 
-        groups = self.env["kh.wa.group"].search_fetch(
-            [], ["name", "color", "category", "sequence", "last_message_at"],
+        # An archived group keeps its place while it still has open items.
+        groups = self.env["kh.wa.group"].with_context(active_test=False).search_fetch(
+            ["|", ("active", "=", True), ("id", "in", open_all.group_id.ids)],
+            ["name", "color", "category", "sequence", "last_message_at"],
         )
         open_counts = dict(self._read_group([("state", "in", OPEN_STATES)], ["group_id"], ["__count"]))
         group_list = [
@@ -554,6 +557,7 @@ class KhWaItem(models.Model):
             "today": today, "day": day, "now": now, "is_manager": is_manager, "group_id": group_id,
             "group_domain": group_domain, "week_start": week_start, "week_start_utc": week_start_utc,
             "open_items": open_items, "closed_week": closed_week, "payloads": payloads, "groups": groups,
+            "open_all": open_all, "closed_week_all": closed_week_all, "group_order": group_order,
         }
         return result, context
 
