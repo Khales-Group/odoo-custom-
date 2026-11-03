@@ -84,6 +84,11 @@ class LawReport(models.Model):
         string="الأتعاب المتبقية", currency_field="x_studio_currency_id",
         compute="_compute_kh_fee_remaining", store=True,
     )
+    kh_legal_folder_url = fields.Char(
+        string="مجلد القضية على Drive",
+        tracking=True,
+        help='رابط مجلد "09-Legal Case" داخل مجلد المشروع على Google Drive.',
+    )
 
     # ------------------------------------------------------------------
     # PRO

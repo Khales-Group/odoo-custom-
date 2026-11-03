@@ -1,6 +1,6 @@
 {
     "name": "Khales Law & PRO",
-    "version": "19.0.1.0.5",
+    "version": "19.0.1.0.6",
     "summary": "Legal Affairs and PRO departments on top of the Studio 'Law' model",
     "description": """
 Khales Law & PRO
@@ -18,7 +18,9 @@ is its Studio field x_studio_type (Law / PRO). The module adds:
   Judgment > Execution > Closed; PRO: Not Started > Preparing Documents >
   Submitted > Awaiting Government > Completed).
 - Legal: priority stars, lawyer's assessment, outcome, fees expected vs
-  collected, last update and "days without activity" warning, duration.
+  collected, last update and "days without activity" warning, duration,
+  and a "مجلد Drive" tab with the link to the project's "09-Legal Case"
+  folder on Google Drive.
 - PRO: service type, expiry date with a coloured countdown, target date and
   late flag, required-documents checklist, fines and rejections.
 - Reports per department and periodic manager evaluations.
