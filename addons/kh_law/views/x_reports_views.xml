@@ -8,7 +8,7 @@
         <field name="model">x_reports</field>
         <field name="priority">50</field>
         <field name="arch" type="xml">
-            <form string="Law">
+            <form string="Law" delete="0">
                 <header>
                     <field name="x_studio_stage_id" widget="statusbar" options="{'clickable': '1'}"/>
                 </header>
@@ -129,7 +129,7 @@
         <field name="model">x_reports</field>
         <field name="priority">50</field>
         <field name="arch" type="xml">
-            <kanban default_group_by="x_studio_stage_id" highlight_color="x_color" sample="1">
+            <kanban default_group_by="x_studio_stage_id" highlight_color="x_color" sample="1" delete="0">
                 <field name="x_studio_type"/>
                 <field name="kh_is_late"/>
                 <field name="kh_expiry_date"/>
@@ -194,7 +194,7 @@
         <field name="model">x_reports</field>
         <field name="priority">50</field>
         <field name="arch" type="xml">
-            <list multi_edit="1" sample="1" decoration-danger="kh_is_late">
+            <list multi_edit="1" sample="1" decoration-danger="kh_is_late" delete="0">
                 <field name="kh_is_late" column_invisible="1"/>
                 <field name="kh_expiry_state" column_invisible="1"/>
                 <field name="kh_priority" widget="priority" optional="show" nolabel="1"/>
@@ -280,7 +280,7 @@
         <field name="model">x_reports</field>
         <field name="priority">60</field>
         <field name="arch" type="xml">
-            <list editable="bottom" create="false">
+            <list editable="bottom" create="false" delete="0">
                 <field name="x_name"/>
                 <field name="x_studio_type"/>
                 <field name="x_studio_company_id" optional="show"/>

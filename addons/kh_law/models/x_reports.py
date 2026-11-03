@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from odoo import api, fields, models
+from odoo.exceptions import UserError
 
 # A legal file with no update/message for this many days is flagged as stale.
 STALE_DAYS = 14
@@ -183,6 +184,12 @@ class LawReport(models.Model):
                 super(LawReport, mismatched).write(dict(vals, x_studio_stage_id=first.id))
                 return super(LawReport, self - mismatched).write(vals)
         return super().write(vals)
+
+    @api.ondelete(at_uninstall=False)
+    def _unlink_never(self):
+        # Cases and files are never deleted, by anyone (administrators
+        # included); they can be archived instead.
+        raise UserError(self.env._("لا يمكن حذف القضايا والملفات. يمكنك أرشفتها بدلاً من ذلك."))
 
     # ------------------------------------------------------------------
     # Computes
