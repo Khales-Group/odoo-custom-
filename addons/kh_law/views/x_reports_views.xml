@@ -97,6 +97,12 @@
                         <page string="التفاصيل" name="details">
                             <field name="x_studio_notes"/>
                         </page>
+                        <page string="مجلد Drive" name="kh_legal_folder" invisible="x_studio_type != 'Law'">
+                            <group>
+                                <field name="kh_legal_folder_url" widget="url"
+                                       placeholder="https://drive.google.com/drive/folders/..."/>
+                            </group>
+                        </page>
                         <page string="المستندات المطلوبة" name="documents" invisible="x_studio_type != 'PRO'">
                             <field name="kh_document_ids">
                                 <list editable="bottom" decoration-muted="kh_is_received">
