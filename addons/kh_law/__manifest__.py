@@ -1,6 +1,6 @@
 {
     "name": "Khales Law & PRO",
-    "version": "19.0.1.0.6",
+    "version": "19.0.1.0.7",
     "summary": "Legal Affairs and PRO departments on top of the Studio 'Law' model",
     "description": """
 Khales Law & PRO
@@ -24,6 +24,8 @@ is its Studio field x_studio_type (Law / PRO). The module adds:
 - PRO: service type, expiry date with a coloured countdown, target date and
   late flag, required-documents checklist, fines and rejections.
 - Reports per department and periodic manager evaluations.
+- Cases and files can never be deleted (administrators included), only
+  archived.
 
 Install/uninstall notes: the pre-init hook marks the Studio models as
 code-owned (otherwise the Studio definitions would replace the Python ones at
