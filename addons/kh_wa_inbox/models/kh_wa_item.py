@@ -1,6 +1,7 @@
 import base64
 import binascii
 import hashlib
+import logging
 import uuid
 from collections import defaultdict
 from datetime import timedelta
@@ -26,6 +27,8 @@ from .kh_wa_tools import (
     utc_now,
 )
 
+_logger = logging.getLogger(__name__)
+
 OPEN_STATES = ("open", "waiting")
 CLOSED_STATES = ("done", "cancel")
 # Once a person changes one of these in Odoo, the bot's later upserts leave
@@ -36,6 +39,7 @@ MASKED_FIELDS = ("source_text", "context_text", "done_note")
 TASK_FIELDS = ("assignee_id", "state", "due_date", "name", "linked_ref", "project_id")
 CLOSED_TASK_STATES = ("1_done", "1_canceled")
 TASK_DEADLINE_HOUR = 17  # task deadlines are date-times: the due date at 17:00 in Dubai
+FOLLOWUP_PROJECT_XMLID = "kh_wa_inbox.project_kh_wa_followups"
 # What an item can be linked to (when installed), in the order offered.
 LINKABLE_MODELS = {
     "project.project": "Project",
@@ -298,8 +302,33 @@ class KhWaItem(models.Model):
         ))
         return Markup("").join(lines)
 
-    def _kh_default_project(self):
-        return self.env.ref("kh_wa_inbox.project_kh_wa_followups", raise_if_not_found=False) or self.env["project.project"]
+    @api.model
+    def _kh_default_project(self, create=False):
+        """The private "WhatsApp Follow-ups" project. It is made on first use,
+        not by a data file: modules that extend projects (and add required
+        columns) may load after this one."""
+        project = self.env.ref(FOLLOWUP_PROJECT_XMLID, raise_if_not_found=False)
+        if project or not create:
+            return project or self.env["project.project"]
+        stages = self.env["project.task.type"].sudo().create([
+            {"name": "To Do", "sequence": 1},
+            {"name": "In Progress", "sequence": 2},
+        ])
+        project = self.env["project.project"].sudo().create({
+            "name": "WhatsApp Follow-ups",
+            "privacy_visibility": "followers",
+            "type_ids": [Command.set(stages.ids)],
+        })
+        arabic = [code for code, _name in self.env["res.lang"].get_installed() if code.startswith("ar")]
+        if arabic:
+            for record, name in ((project, "متابعات القروبات"), (stages[0], "للتنفيذ"), (stages[1], "قيد العمل")):
+                record.update_field_translations("name", dict.fromkeys(arabic, name))
+        module, name = FOLLOWUP_PROJECT_XMLID.split(".")
+        # noupdate: a module update must not delete it as "no longer in the data files".
+        self.env["ir.model.data"].sudo().create({
+            "module": module, "name": name, "model": "project.project", "res_id": project.id, "noupdate": True,
+        })
+        return project
 
     def _kh_task_project(self):
         """(project, parent task) of the item's task: the linked project or
@@ -312,14 +341,28 @@ class KhWaItem(models.Model):
         if record and record._name == "project.task" and record.project_id.active:
             return record.project_id, record
         candidates = [record] if record and record._name == "project.project" else []
-        candidates += [self.sudo().project_id, self.sudo().group_id.project_id, self._kh_default_project()]
+        candidates += [self.sudo().project_id, self.sudo().group_id.project_id]
         for project in candidates:
             if project and project.active:
                 return project, Task
-        return self.env["project.project"], Task
+        project = self._kh_default_project(create=True)
+        return (project if project.active else self.env["project.project"]), Task
 
-    def _kh_create_task(self):
+    def _kh_create_task(self, strict=True):
+        """strict=False (assigning, the daily check): a task that can't be
+        made is logged and left out, the assignment itself goes through; the
+        dashboard then offers "send the task", which shows the reason."""
         self.ensure_one()
+        if strict:
+            return self._kh_new_task()
+        try:
+            with self.env.cr.savepoint():
+                return self._kh_new_task()
+        except Exception:
+            _logger.exception("kh_wa_inbox: could not make the follow-up task of item %s", self.id)
+            return self.env["project.task"]
+
+    def _kh_new_task(self):
         project, parent = self._kh_task_project()
         task = self._kh_task_env().create({
             "name": self.name,
@@ -335,12 +378,13 @@ class KhWaItem(models.Model):
             self._kh_note_linked(task)
         return task
 
-    def _kh_sync_task(self, changed=None):
+    def _kh_sync_task(self, changed=None, strict=False):
         """Keeps the assignee's task in line with the item: made when it is
         assigned, handed over and moved with it, closed (with a word to the
         assignee) when it is closed or taken back, reopened with it.
 
-        changed: the item fields that changed (None: bring all in line)."""
+        changed: the item fields that changed (None: bring all in line).
+        strict: a task that can't be made raises (see _kh_create_task)."""
         def touched(*names):
             return changed is None or bool(changed.intersection(names))
 
@@ -348,7 +392,7 @@ class KhWaItem(models.Model):
             wanted = item._kh_needs_task()
             if not item.task_id:
                 if wanted:
-                    item._kh_create_task()
+                    item._kh_create_task(strict=strict)
                 continue
             task = item._kh_task_env().browse(item.task_id.id)
             vals = {}
@@ -448,8 +492,18 @@ class KhWaItem(models.Model):
 
     def action_send_task(self):
         """Sends the assignee their task again (made anew if it was deleted, reopened if closed)."""
-        self._kh_sync_task()
+        self._kh_sync_task(strict=True)
         return True
+
+    @api.model
+    def _cron_send_missing_tasks(self):
+        """Daily, and right after the update to tasks: every open item
+        assigned outside the managers has its task."""
+        items = self.search([("state", "in", OPEN_STATES), ("assignee_id", "!=", False), ("task_ids", "=", False)])
+        items = items.filtered(lambda item: item._kh_needs_task())
+        items._kh_sync_task()
+        made = items.filtered("task_id")
+        _logger.info("kh_wa_inbox: follow-up task sent for %s of %s assigned items", len(made), len(items))
 
     def action_open_task(self):
         self.ensure_one()

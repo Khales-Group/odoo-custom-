@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- Every open item assigned outside the managers has its follow-up task
+         (also run right after the update that replaced the To-Dos). -->
+    <record id="ir_cron_kh_wa_send_tasks" model="ir.cron">
+        <field name="name">Follow-up Dashboard: send missing follow-up tasks</field>
+        <field name="model_id" ref="model_kh_wa_item"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_send_missing_tasks()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="active" eval="True"/>
+    </record>
+</odoo>

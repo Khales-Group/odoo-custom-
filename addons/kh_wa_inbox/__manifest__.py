@@ -68,7 +68,7 @@ numbers, no day pages). No users are added by the module.
         "security/kh_wa_inbox_security.xml",
         "security/ir.model.access.csv",
         "security/kh_wa_inbox_rules.xml",
-        "data/kh_wa_project_data.xml",
+        "data/kh_wa_cron.xml",
         "views/kh_wa_item_views.xml",
         "views/project_task_views.xml",
         "views/kh_wa_group_views.xml",

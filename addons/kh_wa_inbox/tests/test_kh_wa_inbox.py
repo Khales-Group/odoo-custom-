@@ -447,6 +447,25 @@ class TestKhWaInbox(TransactionCase):
         self.assertEqual(item.state, "open")
         self.assertTrue(item.needs_manager, "it waits for the manager's decision")
 
+    def test_follow_ups_project_is_made_once_and_kept(self):
+        self.upsert(self.row("task7", assignee_login=self.user_b.login), self.row("task8", assignee_login=self.user_b.login))
+        project = self.item("task7").task_id.project_id
+        self.assertEqual(self.item("task8").task_id.project_id, project, "one follow-ups project")
+        self.assertEqual(project.privacy_visibility, "followers", "private: assignees and project managers only")
+        xmlid = self.env["ir.model.data"].search([("module", "=", "kh_wa_inbox"), ("name", "=", "project_kh_wa_followups")])
+        self.assertEqual((xmlid.res_id, xmlid.noupdate), (project.id, True), "a module update won't delete it")
+
+    def test_cron_sends_the_missing_tasks(self):
+        self.upsert(self.row("task9", assignee_login=self.user_b.login))
+        item = self.item("task9")
+        item.task_id.unlink()
+        self.assertFalse(item.task_id)
+        self.env["kh.wa.item"]._cron_send_missing_tasks()
+        self.assertEqual(item.task_id.user_ids, self.user_b)
+        self.assertTrue(self.env.ref("kh_wa_inbox.ir_cron_kh_wa_send_tasks").active)
+        self.env["kh.wa.item"]._cron_send_missing_tasks()
+        self.assertEqual(len(item.task_ids), 1, "run again: nothing more")
+
     def test_no_task_for_a_notebook_manager(self):
         self.upsert(self.row("task4"))
         item = self.item("task4")

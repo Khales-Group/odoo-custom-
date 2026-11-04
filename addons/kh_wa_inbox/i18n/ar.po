@@ -406,11 +406,6 @@ msgid "Image"
 msgstr "صورة"
 
 #. module: kh_wa_inbox
-#: model:project.task.type,name:kh_wa_inbox.task_type_kh_wa_doing
-msgid "In Progress"
-msgstr "قيد العمل"
-
-#. module: kh_wa_inbox
 #. odoo-python
 #: code:addons/kh_wa_inbox/models/kh_wa_item.py:0
 msgid "Invoice / Bill"
@@ -929,11 +924,6 @@ msgid "This WhatsApp message is already counted."
 msgstr "رسالة الواتساب هذه محسوبة بالفعل."
 
 #. module: kh_wa_inbox
-#: model:project.task.type,name:kh_wa_inbox.task_type_kh_wa_todo
-msgid "To Do"
-msgstr "للتنفيذ"
-
-#. module: kh_wa_inbox
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_search
 msgid "Type"
 msgstr "النوع"
@@ -1020,7 +1010,6 @@ msgid "WhatsApp Chat ID"
 msgstr "معرّف محادثة واتساب"
 
 #. module: kh_wa_inbox
-#: model:project.project,name:kh_wa_inbox.project_kh_wa_followups
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_task_search_kh_wa
 msgid "WhatsApp Follow-ups"
 msgstr "متابعات القروبات"
