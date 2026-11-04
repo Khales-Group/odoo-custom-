@@ -1,6 +1,6 @@
 {
     "name": "Khales Follow-up Dashboard: WhatsApp Groups",
-    "version": "19.0.1.3.0",
+    "version": "19.0.1.4.0",
     "summary": "لوحة المتابعة: what is asked, decided and promised in the company's WhatsApp groups",
     "description": """
 Khales Follow-up Dashboard: WhatsApp Groups (لوحة المتابعة)
@@ -38,12 +38,17 @@ Each upsert returns {"ids": [...], "errors": [...]}; a bad row is logged,
 skipped and reported, never failing the batch. The time of the last
 upsert that stored something is shown in the dashboard's header.
 
+Assigning an item to someone outside the notebook managers sends them a
+To-Do activity with the request (they can't open the dashboard or the item);
+marking it done closes the item with their note, a new date moves the item's
+due date. Only notebook managers see the dashboard.
+
 One-time passwords and card numbers are masked in the stored texts. Voice
 notes are never transcribed.
 
-Access: "المدير" sees everything; "مستخدم" sees only the items assigned to
-them or that they asked, without phone numbers or day pages. Nobody else
-sees anything. No users are added by the module.
+Access: "المدير" sees everything and is the only one with the dashboard;
+"مستخدم" can read the items assigned to them or that they asked (no phone
+numbers, no day pages). No users are added by the module.
     """,
     "author": "Khales Group",
     "category": "Productivity",

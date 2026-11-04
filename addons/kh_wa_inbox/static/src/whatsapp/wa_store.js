@@ -394,6 +394,10 @@ export class WhatsAppStore {
         return this.run(item, "action_waiting");
     }
 
+    sendActivity(item) {
+        return this.run(item, "action_send_activity");
+    }
+
     reopen(item) {
         return this.run(item, "action_reopen", {}, { close: true });
     }

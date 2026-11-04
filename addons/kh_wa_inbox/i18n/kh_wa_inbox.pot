@@ -6,8 +6,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 19.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-02 12:00+0000\n"
-"PO-Revision-Date: 2026-11-02 12:00+0000\n"
+"POT-Creation-Date: 2026-11-04 08:00+0000\n"
+"PO-Revision-Date: 2026-11-04 08:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: \n"
 "MIME-Version: 1.0\n"
@@ -290,6 +290,11 @@ msgstr ""
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_day__quick_done_count
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_day_form
 msgid "Finished Within the Threshold"
+msgstr ""
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__kh_activity_id
+msgid "Follow-up Activity"
 msgstr ""
 
 #. module: kh_wa_inbox
@@ -669,6 +674,11 @@ msgid "Result"
 msgstr ""
 
 #. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
+msgid "Send the To-Do Again"
+msgstr ""
+
+#. module: kh_wa_inbox
 #: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_group__last_message_at
 msgid "Sent by the bot with upsert_groups."
 msgstr ""
@@ -742,6 +752,13 @@ msgstr ""
 #. module: kh_wa_inbox
 #: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__requester_user_id
 msgid "The Odoo user who asked, when known. They can see this item."
+msgstr ""
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__kh_activity_id
+msgid ""
+"The To-Do the assignee got. Marking it done closes the item; moving its date"
+" moves the item's."
 msgstr ""
 
 #. module: kh_wa_inbox

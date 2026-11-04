@@ -5,11 +5,15 @@ import uuid
 from collections import defaultdict
 from datetime import timedelta
 
+from markupsafe import Markup, escape
+
 from odoo import api, fields, models
+from odoo.exceptions import AccessError
 
 from .kh_wa_board import duration_text
 from .kh_wa_tools import (
     arabic_age,
+    dubai_date,
     dubai_day_bounds,
     dubai_today,
     mask_vals,
@@ -27,6 +31,8 @@ CLOSED_STATES = ("done", "cancel")
 # it alone (the field names are kept in manual_fields).
 MANUAL_FIELDS = ("state", "assignee_id", "urgent", "needs_manager", "manager_note")
 MASKED_FIELDS = ("source_text", "context_text", "done_note")
+# A change to one of these refreshes the assignee's follow-up activity.
+ACTIVITY_FIELDS = ("assignee_id", "state", "due_date", "name", "source_text")
 LINKABLE_MODELS = ("project.task", "kh.approval.request", "sign.request", "project.site.visit", "crm.lead")
 # Values an upsert_items row may carry as they are.
 ROW_TEXT_FIELDS = (
@@ -90,6 +96,10 @@ class KhWaItem(models.Model):
         help="The Odoo user who asked, when known. They can see this item.",
     )
     assignee_id = fields.Many2one("res.users", string="Assignee", tracking=True, index="btree_not_null")
+    kh_activity_id = fields.Many2one(
+        "mail.activity", string="Follow-up Activity", readonly=True, copy=False, ondelete="set null",
+        help="The To-Do the assignee got. Marking it done closes the item; moving its date moves the item's.",
+    )
     asked_at = fields.Datetime(string="Asked At", required=True, default=fields.Datetime.now, index=True)
     due_date = fields.Date(string="Due Date", index="btree_not_null")
     done_at = fields.Datetime(string="Closed At", index="btree_not_null", copy=False)
@@ -167,7 +177,9 @@ class KhWaItem(models.Model):
             mask_vals(vals, MASKED_FIELDS)
             if vals.get("state") in CLOSED_STATES and not vals.get("done_at"):
                 vals["done_at"] = now
-        return super().create(vals_list)
+        items = super().create(vals_list)
+        items.filtered("assignee_id")._kh_sync_activity()
+        return items
 
     def write(self, vals):
         vals = mask_vals(dict(vals), MASKED_FIELDS)
@@ -184,6 +196,8 @@ class KhWaItem(models.Model):
                 by_value[",".join(sorted(item._manual_field_set() | touched))] |= item
             for value, items in by_value.items():
                 super(KhWaItem, items).write({"manual_fields": value})
+        if any(name in vals for name in ACTIVITY_FIELDS) and not self.env.context.get("kh_wa_activity_sync"):
+            self._kh_sync_activity()
         return result
 
     def _manual_field_set(self):
@@ -194,13 +208,96 @@ class KhWaItem(models.Model):
         """Nobody has done anything with this item in Odoo yet."""
         self.ensure_one()
         item = self.sudo()
-        if item.manual_fields or item.remind_on or item.activity_ids:
+        # The assignee's follow-up To-Do is the item's own, not someone's touch.
+        if item.manual_fields or item.remind_on or (item.activity_ids - item.kh_activity_id):
             return False
         if self.env["mail.message"].sudo().search_count([
             ("model", "=", self._name), ("res_id", "=", self.id), ("message_type", "in", ("comment", "email")),
         ], limit=1):
             return False
         return not self.env["kh.wa.memo"].sudo().search_count([("item_id", "=", self.id)], limit=1)
+
+    # ------------------------------------------------------------------
+    # The assignee's follow-up activity
+    # ------------------------------------------------------------------
+
+    def _message_auto_subscribe_followers(self, updated_values, default_subtype_ids):
+        # The assignee is not made a follower: items can come from HR or
+        # legal groups, and followers get the item's messages by email. They
+        # get a To-Do activity with what they need instead.
+        return []
+
+    def _kh_activity_deadline(self):
+        return self.due_date or dubai_today() + timedelta(days=1)
+
+    def _kh_activity_note(self):
+        """What the assignee needs, without opening the item (they can't)."""
+        self.ensure_one()
+        asked = ""
+        if self.asked_at:
+            asked = f"{self.requester_name or '—'} · {fields.Date.to_string(dubai_date(self.asked_at))}"
+        rows = [
+            ("الطلب", self.name),
+            ("القروب", self.group_id.name),
+            ("سأل", asked),
+            ("الموعد", fields.Date.to_string(self.due_date) if self.due_date else ""),
+        ]
+        lines = [Markup("<p><b>%s:</b> %s</p>") % (label, value) for label, value in rows if value]
+        if self.source_text:
+            text = escape(self.source_text[:1500]).replace("\n", Markup("<br/>"))
+            lines.append(Markup("<p><b>الرسالة الأصلية:</b><br/>%s</p>") % text)
+        lines.append(Markup("<p><i>%s</i></p>") % "عند الانتهاء اضغط «تم» واكتب ماذا تم، فيُغلق البند في لوحة المتابعة.")
+        return Markup("").join(lines)
+
+    def _kh_needs_activity(self):
+        """Open, assigned to someone who isn't a notebook manager (managers
+        follow their items on the dashboard itself)."""
+        user = self.assignee_id
+        return bool(
+            user and user.active and not user.share and self.state in OPEN_STATES
+            and not user.has_group("kh_wa_inbox.group_kh_wa_manager")
+        )
+
+    def _kh_sync_activity(self):
+        """Keeps one To-Do for the assignee of each open item, in line with it:
+        gone when the item is closed or reassigned, moved when its date moves."""
+        Activity = self.env["mail.activity"].sudo().with_context(kh_wa_activity_sync=True)
+        for item in self.sudo():
+            activity = item.kh_activity_id
+            wanted = item._kh_needs_activity()
+            if activity and (not wanted or activity.user_id != item.assignee_id):
+                Activity.browse(activity.id).unlink()
+                activity = Activity
+            summary = f"متابعة: {item.name}"[:120]
+            if wanted and not activity:
+                partner = item.assignee_id.partner_id
+                was_following = partner in item.message_partner_ids
+                activity = item.with_context(kh_wa_activity_sync=True).activity_schedule(
+                    "mail.mail_activity_data_todo",
+                    date_deadline=item._kh_activity_deadline(),
+                    summary=summary,
+                    note=item._kh_activity_note(),
+                    user_id=item.assignee_id.id,
+                )
+                super(KhWaItem, item).write({"kh_activity_id": activity.id})
+                # Odoo makes an activity's user a follower; followers get the
+                # item's messages by email, which the assignee must not.
+                if not was_following:
+                    item.message_unsubscribe(partner_ids=partner.ids)
+            elif wanted:
+                changes = {}
+                if activity.date_deadline != item._kh_activity_deadline():
+                    changes["date_deadline"] = item._kh_activity_deadline()
+                if activity.summary != summary:
+                    changes["summary"] = summary
+                    changes["note"] = item._kh_activity_note()
+                if changes:
+                    Activity.browse(activity.id).write(changes)
+
+    def action_send_activity(self):
+        """Sends the assignee their To-Do again (if they cancelled it)."""
+        self._kh_sync_activity()
+        return True
 
     # ------------------------------------------------------------------
     # Buttons (form view and notebook screen)
@@ -463,6 +560,8 @@ class KhWaItem(models.Model):
         day = parse_date(date) or today
         now = utc_now()
         is_manager = self.env.user.has_group("kh_wa_inbox.group_kh_wa_manager")
+        if not is_manager:
+            raise AccessError("لوحة المتابعة للمدير فقط.")
         group_id = int(group_id) if group_id else False
         group_domain = [("group_id", "=", group_id)] if group_id else []
         fetch = self._notebook_fetch_fields(is_manager)
@@ -587,6 +686,7 @@ class KhWaItem(models.Model):
                     "url": f"/web/content/{att.id}",
                 })
         linked = self._notebook_linked(items)
+        manager_ids = set(self.env.ref("kh_wa_inbox.group_kh_wa_manager").sudo().all_user_ids.ids)
         payloads = {}
         for item, item_sudo in zip(items, related):
             payloads[item.id] = {
@@ -604,7 +704,11 @@ class KhWaItem(models.Model):
                 "partner": item_sudo.partner_id.display_name or "",
                 "requester_name": item.requester_name or "",
                 "requester_phone": (item.requester_phone or "") if is_manager else "",
-                "assignee": {"id": item.assignee_id.id, "name": item_sudo.assignee_id.name} if item.assignee_id else False,
+                "assignee": {
+                    "id": item.assignee_id.id,
+                    "name": item_sudo.assignee_id.name,
+                    "manager": item_sudo.assignee_id.id in manager_ids,
+                } if item.assignee_id else False,
                 "asked_at": fields.Datetime.to_string(item.asked_at) or False,
                 "age": arabic_age(item.asked_at, now),
                 "due_date": fields.Date.to_string(item.due_date) or False,
@@ -619,6 +723,11 @@ class KhWaItem(models.Model):
                 "linked": linked.get(item.id, False),
                 "remind_on": fields.Date.to_string(item.remind_on) or False,
                 "manager_note": (item.manager_note or "") if is_manager else "",
+                "activity": {
+                    "user": item_sudo.kh_activity_id.user_id.name,
+                    "deadline": fields.Date.to_string(item_sudo.kh_activity_id.date_deadline),
+                    "state": item_sudo.kh_activity_id.state,
+                } if item_sudo.kh_activity_id else False,
             }
         return payloads
 
@@ -669,11 +778,10 @@ class KhWaItem(models.Model):
 
     @api.model
     def _notebook_users(self):
-        """People an item can be assigned to: everyone with notebook access."""
-        users = self.env.ref("kh_wa_inbox.group_kh_wa_user").sudo().all_user_ids.filtered(
-            lambda u: u.active and not u.share
-        )
-        return [{"id": u.id, "name": u.name} for u in users.sorted("name")]
+        """People an item can be assigned to: every employee with an Odoo
+        login. They need no notebook access; they get a To-Do activity."""
+        users = self.env["res.users"].sudo().search([("share", "=", False)], order="name")
+        return [{"id": u.id, "name": u.name} for u in users]
 
 
 class _RowLookup:

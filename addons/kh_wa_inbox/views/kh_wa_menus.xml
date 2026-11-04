@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <!-- The dashboard is for the manager only. Assignees work from the
+         To-Do activity they get (they don't need, and don't have, access). -->
     <menuitem
         id="menu_kh_wa_root"
         name="Follow-up Dashboard"
         sequence="6"
         action="action_kh_followup_dashboard"
         web_icon="kh_wa_inbox,static/description/icon.png"
-        groups="group_kh_wa_user"/>
+        groups="group_kh_wa_manager"/>
 
     <menuitem
         id="menu_kh_followup_dashboard"

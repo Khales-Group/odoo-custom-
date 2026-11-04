@@ -186,11 +186,8 @@ class TestKhWaInbox(TransactionCase):
         with self.assertRaises(AccessError):
             self.env["kh.wa.day"].with_user(self.user_a).search([])
 
-        data = as_a.get_notebook(group_id=self.group.id)
-        shown = [p["id"] for group in data["sections"]["open"] for p in group["items"]]
-        self.assertEqual(shown, a1.ids)
-        self.assertEqual(data["sections"]["day_summary"], [])
-        self.assertEqual(data["sections"]["open"][0]["items"][0]["requester_phone"], "")
+        with self.assertRaises(AccessError):
+            as_a.get_notebook(group_id=self.group.id)
 
     def test_notes_are_private_even_for_managers(self):
         memo = self.env["kh.wa.memo"].with_user(self.manager).create({"text": "mine"})
@@ -336,17 +333,82 @@ class TestKhWaInbox(TransactionCase):
         self.assertEqual(picked["last_sync"]["level"], "ok")
         self.assertTrue(read_last_sync(self.env))
 
-    def test_dashboard_for_a_user(self):
-        self.upsert(self.row("u1", assignee_login=self.user_a.login, urgent=True), self.row("u2", urgent=True))
-        self.env["kh.wa.day"].with_user(self.manager).upsert_days(
-            [{"date": str(dubai_today()), "wa_chat_id": CHAT, "summary": "secret", "message_count": 9}]
-        )
-        data = self.env["kh.wa.item"].with_user(self.user_a).get_dashboard(group_id=self.group.id)
-        self.assertEqual((data["kpis"]["open"]["value"], data["kpis"]["urgent"]["value"]), (1, 1))
-        box = next(b for b in data["boxes"] if b["group_id"] == self.group.id)
-        self.assertEqual(box["counts"]["open"], 1)
-        self.assertFalse(box["day"], "no day pages for users")
-        self.assertEqual(data["group_days"], [])
+    def test_dashboard_is_for_the_manager_only(self):
+        self.upsert(self.row("u1", assignee_login=self.user_a.login, urgent=True))
+        for user in (self.user_a, new_test_user(self.env, login="kh_wa_test_plain", groups="base.group_user")):
+            with self.assertRaises(AccessError):
+                self.env["kh.wa.item"].with_user(user).get_dashboard()
+        self.assertTrue(self.Item.get_dashboard()["boxes"])
+
+    # ------------------------------------------------------------------
+    # The assignee's follow-up activity
+    # ------------------------------------------------------------------
+
+    def test_assignee_gets_a_follow_up_activity(self):
+        nizar = new_test_user(self.env, login="kh_wa_test_nizar", groups="base.group_user")  # no notebook access
+        due = dubai_today() + timedelta(days=3)
+        self.upsert(self.row("act1", source_text="please send the contract", due_date=str(due)))
+        item = self.item("act1")
+        item.with_user(self.manager).write({"assignee_id": nizar.id})
+
+        activity = item.kh_activity_id
+        self.assertEqual(activity.user_id, nizar)
+        self.assertEqual(activity.activity_type_id, self.env.ref("mail.mail_activity_data_todo"))
+        self.assertIn(item.name, activity.summary)
+        self.assertIn("please send the contract", activity.note)
+        self.assertEqual(activity.date_deadline, due)
+        self.assertNotIn(nizar.partner_id, item.message_partner_ids, "the assignee is not made a follower")
+        with self.assertRaises(AccessError):
+            item.with_user(nizar).read(["name"])
+
+        # He moves the date: the item follows.
+        moved = due + timedelta(days=2)
+        activity.with_user(nizar).write({"date_deadline": moved})
+        self.assertEqual(item.due_date, moved)
+
+        # He marks it done with a note: the item closes with that result.
+        activity.with_user(nizar).action_feedback(feedback="<p>أرسلت العقد</p>")
+        self.assertEqual(item.state, "done")
+        self.assertEqual(item.done_note, "أرسلت العقد")
+        self.assertIn("state", item.manual_fields, "the bot won't reopen it")
+        self.assertFalse(item.kh_activity_id)
+
+    def test_follow_up_activity_follows_the_item(self):
+        first_user = new_test_user(self.env, login="kh_wa_test_first", groups="base.group_user")
+        second_user = new_test_user(self.env, login="kh_wa_test_second", groups="base.group_user")
+        self.upsert(self.row("act2"))
+        item = self.item("act2")
+        as_manager = item.with_user(self.manager)
+
+        as_manager.write({"assignee_id": first_user.id})
+        first = item.kh_activity_id
+        self.assertEqual(first.date_deadline, dubai_today() + timedelta(days=1), "no due date: tomorrow")
+        as_manager.write({"assignee_id": second_user.id})
+        self.assertFalse(first.exists(), "reassigned: the first person's To-Do is gone")
+        self.assertEqual(item.kh_activity_id.user_id, second_user)
+
+        as_manager.write({"due_date": dubai_today() + timedelta(days=9)})
+        self.assertEqual(item.kh_activity_id.date_deadline, item.due_date)
+
+        as_manager.action_done(note="done by the manager")
+        self.assertFalse(item.kh_activity_id)
+        self.assertFalse(item.activity_ids, "closed: nothing left in the assignee's list")
+
+        as_manager.action_reopen()
+        self.assertEqual(item.kh_activity_id.user_id, second_user, "reopened: the To-Do comes back")
+
+    def test_no_activity_for_a_notebook_manager(self):
+        self.upsert(self.row("act4"))
+        item = self.item("act4")
+        item.with_user(self.manager).write({"assignee_id": self.manager.id})
+        self.assertFalse(item.kh_activity_id, "managers follow their items on the dashboard")
+        self.assertFalse(item.activity_ids)
+
+    def test_bot_assignment_also_sends_the_activity(self):
+        self.upsert(self.row("act3", assignee_login=self.user_b.login))
+        self.assertEqual(self.item("act3").kh_activity_id.user_id, self.user_b)
+        self.upsert(self.row("act3", name="renamed"))
+        self.assertEqual(len(self.item("act3").activity_ids), 1, "a later upsert doesn't add another one")
 
     def test_archived_group_with_open_items_keeps_its_card(self):
         self.upsert(self.row("a1"), self.row("a2", urgent=True))

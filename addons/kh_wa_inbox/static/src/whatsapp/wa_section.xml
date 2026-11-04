@@ -334,6 +334,16 @@
                     <span t-if="item.requester_phone" class="o_kh_wa_muted o_kh_wa_phone" dir="ltr"> <t t-esc="item.requester_phone"/></span></dd>
                 <dt>المسؤول</dt>
                 <dd><t t-if="item.assignee" t-esc="item.assignee.name"/><span t-else="" class="o_kh_wa_muted">بلا مسؤول</span></dd>
+                <t t-if="item.assignee and !item.assignee.manager and !closedItem">
+                    <dt>النشاط</dt>
+                    <dd t-if="item.activity" t-attf-class="{{item.activity.state === 'overdue' ? 'o_kh_wa_late' : ''}}">
+                        مهمة عند <t t-esc="store.shortName(item.activity.user)"/> حتى <t t-esc="day(item.activity.deadline)"/>
+                    </dd>
+                    <dd t-else="">
+                        <span class="o_kh_wa_muted">لا يوجد نشاط عنده</span>
+                        <button class="o_kh_fd_link o_kh_wa_inline_link" t-att-disabled="store.busy" t-on-click="() => this.store.sendActivity(item)">أرسل له المهمة</button>
+                    </dd>
+                </t>
                 <t t-if="item.due_date">
                     <dt>الموعد</dt>
                     <dd t-attf-class="{{item.is_overdue ? 'o_kh_wa_late' : ''}}" t-esc="day(item.due_date)"/>

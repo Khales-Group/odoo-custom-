@@ -77,6 +77,8 @@
                             invisible="state == 'open'"/>
                     <button name="action_cancel" string="Cancel" type="object"
                             invisible="state in ('done', 'cancel')"/>
+                    <button name="action_send_activity" string="Send the To-Do Again" type="object"
+                            invisible="not assignee_id or kh_activity_id or state in ('done', 'cancel')"/>
                     <field name="state" widget="statusbar" statusbar_visible="open,waiting,done"/>
                 </header>
                 <sheet>
@@ -96,6 +98,7 @@
                             <field name="urgent"/>
                             <field name="needs_manager"/>
                             <field name="assignee_id" widget="many2one_avatar_user"/>
+                            <field name="kh_activity_id" invisible="not kh_activity_id"/>
                             <field name="due_date"/>
                             <field name="remind_on"/>
                             <field name="is_overdue" invisible="1"/>
