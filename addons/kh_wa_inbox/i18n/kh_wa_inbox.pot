@@ -96,6 +96,12 @@ msgid "Another group already has this WhatsApp chat id."
 msgstr ""
 
 #. module: kh_wa_inbox
+#. odoo-python
+#: code:addons/kh_wa_inbox/models/kh_wa_item.py:0
+msgid "Approval Request"
+msgstr ""
+
+#. module: kh_wa_inbox
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_group_form
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_group_search
 msgid "Archived"
@@ -246,6 +252,11 @@ msgid "Default project for this group's items."
 msgstr ""
 
 #. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_link_form
+msgid "Discard"
+msgstr ""
+
+#. module: kh_wa_inbox
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_day__display_name
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__display_name
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__display_name
@@ -263,6 +274,7 @@ msgstr ""
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_memo__done
 #: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_item__state__done
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_task_form_kh_wa
 msgid "Done"
 msgstr ""
 
@@ -293,14 +305,24 @@ msgid "Finished Within the Threshold"
 msgstr ""
 
 #. module: kh_wa_inbox
-#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__kh_activity_id
-msgid "Follow-up Activity"
-msgstr ""
-
-#. module: kh_wa_inbox
 #: model:ir.actions.client,name:kh_wa_inbox.action_kh_followup_dashboard
 #: model:ir.ui.menu,name:kh_wa_inbox.menu_kh_wa_root
 msgid "Follow-up Dashboard"
+msgstr ""
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_task_form_kh_wa
+msgid "Follow-up from the WhatsApp group"
+msgstr ""
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__task_id
+msgid "Follow-up Task"
+msgstr ""
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__task_ids
+msgid "Follow-up Tasks"
 msgstr ""
 
 #. module: kh_wa_inbox
@@ -379,6 +401,17 @@ msgid "Image"
 msgstr ""
 
 #. module: kh_wa_inbox
+#: model:project.task.type,name:kh_wa_inbox.task_type_kh_wa_doing
+msgid "In Progress"
+msgstr ""
+
+#. module: kh_wa_inbox
+#. odoo-python
+#: code:addons/kh_wa_inbox/models/kh_wa_item.py:0
+msgid "Invoice / Bill"
+msgstr ""
+
+#. module: kh_wa_inbox
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__message_is_follower
 msgid "Is Follower"
 msgstr ""
@@ -424,12 +457,32 @@ msgid "Last Updated On"
 msgstr ""
 
 #. module: kh_wa_inbox
+#. odoo-python
+#: code:addons/kh_wa_inbox/models/kh_wa_item.py:0
+msgid "Lead / Opportunity"
+msgstr ""
+
+#. module: kh_wa_inbox
 #: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_group__category__legal
 msgid "Legal"
 msgstr ""
 
 #. module: kh_wa_inbox
+#. odoo-python
+#: code:addons/kh_wa_inbox/models/kh_wa_item.py:0
+msgid "Legal / PRO File (Law Pro)"
+msgstr ""
+
+#. module: kh_wa_inbox
+#. odoo-python
+#: code:addons/kh_wa_inbox/models/kh_wa_item.py:0
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_link_form
+msgid "Link to a Record"
+msgstr ""
+
+#. module: kh_wa_inbox
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__linked_ref
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_project_task__kh_wa_linked_name
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
 msgid "Linked Record"
 msgstr ""
@@ -565,6 +618,12 @@ msgid ""
 msgstr ""
 
 #. module: kh_wa_inbox
+#. odoo-python
+#: code:addons/kh_wa_inbox/models/project_task.py:0
+msgid "Only the task's assignees can mark it done."
+msgstr ""
+
+#. module: kh_wa_inbox
 #: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_item__state__open
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_search
 msgid "Open"
@@ -574,6 +633,11 @@ msgstr ""
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__open_count
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_group_form
 msgid "Open Items"
+msgstr ""
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_task_form_kh_wa
+msgid "Open the Record"
 msgstr ""
 
 #. module: kh_wa_inbox
@@ -599,11 +663,20 @@ msgid "Owner"
 msgstr ""
 
 #. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_link_form
+msgid ""
+"Pick the type, then search the record by its name or number. Whoever opens "
+"that record sees the follow-up and its task."
+msgstr ""
+
+#. module: kh_wa_inbox
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_memo__pinned
 msgid "Pinned"
 msgstr ""
 
 #. module: kh_wa_inbox
+#. odoo-python
+#: code:addons/kh_wa_inbox/models/kh_wa_item.py:0
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__project_id
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__project_id
 msgid "Project"
@@ -615,6 +688,12 @@ msgid "Projects"
 msgstr ""
 
 #. module: kh_wa_inbox
+#. odoo-python
+#: code:addons/kh_wa_inbox/models/kh_wa_item.py:0
+msgid "Purchase Order"
+msgstr ""
+
+#. module: kh_wa_inbox
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.res_config_settings_view_form
 msgid "Quick-Done Threshold"
 msgstr ""
@@ -622,6 +701,11 @@ msgstr ""
 #. module: kh_wa_inbox
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_res_config_settings__kh_wa_quick_done_minutes
 msgid "Quick-Done Threshold (minutes)"
+msgstr ""
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_link_form
+msgid "Record"
 msgstr ""
 
 #. module: kh_wa_inbox
@@ -674,8 +758,13 @@ msgid "Result"
 msgstr ""
 
 #. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_link_form
+msgid "Save"
+msgstr ""
+
+#. module: kh_wa_inbox
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
-msgid "Send the To-Do Again"
+msgid "Send the Task Again"
 msgstr ""
 
 #. module: kh_wa_inbox
@@ -697,6 +786,18 @@ msgstr ""
 #. module: kh_wa_inbox
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
 msgid "Short summary"
+msgstr ""
+
+#. module: kh_wa_inbox
+#. odoo-python
+#: code:addons/kh_wa_inbox/models/kh_wa_item.py:0
+msgid "Signature Request"
+msgstr ""
+
+#. module: kh_wa_inbox
+#. odoo-python
+#: code:addons/kh_wa_inbox/models/kh_wa_item.py:0
+msgid "Site Visit"
 msgstr ""
 
 #. module: kh_wa_inbox
@@ -732,6 +833,13 @@ msgid "Summary"
 msgstr ""
 
 #. module: kh_wa_inbox
+#. odoo-python
+#: code:addons/kh_wa_inbox/models/kh_wa_item.py:0
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
+msgid "Task"
+msgstr ""
+
+#. module: kh_wa_inbox
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
 msgid "Technical"
 msgstr ""
@@ -755,10 +863,10 @@ msgid "The Odoo user who asked, when known. They can see this item."
 msgstr ""
 
 #. module: kh_wa_inbox
-#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__kh_activity_id
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__task_id
 msgid ""
-"The To-Do the assignee got. Marking it done closes the item; moving its date"
-" moves the item's."
+"The task the assignee got. Closing it closes the item; its deadline and "
+"assignee follow the item's."
 msgstr ""
 
 #. module: kh_wa_inbox
@@ -796,6 +904,11 @@ msgstr ""
 #. module: kh_wa_inbox
 #: model:ir.model.constraint,message:kh_wa_inbox.constraint_kh_wa_quick_done_source_msg_id_unique
 msgid "This WhatsApp message is already counted."
+msgstr ""
+
+#. module: kh_wa_inbox
+#: model:project.task.type,name:kh_wa_inbox.task_type_kh_wa_todo
+msgid "To Do"
 msgstr ""
 
 #. module: kh_wa_inbox
@@ -875,10 +988,18 @@ msgid "WhatsApp Chat ID"
 msgstr ""
 
 #. module: kh_wa_inbox
+#: model:project.project,name:kh_wa_inbox.project_kh_wa_followups
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_task_search_kh_wa
+msgid "WhatsApp Follow-ups"
+msgstr ""
+
+#. module: kh_wa_inbox
 #: model:ir.model,name:kh_wa_inbox.model_kh_wa_group
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_day__group_id
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__group_id
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_project_task__kh_wa_group_name
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_group_form
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_task_search_kh_wa
 msgid "WhatsApp Group"
 msgstr ""
 
@@ -902,5 +1023,22 @@ msgstr ""
 
 #. module: kh_wa_inbox
 #: model:ir.model,name:kh_wa_inbox.model_kh_wa_item
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_project_task__kh_wa_item_id
 msgid "WhatsApp Notebook Item"
+msgstr ""
+
+#. module: kh_wa_inbox
+#. odoo-python
+#: code:addons/kh_wa_inbox/models/project_task.py:0
+msgid "You don't have access to %s."
+msgstr ""
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_task_form_kh_wa
+msgid "· Linked to"
+msgstr ""
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_task_form_kh_wa
+msgid "· When you finish, write what was done in a comment, then press Done."
 msgstr ""

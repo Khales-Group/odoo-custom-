@@ -3,5 +3,5 @@ from . import kh_wa_item
 from . import kh_wa_item_dashboard
 from . import kh_wa_day
 from . import kh_wa_memo
-from . import mail_activity
+from . import project_task
 from . import res_config_settings

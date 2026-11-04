@@ -35,6 +35,15 @@ const VIEW = Object.fromEntries(VIEWS.map((v) => [v.key, v]));
 // Inside a group, the list can be narrowed with these.
 export const GROUP_FILTERS = ["open", "needs_manager", "urgent", "overdue"];
 export const STATUS_LABELS = { red: "يحتاج انتباه", amber: "متابعة", green: "مستقر" };
+// project.task states, as the item pane names them.
+const TASK_STATES = {
+    "01_in_progress": "قيد العمل",
+    "02_changes_requested": "مطلوب تعديل",
+    "03_approved": "موافَق عليها",
+    "04_waiting_normal": "بانتظار مهمة أخرى",
+    "1_done": "تمت",
+    "1_canceled": "ملغاة",
+};
 const SYNC_ALERT = "البيانات متأخرة";
 
 const byAsked = (a, b) => (a.asked_at || "").localeCompare(b.asked_at || "") || a.id - b.id;
@@ -394,8 +403,18 @@ export class WhatsAppStore {
         return this.run(item, "action_waiting");
     }
 
-    sendActivity(item) {
-        return this.run(item, "action_send_activity");
+    sendTask(item) {
+        return this.run(item, "action_send_task");
+    }
+
+    /** "قيد العمل عند نزار · حتى ٩ نوفمبر" */
+    taskLine(item) {
+        const task = item.task;
+        const parts = [`${TASK_STATES[task.state] || task.state} عند ${this.shortName(task.user) || "—"}`];
+        if (task.deadline && !task.closed) {
+            parts.push(`حتى ${formatDay(task.deadline)}`);
+        }
+        return parts.join(" · ");
     }
 
     reopen(item) {
@@ -426,6 +445,21 @@ export class WhatsAppStore {
             views: [[false, "form"]],
             target: "current",
         });
+    }
+
+    openTask(item) {
+        this.services.action.doAction({
+            type: "ir.actions.act_window",
+            res_model: "project.task",
+            res_id: item.task.id,
+            views: [[false, "form"]],
+            target: "current",
+        });
+    }
+
+    async linkRecord(item) {
+        const action = await this.services.orm.call("kh.wa.item", "action_link_record", [[item.id]]);
+        await this.services.action.doAction(action, { onClose: () => this.load() });
     }
 
     openLinked(item) {

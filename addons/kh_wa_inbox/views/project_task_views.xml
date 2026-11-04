@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- A follow-up task says where it comes from and how to close it; its
+         "Done" also works for an assignee without rights to edit tasks. -->
+    <record id="view_task_form_kh_wa" model="ir.ui.view">
+        <field name="name">project.task.form.kh_wa_inbox</field>
+        <field name="model">project.task</field>
+        <field name="inherit_id" ref="project.view_task_form2"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form/header" position="inside">
+                <button name="action_kh_wa_done" string="Done" type="object" class="btn-primary"
+                        invisible="not kh_wa_group_name or state in ('1_done', '1_canceled')"/>
+            </xpath>
+            <xpath expr="//t[@name='warning_section']" position="after">
+                <div class="alert alert-info mb-0 rounded-0 d-flex flex-wrap align-items-center gap-1" role="status"
+                     invisible="not kh_wa_group_name">
+                    <span>Follow-up from the WhatsApp group</span>
+                    <field name="kh_wa_group_name" class="fw-bold" readonly="1"/>
+                    <span>· When you finish, write what was done in a comment, then press Done.</span>
+                    <span invisible="not kh_wa_linked_name">· Linked to</span>
+                    <field name="kh_wa_linked_name" invisible="not kh_wa_linked_name" readonly="1"/>
+                    <button name="action_kh_wa_open_linked" type="object" string="Open the Record" class="btn btn-link p-0"
+                            invisible="not kh_wa_linked_name"/>
+                </div>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_task_search_kh_wa" model="ir.ui.view">
+        <field name="name">project.task.search.kh_wa_inbox</field>
+        <field name="model">project.task</field>
+        <field name="inherit_id" ref="project.view_task_search_form"/>
+        <field name="arch" type="xml">
+            <filter name="unassigned" position="after">
+                <filter string="WhatsApp Follow-ups" name="kh_wa_followups" domain="[('kh_wa_group_name', '!=', False)]"/>
+            </filter>
+            <filter name="stage" position="after">
+                <filter string="WhatsApp Group" name="kh_wa_group" context="{'group_by': 'kh_wa_group_name'}"/>
+            </filter>
+        </field>
+    </record>
+</odoo>

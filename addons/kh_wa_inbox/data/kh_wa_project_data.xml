@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- Where the follow-up tasks of items without a project go. Private:
+         only their assignees (and project managers) see them. A group can
+         send its tasks to another project instead (the group's Project). -->
+    <record id="project_kh_wa_followups" model="project.project">
+        <field name="name">WhatsApp Follow-ups</field>
+        <field name="privacy_visibility">followers</field>
+    </record>
+
+    <record id="task_type_kh_wa_todo" model="project.task.type">
+        <field name="name">To Do</field>
+        <field name="sequence">1</field>
+        <field name="project_ids" eval="[Command.link(ref('project_kh_wa_followups'))]"/>
+    </record>
+
+    <record id="task_type_kh_wa_doing" model="project.task.type">
+        <field name="name">In Progress</field>
+        <field name="sequence">2</field>
+        <field name="project_ids" eval="[Command.link(ref('project_kh_wa_followups'))]"/>
+    </record>
+</odoo>

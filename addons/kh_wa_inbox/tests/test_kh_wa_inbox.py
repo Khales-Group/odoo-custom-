@@ -4,7 +4,7 @@ import time
 from datetime import timedelta
 
 from odoo import fields
-from odoo.exceptions import AccessError
+from odoo.exceptions import AccessError, UserError
 from odoo.tests import TransactionCase, new_test_user, tagged
 
 from odoo.addons.kh_wa_inbox.models.kh_wa_tools import dubai_date, dubai_today, mask_text, read_last_sync
@@ -341,74 +341,157 @@ class TestKhWaInbox(TransactionCase):
         self.assertTrue(self.Item.get_dashboard()["boxes"])
 
     # ------------------------------------------------------------------
-    # The assignee's follow-up activity
+    # The assignee's follow-up task
     # ------------------------------------------------------------------
 
-    def test_assignee_gets_a_follow_up_activity(self):
-        nizar = new_test_user(self.env, login="kh_wa_test_nizar", groups="base.group_user")  # no notebook access
+    def payload(self, item):
+        data = self.Item.get_notebook()
+        sections = data["sections"]
+        found = [p for s in sections["open"] for p in s["items"]] + sections["needs_manager"] + sections["urgent"]
+        found += sections["upcoming"] + sections["closed"]
+        return next(p for p in found if p["id"] == item.id)
+
+    def test_assignee_gets_a_follow_up_task(self):
+        # Project rights, no notebook access.
+        nizar = new_test_user(self.env, login="kh_wa_test_nizar", groups="base.group_user,project.group_project_user")
         due = dubai_today() + timedelta(days=3)
-        self.upsert(self.row("act1", source_text="please send the contract", due_date=str(due)))
-        item = self.item("act1")
+        self.upsert(self.row("task1", source_text="please send the contract", due_date=str(due)))
+        item = self.item("task1")
         item.with_user(self.manager).write({"assignee_id": nizar.id})
 
-        activity = item.kh_activity_id
-        self.assertEqual(activity.user_id, nizar)
-        self.assertEqual(activity.activity_type_id, self.env.ref("mail.mail_activity_data_todo"))
-        self.assertIn(item.name, activity.summary)
-        self.assertIn("please send the contract", activity.note)
-        self.assertEqual(activity.date_deadline, due)
-        self.assertNotIn(nizar.partner_id, item.message_partner_ids, "the assignee is not made a follower")
+        task = item.task_id
+        self.assertEqual(task.user_ids, nizar)
+        self.assertEqual(task.name, item.name)
+        self.assertEqual(task.project_id, self.env.ref("kh_wa_inbox.project_kh_wa_followups"), "no project: the follow-ups one")
+        self.assertIn("please send the contract", task.description)
+        self.assertEqual(dubai_date(task.date_deadline), due)
+        self.assertNotIn(nizar.partner_id, item.message_partner_ids, "the assignee is not made a follower of the item")
+        self.assertTrue(self.env["mail.message"].search_count([
+            ("model", "=", "project.task"), ("res_id", "=", task.id),
+            ("message_type", "=", "user_notification"), ("partner_ids", "in", nizar.partner_id.ids),
+        ]), "he gets Odoo's \"assigned to you\" message")
         with self.assertRaises(AccessError):
             item.with_user(nizar).read(["name"])
+        # His task opens for him (the To-Do's link didn't).
+        values = task.with_user(nizar).read(["name", "kh_wa_group_name", "kh_wa_linked_name"])[0]
+        self.assertEqual(values["kh_wa_group_name"], self.group.name)
+        self.assertEqual(self.payload(item)["task"]["user"], nizar.name)
 
-        # He moves the date: the item follows.
+        # He moves the deadline: the item follows.
         moved = due + timedelta(days=2)
-        activity.with_user(nizar).write({"date_deadline": moved})
+        task.with_user(nizar).write({"date_deadline": fields.Datetime.to_datetime(f"{moved} 10:00:00")})
         self.assertEqual(item.due_date, moved)
 
-        # He marks it done with a note: the item closes with that result.
-        activity.with_user(nizar).action_feedback(feedback="<p>أرسلت العقد</p>")
+        # He writes what he did and closes the task: the item closes with it.
+        task.with_user(nizar).message_post(body="أرسلت العقد", message_type="comment", subtype_xmlid="mail.mt_comment")
+        task.with_user(nizar).write({"state": "1_done"})
         self.assertEqual(item.state, "done")
         self.assertEqual(item.done_note, "أرسلت العقد")
         self.assertIn("state", item.manual_fields, "the bot won't reopen it")
-        self.assertFalse(item.kh_activity_id)
 
-    def test_follow_up_activity_follows_the_item(self):
+        # Reopened by him: the item is open again.
+        task.with_user(nizar).write({"state": "01_in_progress"})
+        self.assertEqual(item.state, "open")
+
+    def test_done_button_without_project_rights(self):
+        plain = new_test_user(self.env, login="kh_wa_test_plain_task", groups="base.group_user")
+        self.upsert(self.row("task5"))
+        item = self.item("task5")
+        item.with_user(self.manager).write({"assignee_id": plain.id})
+        task = item.task_id.with_user(plain)
+        task.message_post(body="تم التسليم", message_type="comment", subtype_xmlid="mail.mt_comment")
+        with self.assertRaises(AccessError):
+            task.write({"state": "1_done"})
+        task.action_kh_wa_done()
+        self.assertEqual(item.state, "done")
+        self.assertEqual(item.done_note, "تم التسليم")
+        outsider = new_test_user(self.env, login="kh_wa_test_outsider", groups="base.group_user,project.group_project_user")
+        item.with_user(self.manager).action_reopen()
+        with self.assertRaises((AccessError, UserError)):
+            item.task_id.with_user(outsider).action_kh_wa_done()
+
+    def test_follow_up_task_follows_the_item(self):
         first_user = new_test_user(self.env, login="kh_wa_test_first", groups="base.group_user")
         second_user = new_test_user(self.env, login="kh_wa_test_second", groups="base.group_user")
-        self.upsert(self.row("act2"))
-        item = self.item("act2")
+        self.upsert(self.row("task2"))
+        item = self.item("task2")
         as_manager = item.with_user(self.manager)
 
         as_manager.write({"assignee_id": first_user.id})
-        first = item.kh_activity_id
-        self.assertEqual(first.date_deadline, dubai_today() + timedelta(days=1), "no due date: tomorrow")
+        task = item.task_id
+        self.assertFalse(task.date_deadline, "no due date: no deadline")
         as_manager.write({"assignee_id": second_user.id})
-        self.assertFalse(first.exists(), "reassigned: the first person's To-Do is gone")
-        self.assertEqual(item.kh_activity_id.user_id, second_user)
+        self.assertEqual(item.task_id, task, "handed over: the same task")
+        self.assertEqual(task.user_ids, second_user)
 
         as_manager.write({"due_date": dubai_today() + timedelta(days=9)})
-        self.assertEqual(item.kh_activity_id.date_deadline, item.due_date)
+        self.assertEqual(dubai_date(task.date_deadline), item.due_date)
 
         as_manager.action_done(note="done by the manager")
-        self.assertFalse(item.kh_activity_id)
-        self.assertFalse(item.activity_ids, "closed: nothing left in the assignee's list")
+        self.assertEqual(task.state, "1_done")
+        self.assertTrue(any("done by the manager" in (m.body or "") for m in task.message_ids), "the assignee is told why")
 
         as_manager.action_reopen()
-        self.assertEqual(item.kh_activity_id.user_id, second_user, "reopened: the To-Do comes back")
+        self.assertEqual(task.state, "01_in_progress", "reopened: the task too")
+        self.assertEqual(task.user_ids, second_user)
 
-    def test_no_activity_for_a_notebook_manager(self):
-        self.upsert(self.row("act4"))
-        item = self.item("act4")
+        as_manager.write({"assignee_id": self.manager.id})
+        self.assertEqual(task.state, "1_canceled", "taken back by a manager: the task is closed")
+        self.assertEqual(len(item.task_ids), 1)
+
+    def test_cancelled_task_goes_back_to_the_manager(self):
+        user = new_test_user(self.env, login="kh_wa_test_cancel", groups="base.group_user,project.group_project_user")
+        self.upsert(self.row("task6", assignee_login=user.login))
+        item = self.item("task6")
+        item.task_id.with_user(user).write({"state": "1_canceled"})
+        self.assertEqual(item.state, "open")
+        self.assertTrue(item.needs_manager, "it waits for the manager's decision")
+
+    def test_no_task_for_a_notebook_manager(self):
+        self.upsert(self.row("task4"))
+        item = self.item("task4")
         item.with_user(self.manager).write({"assignee_id": self.manager.id})
-        self.assertFalse(item.kh_activity_id, "managers follow their items on the dashboard")
-        self.assertFalse(item.activity_ids)
+        self.assertFalse(item.task_ids, "managers follow their items on the dashboard")
 
-    def test_bot_assignment_also_sends_the_activity(self):
-        self.upsert(self.row("act3", assignee_login=self.user_b.login))
-        self.assertEqual(self.item("act3").kh_activity_id.user_id, self.user_b)
-        self.upsert(self.row("act3", name="renamed"))
-        self.assertEqual(len(self.item("act3").activity_ids), 1, "a later upsert doesn't add another one")
+    def test_bot_assignment_also_sends_the_task(self):
+        self.upsert(self.row("task3", assignee_login=self.user_b.login))
+        task = self.item("task3").task_id
+        self.assertEqual(task.user_ids, self.user_b)
+        self.assertTrue(self.env["mail.message"].search_count([
+            ("model", "=", "project.task"), ("res_id", "=", task.id), ("message_type", "=", "user_notification"),
+        ]), "the bot's quiet mail flags don't silence the assignment")
+        self.upsert(self.row("task3", name="renamed"))
+        self.assertEqual(len(self.item("task3").task_ids), 1, "a later upsert doesn't add another one")
+        self.assertEqual(task.name, "renamed")
+
+        # The group answered: the bot closes the item, the task closes too.
+        self.upsert(self.row("task3", state="done", done_at=self.at(120), done_note="sent in the group"))
+        self.assertEqual(task.state, "1_done")
+
+    def test_linked_record_gets_the_task(self):
+        project = self.env["project.project"].create({"name": "KH WA Test Project"})
+        parent = self.env["project.task"].create({"name": "KH WA parent", "project_id": project.id})
+        self.upsert(self.row(
+            "link1", assignee_login=self.user_b.login, linked_ref={"model": "project.project", "name": "kh wa test project"},
+        ))
+        item = self.item("link1")
+        self.assertEqual(item.linked_ref, project, "the bot links by name")
+        self.assertEqual(item.task_id.project_id, project, "the task goes into the linked project")
+        self.assertTrue(
+            any("فتح المهمة" in (m.body or "") for m in project.message_ids), "the project shows the follow-up and its task",
+        )
+        self.assertEqual(self.payload(item)["linked"]["label"], "Project")
+
+        # Linked to a task later: a task still in the follow-ups project becomes its sub-task.
+        self.upsert(self.row("link2", assignee_login=self.user_b.login))
+        item2 = self.item("link2")
+        item2.with_user(self.manager).write({"linked_ref": f"project.task,{parent.id}"})
+        self.assertEqual(item2.task_id.project_id, project)
+        self.assertEqual(item2.task_id.parent_id, parent)
+        self.assertIn("linked_ref", item2.manual_fields, "the bot won't change a link a person made")
+
+        missing = self.Item.upsert_items([self.row("link3", linked_ref={"model": "project.project", "name": "nothing like it"})])
+        self.assertTrue(missing["errors"] and missing["errors"][0]["saved"], "saved, with a warning")
 
     def test_archived_group_with_open_items_keeps_its_card(self):
         self.upsert(self.row("a1"), self.row("a2", urgent=True))

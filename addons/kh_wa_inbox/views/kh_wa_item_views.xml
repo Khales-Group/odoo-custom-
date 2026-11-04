@@ -77,14 +77,16 @@
                             invisible="state == 'open'"/>
                     <button name="action_cancel" string="Cancel" type="object"
                             invisible="state in ('done', 'cancel')"/>
-                    <button name="action_send_activity" string="Send the To-Do Again" type="object"
-                            invisible="not assignee_id or kh_activity_id or state in ('done', 'cancel')"/>
+                    <button name="action_send_task" string="Send the Task Again" type="object"
+                            invisible="not assignee_id or task_id or state in ('done', 'cancel')"/>
                     <field name="state" widget="statusbar" statusbar_visible="open,waiting,done"/>
                 </header>
                 <sheet>
                     <div class="oe_button_box" name="button_box">
                         <button name="action_open_linked" type="object" class="oe_stat_button" icon="fa-link"
                                 string="Linked Record" invisible="not linked_ref"/>
+                        <button name="action_open_task" type="object" class="oe_stat_button" icon="fa-tasks"
+                                string="Task" invisible="not task_id"/>
                     </div>
                     <widget name="web_ribbon" title="Overdue" bg_color="text-bg-danger" invisible="not is_overdue"/>
                     <div class="oe_title">
@@ -98,7 +100,7 @@
                             <field name="urgent"/>
                             <field name="needs_manager"/>
                             <field name="assignee_id" widget="many2one_avatar_user"/>
-                            <field name="kh_activity_id" invisible="not kh_activity_id"/>
+                            <field name="task_id" invisible="not task_id"/>
                             <field name="due_date"/>
                             <field name="remind_on"/>
                             <field name="is_overdue" invisible="1"/>
@@ -141,6 +143,25 @@
                     </notebook>
                 </sheet>
                 <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- The dashboard's "link to a record" dialog. -->
+    <record id="view_kh_wa_item_link_form" model="ir.ui.view">
+        <field name="name">kh.wa.item.link.form</field>
+        <field name="model">kh.wa.item</field>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <form string="Link to a Record">
+                <p class="text-muted">Pick the type, then search the record by its name or number. Whoever opens that record sees the follow-up and its task.</p>
+                <group>
+                    <field name="linked_ref" string="Record" options="{'no_create': True}"/>
+                </group>
+                <footer>
+                    <button string="Save" special="save" class="btn-primary"/>
+                    <button string="Discard" special="cancel" class="btn-secondary"/>
+                </footer>
             </form>
         </field>
     </record>

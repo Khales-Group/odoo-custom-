@@ -213,6 +213,7 @@ WA_ITEM_FIELDS = [
     "requester_name", "requester_phone", "requester_user_id", "assignee_id", "asked_at", "due_date",
     "done_at", "done_note", "source_msg_id", "source_text", "context_text", "source_kind",
     "attachment_ids", "linked_ref", "remind_on", "manager_note", "manual_fields", "age_label", "is_overdue",
+    "task_id",
 ]
 WA_SECTIONS = {"needs_manager", "urgent", "open", "upcoming", "day_summary", "closed", "memos"}
 
@@ -237,6 +238,7 @@ def check_wa_setup(bot, report):
                  "add it to 'مفكرة القروبات / المدير'")
     print(f"  (quick-done threshold: {notebook['quick_done_minutes']} minutes)")
     check_wa_dashboard(bot, report, notebook)
+    check_wa_tasks(bot, report)
     return notebook
 
 
@@ -279,6 +281,30 @@ def check_wa_dashboard(bot, report, notebook):
                      [b["group_id"] for b in picked["boxes"] if b["selected"]] == [first["group_id"]]
                      and len(picked["boxes"]) == len(boxes)
                      and picked["kpis"]["open"]["value"] == first["counts"]["open"], str(picked["kpis"]["open"]))
+
+
+def check_wa_tasks(bot, report):
+    """Read-only: assigned items have their follow-up task, in line with them."""
+    print("\n== Follow-up tasks (read-only)")
+    xmlids = {x["name"]: x["res_id"] for x in bot.call(
+        "ir.model.data", "search_read",
+        [("module", "=", "kh_wa_inbox"), ("name", "in", ("project_kh_wa_followups", "group_kh_wa_manager"))],
+        fields=["name", "res_id"])}
+    report.check("the 'WhatsApp Follow-ups' project exists", "project_kh_wa_followups" in xmlids)
+    group = bot.call("res.groups", "read", [xmlids["group_kh_wa_manager"]], fields=["all_user_ids"])
+    managers = set(group[0]["all_user_ids"])
+    items = bot.call("kh.wa.item", "search_read", [("state", "in", ("open", "waiting")), ("assignee_id", "!=", False)],
+                     fields=["name", "assignee_id", "task_id"])
+    needing = [i for i in items if i["assignee_id"][0] not in managers]
+    report.check(f"every open item assigned outside the managers has a task ({len(needing)})",
+                 all(i["task_id"] for i in needing), str([i["name"] for i in needing if not i["task_id"]][:5]))
+    tasks = bot.call("project.task", "search_read", [("kh_wa_item_id", "!=", False)],
+                     fields=["state", "user_ids", "kh_wa_item_id"])
+    states = {i["id"]: i["state"] for i in bot.call(
+        "kh.wa.item", "search_read", [("id", "in", [t["kh_wa_item_id"][0] for t in tasks])], fields=["state"])}
+    # A task can be cancelled by its assignee while its item stays open (it goes back to the manager).
+    wrong = [t["id"] for t in tasks if t["state"] == "1_done" and states.get(t["kh_wa_item_id"][0]) in ("open", "waiting")]
+    report.check(f"no done task with an open item ({len(tasks)} tasks)", not wrong, str(wrong[:5]))
 
 
 def simulate_bot(bot, report, threshold):

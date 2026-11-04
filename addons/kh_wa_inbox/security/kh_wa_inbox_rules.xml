@@ -16,6 +16,20 @@
         <field name="groups" eval="[(4, ref('group_kh_wa_manager'))]"/>
     </record>
 
+    <!-- Managers open the follow-up tasks from the dashboard, wherever they
+         are (the follow-ups project is private). Read only: adds to what the
+         project rules already give. -->
+    <record id="rule_project_task_kh_wa_manager" model="ir.rule">
+        <field name="name">Project/Task: notebook managers read the follow-up tasks</field>
+        <field name="model_id" ref="project.model_project_task"/>
+        <field name="domain_force">[('kh_wa_item_id', '!=', False)]</field>
+        <field name="groups" eval="[(4, ref('group_kh_wa_manager'))]"/>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="False"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+
     <!-- Global rule (no group): my notes are mine only, managers included. -->
     <record id="rule_kh_wa_memo_own" model="ir.rule">
         <field name="name">My notes: own notes only</field>

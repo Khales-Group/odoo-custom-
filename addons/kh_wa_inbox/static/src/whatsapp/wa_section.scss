@@ -778,6 +778,12 @@ $kh-phone: 768px;
     margin-inline-start: 0.6rem;
 }
 
+// The linked record's name opens the line, the way plain text would.
+.o_kh_wa_inline_link.o_kh_wa_linked {
+    margin-inline-start: 0;
+    text-align: start;
+}
+
 .o_kh_wa_block {
     margin-top: 1.5rem;
 

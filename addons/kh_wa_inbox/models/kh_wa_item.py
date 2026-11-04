@@ -7,8 +7,9 @@ from datetime import timedelta
 
 from markupsafe import Markup, escape
 
-from odoo import api, fields, models
+from odoo import Command, api, fields, models
 from odoo.exceptions import AccessError
+from odoo.tools import html2plaintext
 
 from .kh_wa_board import duration_text
 from .kh_wa_tools import (
@@ -29,11 +30,24 @@ OPEN_STATES = ("open", "waiting")
 CLOSED_STATES = ("done", "cancel")
 # Once a person changes one of these in Odoo, the bot's later upserts leave
 # it alone (the field names are kept in manual_fields).
-MANUAL_FIELDS = ("state", "assignee_id", "urgent", "needs_manager", "manager_note")
+MANUAL_FIELDS = ("state", "assignee_id", "urgent", "needs_manager", "manager_note", "linked_ref")
 MASKED_FIELDS = ("source_text", "context_text", "done_note")
-# A change to one of these refreshes the assignee's follow-up activity.
-ACTIVITY_FIELDS = ("assignee_id", "state", "due_date", "name", "source_text")
-LINKABLE_MODELS = ("project.task", "kh.approval.request", "sign.request", "project.site.visit", "crm.lead")
+# A change to one of these is passed on to the assignee's follow-up task.
+TASK_FIELDS = ("assignee_id", "state", "due_date", "name", "linked_ref", "project_id")
+CLOSED_TASK_STATES = ("1_done", "1_canceled")
+TASK_DEADLINE_HOUR = 17  # task deadlines are date-times: the due date at 17:00 in Dubai
+# What an item can be linked to (when installed), in the order offered.
+LINKABLE_MODELS = {
+    "project.project": "Project",
+    "project.task": "Task",
+    "x_reports": "Legal / PRO File (Law Pro)",
+    "account.move": "Invoice / Bill",
+    "kh.approval.request": "Approval Request",
+    "purchase.order": "Purchase Order",
+    "crm.lead": "Lead / Opportunity",
+    "sign.request": "Signature Request",
+    "project.site.visit": "Site Visit",
+}
 # Values an upsert_items row may carry as they are.
 ROW_TEXT_FIELDS = (
     "name", "requester_name", "requester_phone", "done_note",
@@ -96,9 +110,10 @@ class KhWaItem(models.Model):
         help="The Odoo user who asked, when known. They can see this item.",
     )
     assignee_id = fields.Many2one("res.users", string="Assignee", tracking=True, index="btree_not_null")
-    kh_activity_id = fields.Many2one(
-        "mail.activity", string="Follow-up Activity", readonly=True, copy=False, ondelete="set null",
-        help="The To-Do the assignee got. Marking it done closes the item; moving its date moves the item's.",
+    task_ids = fields.One2many("project.task", "kh_wa_item_id", string="Follow-up Tasks", readonly=True)
+    task_id = fields.Many2one(
+        "project.task", string="Follow-up Task", compute="_compute_task_id", compute_sudo=True,
+        help="The task the assignee got. Closing it closes the item; its deadline and assignee follow the item's.",
     )
     asked_at = fields.Datetime(string="Asked At", required=True, default=fields.Datetime.now, index=True)
     due_date = fields.Date(string="Due Date", index="btree_not_null")
@@ -140,12 +155,16 @@ class KhWaItem(models.Model):
 
     @api.model
     def _selection_linked_ref(self):
-        installed = self.env["ir.model"].sudo().search([("model", "in", LINKABLE_MODELS)])
-        names = {m.model: m.name for m in installed}
-        return [(model, names[model]) for model in LINKABLE_MODELS if model in names]
+        installed = set(self.env["ir.model"].sudo().search([("model", "in", list(LINKABLE_MODELS))]).mapped("model"))
+        return [(model, self.env._(label)) for model, label in LINKABLE_MODELS.items() if model in installed]
 
     def _expand_states(self, states, domain):
         return [key for key, _label in self._fields["state"].selection]
+
+    @api.depends("task_ids")
+    def _compute_task_id(self):
+        for item in self:
+            item.task_id = item.task_ids.sorted("id", reverse=True)[:1]
 
     def _compute_age_label(self):
         now = utc_now()
@@ -178,7 +197,7 @@ class KhWaItem(models.Model):
             if vals.get("state") in CLOSED_STATES and not vals.get("done_at"):
                 vals["done_at"] = now
         items = super().create(vals_list)
-        items.filtered("assignee_id")._kh_sync_activity()
+        items.filtered("assignee_id")._kh_sync_task()
         return items
 
     def write(self, vals):
@@ -196,8 +215,12 @@ class KhWaItem(models.Model):
                 by_value[",".join(sorted(item._manual_field_set() | touched))] |= item
             for value, items in by_value.items():
                 super(KhWaItem, items).write({"manual_fields": value})
-        if any(name in vals for name in ACTIVITY_FIELDS) and not self.env.context.get("kh_wa_activity_sync"):
-            self._kh_sync_activity()
+        changed = set(TASK_FIELDS).intersection(vals)
+        if changed and not self.env.context.get("kh_wa_task_sync"):
+            self._kh_sync_task(changed)
+        if vals.get("state") == "done":
+            for item in self.sudo().filtered(lambda i: i.linked_ref and i.task_id):
+                item._kh_note_linked(item.task_id, done=True)
         return result
 
     def _manual_field_set(self):
@@ -208,8 +231,7 @@ class KhWaItem(models.Model):
         """Nobody has done anything with this item in Odoo yet."""
         self.ensure_one()
         item = self.sudo()
-        # The assignee's follow-up To-Do is the item's own, not someone's touch.
-        if item.manual_fields or item.remind_on or (item.activity_ids - item.kh_activity_id):
+        if item.manual_fields or item.remind_on or item.activity_ids or item.task_ids:
             return False
         if self.env["mail.message"].sudo().search_count([
             ("model", "=", self._name), ("res_id", "=", self.id), ("message_type", "in", ("comment", "email")),
@@ -218,38 +240,16 @@ class KhWaItem(models.Model):
         return not self.env["kh.wa.memo"].sudo().search_count([("item_id", "=", self.id)], limit=1)
 
     # ------------------------------------------------------------------
-    # The assignee's follow-up activity
+    # The assignee's follow-up task
     # ------------------------------------------------------------------
 
     def _message_auto_subscribe_followers(self, updated_values, default_subtype_ids):
         # The assignee is not made a follower: items can come from HR or
         # legal groups, and followers get the item's messages by email. They
-        # get a To-Do activity with what they need instead.
+        # get a project task with what they need instead.
         return []
 
-    def _kh_activity_deadline(self):
-        return self.due_date or dubai_today() + timedelta(days=1)
-
-    def _kh_activity_note(self):
-        """What the assignee needs, without opening the item (they can't)."""
-        self.ensure_one()
-        asked = ""
-        if self.asked_at:
-            asked = f"{self.requester_name or '—'} · {fields.Date.to_string(dubai_date(self.asked_at))}"
-        rows = [
-            ("الطلب", self.name),
-            ("القروب", self.group_id.name),
-            ("سأل", asked),
-            ("الموعد", fields.Date.to_string(self.due_date) if self.due_date else ""),
-        ]
-        lines = [Markup("<p><b>%s:</b> %s</p>") % (label, value) for label, value in rows if value]
-        if self.source_text:
-            text = escape(self.source_text[:1500]).replace("\n", Markup("<br/>"))
-            lines.append(Markup("<p><b>الرسالة الأصلية:</b><br/>%s</p>") % text)
-        lines.append(Markup("<p><i>%s</i></p>") % "عند الانتهاء اضغط «تم» واكتب ماذا تم، فيُغلق البند في لوحة المتابعة.")
-        return Markup("").join(lines)
-
-    def _kh_needs_activity(self):
+    def _kh_needs_task(self):
         """Open, assigned to someone who isn't a notebook manager (managers
         follow their items on the dashboard itself)."""
         user = self.assignee_id
@@ -258,46 +258,222 @@ class KhWaItem(models.Model):
             and not user.has_group("kh_wa_inbox.group_kh_wa_manager")
         )
 
-    def _kh_sync_activity(self):
-        """Keeps one To-Do for the assignee of each open item, in line with it:
-        gone when the item is closed or reassigned, moved when its date moves."""
-        Activity = self.env["mail.activity"].sudo().with_context(kh_wa_activity_sync=True)
-        for item in self.sudo():
-            activity = item.kh_activity_id
-            wanted = item._kh_needs_activity()
-            if activity and (not wanted or activity.user_id != item.assignee_id):
-                Activity.browse(activity.id).unlink()
-                activity = Activity
-            summary = f"متابعة: {item.name}"[:120]
-            if wanted and not activity:
-                partner = item.assignee_id.partner_id
-                was_following = partner in item.message_partner_ids
-                activity = item.with_context(kh_wa_activity_sync=True).activity_schedule(
-                    "mail.mail_activity_data_todo",
-                    date_deadline=item._kh_activity_deadline(),
-                    summary=summary,
-                    note=item._kh_activity_note(),
-                    user_id=item.assignee_id.id,
-                )
-                super(KhWaItem, item).write({"kh_activity_id": activity.id})
-                # Odoo makes an activity's user a follower; followers get the
-                # item's messages by email, which the assignee must not.
-                if not was_following:
-                    item.message_unsubscribe(partner_ids=partner.ids)
-            elif wanted:
-                changes = {}
-                if activity.date_deadline != item._kh_activity_deadline():
-                    changes["date_deadline"] = item._kh_activity_deadline()
-                if activity.summary != summary:
-                    changes["summary"] = summary
-                    changes["note"] = item._kh_activity_note()
-                if changes:
-                    Activity.browse(activity.id).write(changes)
+    def _kh_task_env(self):
+        """project.task as the system, without the bot's mail flags: the
+        assignee must get Odoo's "assigned to you" message."""
+        context = {k: v for k, v in self.env.context.items() if k in ("lang", "tz", "allowed_company_ids")}
+        return self.env["project.task"].sudo().with_context(context, kh_wa_task_sync=True)
 
-    def action_send_activity(self):
-        """Sends the assignee their To-Do again (if they cancelled it)."""
-        self._kh_sync_activity()
+    def _kh_task_deadline(self):
+        if not self.due_date:
+            return False
+        return dubai_day_bounds(self.due_date)[0] + timedelta(hours=TASK_DEADLINE_HOUR)
+
+    def _kh_linked_label(self):
+        """'Invoice / Bill: INV/2026/0012' for the linked record, if it still exists."""
+        record = self.sudo().linked_ref
+        if not record or not record.exists():
+            return ""
+        label = dict(self._selection_linked_ref()).get(record._name, record._description)
+        return f"{label}: {record.display_name}"
+
+    def _kh_task_description(self):
+        """What the assignee needs, written into the task (they can't open the item)."""
+        self.ensure_one()
+        asked = ""
+        if self.asked_at:
+            asked = f"{self.requester_name or '—'} · {fields.Date.to_string(dubai_date(self.asked_at))}"
+        rows = [
+            ("القروب", self.group_id.name),
+            ("سأل", asked),
+            ("الموعد", fields.Date.to_string(self.due_date) if self.due_date else ""),
+            ("مرتبط بـ", self._kh_linked_label()),
+        ]
+        lines = [Markup("<p><b>%s:</b> %s</p>") % (label, value) for label, value in rows if value]
+        if self.source_text:
+            text = escape(self.source_text[:1500]).replace("\n", Markup("<br/>"))
+            lines.append(Markup("<p><b>الرسالة الأصلية:</b><br/>%s</p>") % text)
+        lines.append(Markup("<p><i>%s</i></p>") % (
+            "عند الانتهاء اكتب ماذا تم في تعليق، ثم اضغط «تم»: يُغلق البند في لوحة المتابعة."
+        ))
+        return Markup("").join(lines)
+
+    def _kh_default_project(self):
+        return self.env.ref("kh_wa_inbox.project_kh_wa_followups", raise_if_not_found=False) or self.env["project.project"]
+
+    def _kh_task_project(self):
+        """(project, parent task) of the item's task: the linked project or
+        task (as a sub-task), else the item's or its group's project, else
+        the "WhatsApp Follow-ups" project."""
+        self.ensure_one()
+        record = self.sudo().linked_ref
+        record = record and record.exists()
+        Task = self.env["project.task"]
+        if record and record._name == "project.task" and record.project_id.active:
+            return record.project_id, record
+        candidates = [record] if record and record._name == "project.project" else []
+        candidates += [self.sudo().project_id, self.sudo().group_id.project_id, self._kh_default_project()]
+        for project in candidates:
+            if project and project.active:
+                return project, Task
+        return self.env["project.project"], Task
+
+    def _kh_create_task(self):
+        self.ensure_one()
+        project, parent = self._kh_task_project()
+        task = self._kh_task_env().create({
+            "name": self.name,
+            "project_id": project.id,
+            "parent_id": parent.id,
+            "user_ids": [Command.set(self.assignee_id.ids)],
+            "date_deadline": self._kh_task_deadline(),
+            "partner_id": self.partner_id.id,
+            "description": self._kh_task_description(),
+            "kh_wa_item_id": self.id,
+        })
+        if self.linked_ref:
+            self._kh_note_linked(task)
+        return task
+
+    def _kh_sync_task(self, changed=None):
+        """Keeps the assignee's task in line with the item: made when it is
+        assigned, handed over and moved with it, closed (with a word to the
+        assignee) when it is closed or taken back, reopened with it.
+
+        changed: the item fields that changed (None: bring all in line)."""
+        def touched(*names):
+            return changed is None or bool(changed.intersection(names))
+
+        for item in self.sudo():
+            wanted = item._kh_needs_task()
+            if not item.task_id:
+                if wanted:
+                    item._kh_create_task()
+                continue
+            task = item._kh_task_env().browse(item.task_id.id)
+            vals = {}
+            if wanted:
+                if touched("assignee_id") and task.user_ids != item.assignee_id:
+                    vals["user_ids"] = [Command.set(item.assignee_id.ids)]
+                if touched("assignee_id", "state") and task.state in CLOSED_TASK_STATES:
+                    vals["state"] = "01_in_progress"
+                if touched("name") and task.name != item.name:
+                    vals["name"] = item.name
+                if touched("due_date") and task.date_deadline != item._kh_task_deadline():
+                    vals["date_deadline"] = item._kh_task_deadline()
+                # Linked to a project later: a task still waiting in the
+                # follow-ups project moves there.
+                if touched("linked_ref", "project_id") and task.project_id == item._kh_default_project():
+                    project, parent = item._kh_task_project()
+                    if project != task.project_id:
+                        vals.update(project_id=project.id, parent_id=parent.id)
+            elif task.state not in CLOSED_TASK_STATES:
+                vals["state"] = "1_done" if item.state == "done" else "1_canceled"
+            if vals:
+                task.write(vals)
+            if vals.get("state") in CLOSED_TASK_STATES:
+                task.message_post(body=item._kh_closing_word(), message_type="comment", subtype_xmlid="mail.mt_comment")
+            if changed and "linked_ref" in changed and item.linked_ref:
+                item._kh_note_linked(task)
+
+    def _kh_closing_word(self):
+        """Why the task was closed, for its assignee."""
+        if self.state == "done":
+            by = "حسب القروب" if self.env.context.get("kh_wa_upsert") else f"أغلقه {self.env.user.name}"
+            result = f": {self.done_note}" if self.done_note else ""
+            return f"تم هذا الطلب ({by}){result}. أُغلقت المهمة، ولا حاجة لعمل شيء آخر."
+        if self.state == "cancel":
+            return "أُلغي هذا الطلب، فأُغلقت المهمة."
+        return "انتقلت متابعة هذا الطلب إلى شخص آخر، فأُغلقت المهمة."
+
+    def _kh_task_changed(self, task, changed):
+        """What was done on the task, passed on to the item: done closes it
+        (the last comment is its result), cancelled hands it back to the
+        manager, reopened reopens it; its deadline and assignee follow."""
+        self.ensure_one()
+        item = self.sudo().with_context(kh_wa_task_sync=True)
+        vals = {}
+        if "state" in changed:
+            if task.state == "1_done" and item.state in OPEN_STATES:
+                result = item._kh_task_result(task) or f"أنجز {self.env.user.name} المهمة"
+                vals.update(state="done", done_note=result)
+            elif task.state == "1_canceled" and item.state in OPEN_STATES:
+                vals["needs_manager"] = True
+                item.message_post(
+                    body=f"ألغى {self.env.user.name} مهمة المتابعة، والبند بانتظار قرارك.",
+                    message_type="comment", subtype_xmlid="mail.mt_note",
+                )
+            elif task.state not in CLOSED_TASK_STATES and item.state in CLOSED_STATES:
+                vals["state"] = "open"
+        if "user_ids" in changed and item.assignee_id not in task.user_ids:
+            vals["assignee_id"] = task.user_ids[:1].id
+        if "date_deadline" in changed:
+            due = dubai_date(task.date_deadline) if task.date_deadline else False
+            if due != item.due_date:
+                vals["due_date"] = due
+        if vals:
+            # Counts as a person's edit: the bot won't undo it.
+            item.write(vals)
+
+    def _kh_task_result(self, task):
+        """The last comment of the assignee (or whoever closed it), on one line."""
+        authors = (task.user_ids | self.env.user).partner_id
+        messages = self.env["mail.message"].sudo().search_fetch([
+            ("model", "=", "project.task"), ("res_id", "=", task.id),
+            ("message_type", "=", "comment"), ("author_id", "in", authors.ids),
+        ], ["body"], order="id desc", limit=5)
+        for message in messages:
+            text = " ".join(html2plaintext(message.body or "").split())
+            if text:
+                return text[:250]
+        return ""
+
+    def _kh_note_linked(self, task, done=False):
+        """A note on the linked record (a legal file, an invoice, ...): whoever
+        opens it sees the follow-up and can open its task."""
+        self.ensure_one()
+        record = self.sudo().linked_ref
+        if not record or not record.exists() or not isinstance(record, self.env.registry["mail.thread"]):
+            return
+        link = task._get_html_link(title="فتح المهمة")
+        if done:
+            body = Markup("تمت المتابعة من قروب «%s»: %s — %s. %s") % (
+                self.group_id.name, self.name, self.done_note or "تم", link,
+            )
+        else:
+            body = Markup("متابعة من قروب «%s»: %s — مسندة إلى %s. %s") % (
+                self.group_id.name, self.name, ", ".join(task.user_ids.mapped("name")) or "—", link,
+            )
+        record.message_post(body=body, message_type="comment", subtype_xmlid="mail.mt_note")
+
+    def action_send_task(self):
+        """Sends the assignee their task again (made anew if it was deleted, reopened if closed)."""
+        self._kh_sync_task()
         return True
+
+    def action_open_task(self):
+        self.ensure_one()
+        if not self.task_id:
+            return False
+        return {
+            "type": "ir.actions.act_window",
+            "res_model": "project.task",
+            "res_id": self.task_id.id,
+            "views": [[False, "form"]],
+            "target": "current",
+        }
+
+    def action_link_record(self):
+        """The dashboard's small "link to a record" dialog."""
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": self.env._("Link to a Record"),
+            "res_model": self._name,
+            "res_id": self.id,
+            "views": [[self.env.ref("kh_wa_inbox.view_kh_wa_item_link_form").id, "form"]],
+            "target": "new",
+        }
 
     # ------------------------------------------------------------------
     # Buttons (form view and notebook screen)
@@ -368,7 +544,9 @@ class KhWaItem(models.Model):
         "requester_phone", "requester_login", "assignee_login", "asked_at",
         "due_date", "done_at", "done_note", "source_text", "context_text",
         "source_kind", "manager_note", "project_id", "partner_id",
-        "linked_ref" ("model,id"), "attachments" ([{"name", "mimetype", "datas"}])}.
+        "linked_ref" ("model,id", {"model", "id"}, or {"model", "name"} when
+        the bot only knows a name, e.g. an invoice number: linked when exactly
+        one record has it), "attachments" ([{"name", "mimetype", "datas"}])}.
         Date-times are UTC ("2026-11-02 06:45:00"), ISO 8601 with an offset,
         or epoch seconds. A key left out is not touched; null clears it.
 
@@ -492,17 +670,24 @@ class KhWaItem(models.Model):
         return vals
 
     def _parse_linked_ref(self, value, warnings, lookup):
-        """'model,id' or {"model", "id"} -> 'model,id'; False clears; None
-        means "bad value, leave the field alone"."""
+        """'model,id', {"model", "id"} or {"model", "name"} -> 'model,id';
+        False clears; None means "bad value, leave the field alone"."""
         if not value:
             return False
+        name = False
         if isinstance(value, dict):
-            model, record_id = value.get("model"), value.get("id")
+            model, record_id, name = value.get("model"), value.get("id"), value.get("name")
         else:
             model, _sep, record_id = str(value).partition(",")
         if model not in dict(self._selection_linked_ref()):
             warnings.append(f"linked_ref: {model!r} can't be linked here (not installed?)")
             return None
+        if not record_id and name:
+            matches = self.env[model].sudo().name_search(str(name).strip(), operator="=ilike", limit=2)
+            if len(matches) != 1:
+                warnings.append(f"linked_ref: {'more than one' if matches else 'no'} {model} named {name!r}")
+                return None
+            record_id = matches[0][0]
         if not lookup.existing_id(model, record_id):
             warnings.append(f"linked_ref: {model},{record_id} not found")
             return None
@@ -723,30 +908,42 @@ class KhWaItem(models.Model):
                 "linked": linked.get(item.id, False),
                 "remind_on": fields.Date.to_string(item.remind_on) or False,
                 "manager_note": (item.manager_note or "") if is_manager else "",
-                "activity": {
-                    "user": item_sudo.kh_activity_id.user_id.name,
-                    "deadline": fields.Date.to_string(item_sudo.kh_activity_id.date_deadline),
-                    "state": item_sudo.kh_activity_id.state,
-                } if item_sudo.kh_activity_id else False,
+                "task": self._notebook_task(item_sudo.task_id),
             }
         return payloads
 
     @api.model
+    def _notebook_task(self, task):
+        if not task:
+            return False
+        return {
+            "id": task.id,
+            "user": task.user_ids[:1].name or "",
+            "state": task.state,
+            "closed": task.state in CLOSED_TASK_STATES,
+            "deadline": fields.Date.to_string(dubai_date(task.date_deadline)) if task.date_deadline else False,
+            "project": task.project_id.name or "",
+        }
+
+    @api.model
     def _notebook_linked(self, items):
-        """{item id: {"model", "id", "name"}} for linked records that still exist."""
+        """{item id: {"model", "id", "name", "label"}} for linked records that still exist."""
         by_model = defaultdict(dict)
         for item in items:
             if item.linked_ref:
                 by_model[item.linked_ref._name][item.id] = item.linked_ref.id
         result = {}
+        labels = dict(self._selection_linked_ref())
         for model, item_to_record in by_model.items():
             records = self.env[model].browse(set(item_to_record.values())).exists()
             readable = records._filtered_access("read")
-            label = self.env["ir.model"].sudo()._get(model).name
+            label = labels.get(model) or self.env["ir.model"].sudo()._get(model).name
             names = {record.id: record.display_name for record in readable}
             for item_id, record_id in item_to_record.items():
                 if record_id in records.ids:
-                    result[item_id] = {"model": model, "id": record_id, "name": names.get(record_id, label)}
+                    result[item_id] = {
+                        "model": model, "id": record_id, "name": names.get(record_id, label), "label": label,
+                    }
         return result
 
     @api.model
@@ -779,7 +976,7 @@ class KhWaItem(models.Model):
     @api.model
     def _notebook_users(self):
         """People an item can be assigned to: every employee with an Odoo
-        login. They need no notebook access; they get a To-Do activity."""
+        login. They need no notebook access; they get a project task."""
         users = self.env["res.users"].sudo().search([("share", "=", False)], order="name")
         return [{"id": u.id, "name": u.name} for u in users]
 
