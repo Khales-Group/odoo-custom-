@@ -90,6 +90,7 @@
                             <field name="server_count"/>
                             <field name="history_done"/>
                             <field name="last_fetch_at"/>
+                            <field name="last_try_at"/>
                             <field name="last_error" invisible="not last_error" class="text-danger"/>
                             <field name="color" widget="color_picker"/>
                             <field name="sequence"/>

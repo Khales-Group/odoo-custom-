@@ -176,6 +176,27 @@ class TestKhMailInbox(TransactionCase):
         self.assertFalse(self.box.last_error)
         self.assertEqual(len(self.messages()), 1)
 
+    def test_cron_takes_turns_and_spares_a_failing_box(self):
+        Box = self.env["kh.mail.box"]
+        other_mailbox = FakeMailbox()
+        other = Box.create({"name": "hr@", "email": "hr@test.example", "password": "x"})
+        broken = Box.create({"name": "ceo@", "email": "ceo@test.example", "password": "wrong"})
+        self.mailboxes[other.email] = other_mailbox
+        self.mailbox.add(1)
+        other_mailbox.add(1)
+        Box._cron_fetch()
+        self.assertTrue(self.box.last_try_at)
+        self.assertFalse(other.last_try_at, "one box per call")
+        Box._cron_fetch()
+        Box._cron_fetch()
+        self.assertTrue(other.last_try_at and broken.last_try_at, "every box gets its turn")
+        self.assertTrue(broken.last_error)
+        self.assertFalse(Box._kh_due_boxes(), "all read, histories in, the failing box waits")
+        tried = broken.last_try_at
+        Box._cron_fetch()
+        self.assertEqual(broken.last_try_at, tried, "no login again right after a failed one")
+        self.assertEqual(len(other.message_ids), 1)
+
     def test_secrets_are_masked_and_passwords_kept_from_managers(self):
         self.mailbox.add(1, body="Your OTP code is 482913, do not share it.")
         self.box._kh_fetch()

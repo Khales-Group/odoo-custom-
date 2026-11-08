@@ -15,6 +15,8 @@ FLAGS_WINDOW = 500  # the newest messages whose read/answered flags are refreshe
 SENT_BATCH = 1000  # sent messages scanned per run for the messages they answer
 BODY_LIMIT = 20000  # characters of text kept per message
 SNIPPET_LENGTH = 300
+DUE_MINUTES = 4  # a box read this long ago is read again (the cron runs every 5 minutes)
+ERROR_RETRY_MINUTES = 15  # a box whose last try failed waits this long
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 
@@ -49,7 +51,8 @@ class KhMailBox(models.Model):
     sent_uidvalidity = fields.Char(readonly=True, copy=False)
     sent_max_uid = fields.Integer(readonly=True, copy=False)
     server_count = fields.Integer(string="Messages in the Folder", readonly=True, copy=False)
-    last_fetch_at = fields.Datetime(readonly=True, copy=False)
+    last_fetch_at = fields.Datetime(readonly=True, copy=False, help="Last read that worked.")
+    last_try_at = fields.Datetime(readonly=True, copy=False)
     last_error = fields.Char(readonly=True, copy=False)
     message_ids = fields.One2many("kh.mail.message", "box_id")
 
@@ -61,19 +64,38 @@ class KhMailBox(models.Model):
 
     @api.model
     def _cron_fetch(self):
-        boxes = self.search([])
-        self._kh_progress(remaining=len(boxes))
-        for box in boxes:
-            box._kh_fetch()
-            if box._kh_progress(1) < 60:
-                break  # out of time: the next run goes on
+        """Reads one box per call, the one tried longest ago, and tells the
+        cron how many are still due: Odoo calls again while some are (so
+        every box gets its turn, and a history comes in back to back), then
+        waits for the next run."""
+        due = self._kh_due_boxes()
+        if not due:
+            return
+        due[0]._kh_fetch()
+        self._kh_progress(1, remaining=len(self._kh_due_boxes()))
+
+    @api.model
+    def _kh_due_boxes(self):
+        """Boxes to read now, tried longest ago first: never tried, still
+        reading their history, or not tried for a few minutes. A box whose
+        last try failed (a wrong password...) waits longer: repeated failed
+        logins can get the mailbox locked."""
+        now = fields.Datetime.now()
+
+        def due(box):
+            if not box.last_try_at:
+                return True
+            if box.last_error:
+                return box.last_try_at <= now - timedelta(minutes=ERROR_RETRY_MINUTES)
+            return not box.history_done or box.last_try_at <= now - timedelta(minutes=DUE_MINUTES)
+
+        boxes = self.search([]).filtered(due)
+        return boxes.sorted(lambda box: (bool(box.last_try_at), box.last_try_at or now))
 
     def _kh_progress(self, processed=0, remaining=None):
-        """Commits a cron run's progress (outside the cron, e.g. in tests:
-        nothing). Returns the time left, in seconds."""
-        if not self.env.context.get("ir_cron_progress_id"):
-            return float("inf")
-        return self.env["ir.cron"]._commit_progress(processed, remaining=remaining)
+        """Commits a cron run's progress (outside the cron, e.g. in tests: nothing)."""
+        if self.env.context.get("ir_cron_progress_id"):
+            self.env["ir.cron"]._commit_progress(processed, remaining=remaining)
 
     def action_fetch_now(self):
         self._kh_fetch()
@@ -87,6 +109,7 @@ class KhMailBox(models.Model):
     def _kh_fetch(self):
         for box in self:
             sudo = box.sudo()
+            sudo.last_try_at = fields.Datetime.now()
             try:
                 with self.env.cr.savepoint():
                     with sudo._kh_reader() as reader:
