@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <!-- ===== Sidebar entries ===== -->
+    <t t-name="kh_mail_inbox.MailSidebar">
+        <div class="o_kh_wa_nav">
+            <button t-attf-class="o_kh_fd_nav_item {{isCurrent(null) ? 'o_kh_fd_current' : ''}}"
+                    t-att-aria-current="isCurrent(null) ? 'page' : false" t-on-click="() => this.open(null)">
+                <span class="o_kh_fd_nav_text">كل الصناديق</span>
+                <span t-if="store.unreadTotal" class="o_kh_fd_badge" title="غير مقروء" t-esc="store.unreadTotal"/>
+            </button>
+            <t t-if="store.data">
+                <t t-foreach="store.data.boxes" t-as="box" t-key="box.id">
+                    <button t-attf-class="o_kh_fd_nav_item {{isCurrent(box.id) ? 'o_kh_fd_current' : ''}}"
+                            t-att-aria-current="isCurrent(box.id) ? 'page' : false" t-on-click="() => this.open(box.id)">
+                        <span class="o_kh_fd_swatch" t-attf-style="background: {{store.boxColor(box.color)}}"/>
+                        <span class="o_kh_fd_nav_text" t-esc="box.name"/>
+                        <span t-if="box.error" class="o_kh_fd_badge o_kh_fd_badge_red" t-att-title="box.error">!</span>
+                        <span t-elif="box.counts.unread" class="o_kh_fd_badge" title="غير مقروء" t-esc="box.counts.unread"/>
+                    </button>
+                </t>
+            </t>
+        </div>
+    </t>
+
+    <!-- ===== Main area ===== -->
+    <t t-name="kh_mail_inbox.MailMain">
+        <div class="o_kh_wa o_kh_wa_mode_list o_kh_mail">
+            <div t-if="!store.data" class="o_kh_wa_message">
+                تعذّر تحميل الإيميلات.
+                <button class="o_kh_fd_link" t-on-click="() => this.store.load()">إعادة المحاولة</button>
+            </div>
+            <t t-else="">
+                <div t-if="store.failed" class="o_kh_wa_banner">تعذّر التحديث، يُعرض آخر ما تم تحميله.</div>
+                <div t-if="!store.data.boxes.length" class="o_kh_wa_message">
+                    لم يُضف أي صندوق بعد (الإعدادات ← الصناديق).
+                </div>
+                <t t-else="" t-call="kh_mail_inbox.MailSplit"/>
+            </t>
+        </div>
+    </t>
+
+    <t t-name="kh_mail_inbox.MailSplit">
+        <t t-set="message" t-value="store.detail"/>
+        <div t-attf-class="o_kh_wa_split {{store.selectedId ? 'o_kh_wa_has_detail' : ''}}">
+            <section class="o_kh_wa_listpane" aria-label="الإيميلات">
+                <div class="o_kh_wa_listhead">
+                    <div class="o_kh_wa_segments" role="tablist">
+                        <t t-foreach="filters" t-as="f" t-key="f.key">
+                            <button role="tab" t-attf-class="o_kh_wa_segment {{store.filter === f.key ? 'o_kh_wa_active' : ''}}"
+                                    t-att-aria-selected="store.filter === f.key ? 'true' : 'false'"
+                                    t-on-click="() => this.store.setFilter(f.key)">
+                                <t t-esc="f.label"/>
+                                <span class="o_kh_wa_segment_count" t-esc="store.data.filter_counts[f.key]"/>
+                            </button>
+                        </t>
+                    </div>
+                </div>
+                <div class="o_kh_wa_list" role="listbox" aria-label="الإيميلات">
+                    <div t-if="!store.rows.length" class="o_kh_wa_empty">
+                        <t t-if="store.filter === 'needs_reply'">لا إيميلات تحتاج رداً</t>
+                        <t t-elif="store.filter === 'unread'">لا إيميلات غير مقروءة</t>
+                        <t t-else="">لا إيميلات</t>
+                    </div>
+                    <t t-foreach="store.rows" t-as="row" t-key="row.id">
+                        <div t-attf-class="o_kh_wa_row o_kh_mail_row {{store.selectedId === row.id ? 'o_kh_wa_selected' : ''}} {{row.seen ? '' : 'o_kh_mail_unread'}} {{row.bulk ? 'o_kh_mail_bulk' : ''}}"
+                             role="option" tabindex="0" t-att-aria-selected="store.selectedId === row.id ? 'true' : 'false'"
+                             t-on-click="() => this.store.select(row)" t-on-keydown="(ev) => this.onRowKeydown(row, ev)">
+                            <span class="o_kh_wa_row_swatch" t-attf-style="background: {{store.boxColor(row.box_color)}}"/>
+                            <div class="o_kh_wa_row_top">
+                                <span class="o_kh_wa_row_title o_kh_mail_sender" t-esc="sender(row)"/>
+                                <span class="o_kh_wa_row_when" t-esc="moment(row.date)"/>
+                            </div>
+                            <div class="o_kh_mail_subject">
+                                <i t-if="row.attachment_count" class="fa fa-paperclip" aria-label="مرفقات" title="مرفقات"/>
+                                <t t-esc="row.subject or '(بلا عنوان)'"/>
+                            </div>
+                            <div class="o_kh_mail_snippet" t-esc="row.snippet"/>
+                            <div t-if="!store.boxId or row.needs_reply or row.followed" class="o_kh_wa_row_meta">
+                                <span t-if="!store.boxId" t-esc="row.box_name"/>
+                                <span t-if="row.followed" class="o_kh_wa_flag">تمت المتابعة</span>
+                                <span t-elif="row.needs_reply and store.filter !== 'needs_reply'" class="o_kh_wa_flag">تحتاج رد</span>
+                            </div>
+                        </div>
+                    </t>
+                    <div t-if="store.data.has_more" class="o_kh_mail_more">
+                        <button class="o_kh_wa_btn o_kh_wa_btn_quiet" t-on-click="() => this.store.loadMore()">عرض المزيد</button>
+                    </div>
+                </div>
+            </section>
+
+            <div class="o_kh_wa_detail_backdrop" t-on-click="() => this.store.closeDetail()"/>
+            <section class="o_kh_wa_detailpane" aria-label="الإيميل">
+                <t t-if="message" t-call="kh_mail_inbox.MailDetail"/>
+                <div t-elif="store.selectedId" class="o_kh_wa_detail_empty">…</div>
+                <div t-else="" class="o_kh_wa_detail_empty">
+                    <div>اختر إيميلاً من القائمة لقراءته</div>
+                    <small class="o_kh_wa_muted">↑ ↓ للتنقل · Esc للإغلاق</small>
+                </div>
+            </section>
+        </div>
+    </t>
+
+    <!-- The picked message. Expects `message`. -->
+    <t t-name="kh_mail_inbox.MailDetail">
+        <article class="o_kh_wa_detail o_kh_mail_detail">
+            <header class="o_kh_wa_detail_head">
+                <button class="o_kh_wa_back" t-on-click="() => this.store.closeDetail()" aria-label="رجوع">رجوع</button>
+                <div class="o_kh_wa_chips">
+                    <span class="o_kh_wa_chip">
+                        <span class="o_kh_fd_swatch" t-attf-style="background: {{store.boxColor(message.box_color)}}"/>
+                        <t t-esc="message.box_name"/>
+                    </span>
+                    <span t-if="!message.seen" class="o_kh_wa_chip o_kh_wa_chip_strong">غير مقروء في الصندوق</span>
+                    <span t-if="message.answered" class="o_kh_wa_chip o_kh_wa_chip_green">رُدّ عليه</span>
+                    <span t-elif="message.needs_reply" class="o_kh_wa_chip">تحتاج رد</span>
+                    <span t-if="message.followed" class="o_kh_wa_chip o_kh_wa_chip_green">تمت المتابعة</span>
+                    <span t-if="message.bulk" class="o_kh_wa_chip">نشرة / تلقائي</span>
+                </div>
+                <h2 class="o_kh_wa_detail_title" t-esc="message.subject or '(بلا عنوان)'"/>
+                <div class="o_kh_wa_detail_sub">
+                    <span t-esc="dateTime(message.date)"/>
+                    <span class="o_kh_wa_muted">(<t t-esc="message.age"/>)</span>
+                </div>
+            </header>
+
+            <div class="o_kh_wa_actionbar">
+                <div class="o_kh_wa_actions">
+                    <button t-if="!message.followed" class="o_kh_wa_btn o_kh_wa_btn_primary" t-att-disabled="store.busy"
+                            t-on-click="() => this.store.setFollowed(true)">تمت المتابعة</button>
+                    <button t-else="" class="o_kh_wa_btn" t-att-disabled="store.busy"
+                            t-on-click="() => this.store.setFollowed(false)">إعادة للمتابعة</button>
+                    <button t-if="!message.task or message.task.closed"
+                            t-attf-class="o_kh_wa_btn {{store.panel === 'task' ? 'o_kh_wa_pressed' : ''}}"
+                            t-att-disabled="store.busy" t-on-click="() => this.store.togglePanel('task')">حوّلها لمهمة</button>
+                </div>
+                <div t-if="store.panel === 'task'" class="o_kh_wa_panel">
+                    <select class="o_kh_wa_input" aria-label="لمن المهمة" t-on-change="onAssign">
+                        <option value="">— لمن؟ —</option>
+                        <t t-foreach="store.data.users" t-as="person" t-key="person.id">
+                            <option t-att-value="person.id" t-esc="person.name"/>
+                        </t>
+                    </select>
+                    <span class="o_kh_wa_muted">تصله المهمة مع نص الإيميل ومرفقاته.</span>
+                </div>
+            </div>
+
+            <dl class="o_kh_wa_facts">
+                <dt>من</dt>
+                <dd>
+                    <t t-esc="message.from_name or message.from_email"/>
+                    <span t-if="message.from_name" class="o_kh_wa_muted" dir="ltr"> &lt;<t t-esc="message.from_email"/>&gt;</span>
+                </dd>
+                <t t-if="message.to"><dt>إلى</dt><dd class="o_kh_mail_addresses" dir="ltr" t-esc="message.to"/></t>
+                <t t-if="message.cc"><dt>نسخة</dt><dd class="o_kh_mail_addresses" dir="ltr" t-esc="message.cc"/></t>
+                <t t-if="message.task">
+                    <dt>المهمة</dt>
+                    <dd>
+                        <t t-esc="store.taskLine(message.task)"/>
+                        <button class="o_kh_fd_link o_kh_wa_inline_link" t-on-click="() => this.store.openTask(message.task)">فتح المهمة</button>
+                    </dd>
+                </t>
+            </dl>
+
+            <section t-if="message.attachments.length" class="o_kh_wa_block">
+                <h3>المرفقات</h3>
+                <div class="o_kh_wa_files">
+                    <t t-foreach="message.attachments" t-as="att" t-key="att.index">
+                        <a class="o_kh_wa_file" t-att-href="att.url" target="_blank" rel="noopener" t-att-title="att.name">
+                            <i class="fa fa-paperclip"/>
+                            <span t-esc="att.name"/>
+                            <small t-if="att.size" class="o_kh_wa_muted" t-esc="size(att.size)"/>
+                        </a>
+                    </t>
+                </div>
+            </section>
+
+            <section class="o_kh_wa_block">
+                <div t-if="message.body" class="o_kh_wa_text o_kh_mail_body" dir="auto" t-esc="message.body"/>
+                <p t-else="" class="o_kh_wa_muted">لا نص في هذا الإيميل.</p>
+                <p t-if="message.body_truncated" class="o_kh_wa_muted">… الإيميل أطول، عُرضت بدايته.</p>
+            </section>
+        </article>
+    </t>
+
+</templates>

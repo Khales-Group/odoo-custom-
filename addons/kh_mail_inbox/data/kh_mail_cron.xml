@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- Reads the dashboard mailboxes (read-only): new mail, then a batch of the history. -->
+    <record id="ir_cron_kh_mail_fetch" model="ir.cron">
+        <field name="name">Follow-up Dashboard: read the mailboxes</field>
+        <field name="model_id" ref="model_kh_mail_box"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_fetch()</field>
+        <field name="interval_number">5</field>
+        <field name="interval_type">minutes</field>
+        <field name="active" eval="True"/>
+    </record>
+</odoo>

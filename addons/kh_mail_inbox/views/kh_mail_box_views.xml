@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_kh_mail_message_list" model="ir.ui.view">
+        <field name="name">kh.mail.message.list</field>
+        <field name="model">kh.mail.message</field>
+        <field name="arch" type="xml">
+            <list string="Mailbox Messages" create="0" decoration-bf="not seen">
+                <field name="date"/>
+                <field name="box_id"/>
+                <field name="from_name"/>
+                <field name="from_email"/>
+                <field name="subject"/>
+                <field name="attachment_count" optional="show"/>
+                <field name="seen" optional="hide"/>
+                <field name="replied" optional="hide"/>
+                <field name="followed" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_kh_mail_message_search" model="ir.ui.view">
+        <field name="name">kh.mail.message.search</field>
+        <field name="model">kh.mail.message</field>
+        <field name="arch" type="xml">
+            <search string="Mailbox Messages">
+                <field name="subject"/>
+                <field name="from_email"/>
+                <field name="box_id"/>
+                <filter name="unread" string="Unread" domain="[('seen', '=', False)]"/>
+                <filter name="not_bulk" string="Not Newsletters" domain="[('bulk', '=', False)]"/>
+                <filter name="archived" string="Gone from the Mailbox" domain="[('active', '=', False)]"/>
+                <filter name="group_box" string="Mailbox" context="{'group_by': 'box_id'}"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_kh_mail_message" model="ir.actions.act_window">
+        <field name="name">Mailbox Messages</field>
+        <field name="res_model">kh.mail.message</field>
+        <field name="view_mode">list</field>
+    </record>
+
+    <record id="view_kh_mail_box_list" model="ir.ui.view">
+        <field name="name">kh.mail.box.list</field>
+        <field name="model">kh.mail.box</field>
+        <field name="arch" type="xml">
+            <list string="Mailboxes">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="email"/>
+                <field name="server_count"/>
+                <field name="history_done"/>
+                <field name="last_fetch_at"/>
+                <field name="last_error" decoration-danger="last_error"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_kh_mail_box_form" model="ir.ui.view">
+        <field name="name">kh.mail.box.form</field>
+        <field name="model">kh.mail.box</field>
+        <field name="arch" type="xml">
+            <form string="Mailbox">
+                <header>
+                    <button name="action_fetch_now" string="Read Now" type="object" class="btn-primary"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="%(action_kh_mail_message)d" type="action" class="oe_stat_button" icon="fa-envelope"
+                                string="Messages" context="{'search_default_box_id': id}"/>
+                    </div>
+                    <widget name="web_ribbon" title="Archived" bg_color="text-bg-danger" invisible="active"/>
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1><field name="name" placeholder="e.g. info@"/></h1>
+                    </div>
+                    <div class="alert alert-info" role="status">Read-only: the mailbox is read without marking anything as read, and nothing is moved, deleted or sent.</div>
+                    <group>
+                        <group string="Mailbox">
+                            <field name="email"/>
+                            <field name="host"/>
+                            <field name="port"/>
+                            <field name="login" placeholder="The email address"/>
+                            <field name="password" password="True"/>
+                            <field name="folder"/>
+                            <field name="sent_folder"/>
+                            <field name="history_since"/>
+                        </group>
+                        <group string="Reading">
+                            <field name="server_count"/>
+                            <field name="history_done"/>
+                            <field name="last_fetch_at"/>
+                            <field name="last_error" invisible="not last_error" class="text-danger"/>
+                            <field name="color" widget="color_picker"/>
+                            <field name="sequence"/>
+                            <field name="active" invisible="1"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_kh_mail_box" model="ir.actions.act_window">
+        <field name="name">Mailboxes</field>
+        <field name="res_model">kh.mail.box</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Add a company mailbox</p>
+            <p>Its inbox shows on the follow-up dashboard, read-only.</p>
+        </field>
+    </record>
+
+    <menuitem id="menu_kh_mail_box" name="Mailboxes" parent="kh_wa_inbox.menu_kh_wa_config"
+              action="action_kh_mail_box" sequence="30" groups="base.group_system"/>
+</odoo>

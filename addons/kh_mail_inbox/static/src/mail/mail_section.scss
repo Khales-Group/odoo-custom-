@@ -1,0 +1,66 @@
+// The mail part reuses the WhatsApp part's layout (list beside the item,
+// rows, chips, blocks); only what is particular to messages is here.
+
+.o_kh_mail_row {
+    .o_kh_mail_sender {
+        font-weight: 500;
+    }
+}
+
+.o_kh_mail_unread {
+    .o_kh_mail_sender,
+    .o_kh_mail_subject {
+        font-weight: 700;
+    }
+}
+
+.o_kh_mail_bulk:not(.o_kh_wa_selected) {
+    .o_kh_mail_sender,
+    .o_kh_mail_subject {
+        color: var(--kh-muted);
+    }
+}
+
+.o_kh_mail_subject,
+.o_kh_mail_snippet {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 0.85rem;
+}
+
+.o_kh_mail_subject {
+    margin-top: 0.1rem;
+
+    .fa {
+        margin-inline-end: 0.3rem;
+        color: var(--kh-muted);
+    }
+}
+
+.o_kh_mail_snippet {
+    color: var(--kh-muted);
+}
+
+.o_kh_mail_more {
+    display: flex;
+    justify-content: center;
+    padding: 0.75rem;
+}
+
+.o_kh_mail_addresses {
+    text-align: start;
+    overflow-wrap: anywhere;
+}
+
+.o_kh_mail_body {
+    max-width: 48rem;
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+}
+
+.o_kh_mail_detail .o_kh_wa_file {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}

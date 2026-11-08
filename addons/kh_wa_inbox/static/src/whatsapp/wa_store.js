@@ -5,7 +5,7 @@ import { user } from "@web/core/user";
 import { formatDay, formatMoment } from "@kh_wa_inbox/dashboard/dates";
 
 // Odoo's colour-picker palette (index 0 = no colour).
-const GROUP_COLORS = [
+export const GROUP_COLORS = [
     "",
     "#F06050",
     "#F4A460",

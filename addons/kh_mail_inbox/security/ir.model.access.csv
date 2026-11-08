@@ -1,0 +1,6 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_kh_mail_box_manager,kh.mail.box manager,model_kh_mail_box,kh_wa_inbox.group_kh_wa_manager,1,0,0,0
+access_kh_mail_box_system,kh.mail.box system,model_kh_mail_box,base.group_system,1,1,1,1
+access_kh_mail_message_manager,kh.mail.message manager,model_kh_mail_message,kh_wa_inbox.group_kh_wa_manager,1,1,0,0
+access_kh_mail_message_system,kh.mail.message system,model_kh_mail_message,base.group_system,1,1,1,1
+access_kh_mail_reply_system,kh.mail.reply system,model_kh_mail_reply,base.group_system,1,1,1,1

@@ -1,0 +1,401 @@
+# Translation of Odoo Server.
+# This file contains the translation of the following modules:
+# 	* kh_mail_inbox
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Odoo Server 19.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-11-08 08:00+0000\n"
+"PO-Revision-Date: 2026-11-08 08:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: \n"
+"Plural-Forms: \n"
+
+#. module: kh_mail_inbox
+#. odoo-python
+#: code:addons/kh_mail_inbox/models/kh_mail_message.py:0
+msgid "(no subject)"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_box__active
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__active
+msgid "Active"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model_terms:ir.actions.act_window,help:kh_mail_inbox.action_kh_mail_box
+msgid "Add a company mailbox"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.constraint,message:kh_mail_inbox.constraint_kh_mail_reply_box_message_unique
+msgid "Already known."
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__replied
+msgid "Answered (Sent folder)"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model,name:kh_mail_inbox.model_kh_mail_reply
+msgid "Answered Message (from the Sent folder)"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model_terms:ir.ui.view,arch_db:kh_mail_inbox.view_kh_mail_box_form
+msgid "Archived"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,help:kh_mail_inbox.field_kh_mail_message__active
+msgid "Archived when it leaves the mailbox folder."
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,help:kh_mail_inbox.field_kh_mail_box__name
+msgid "As shown on the dashboard, e.g. info@"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__attachment_count
+msgid "Attachment Count"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__attachment_meta
+msgid "Attachments (in the mailbox)"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__body_truncated
+msgid "Body Truncated"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__cc_text
+msgid "Cc"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_box__color
+msgid "Color"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model,name:kh_mail_inbox.model_kh_mail_box
+msgid "Dashboard Mailbox"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model,name:kh_mail_inbox.model_kh_mail_message
+msgid "Dashboard Mailbox Message"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__date
+msgid "Date"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model_terms:ir.ui.view,arch_db:kh_mail_inbox.view_task_form_kh_mail
+msgid "Done"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model_terms:ir.ui.view,arch_db:kh_mail_inbox.view_kh_mail_box_form
+msgid "e.g. info@"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_box__email
+msgid "Email"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,help:kh_mail_inbox.field_kh_mail_box__login
+msgid "Empty: the email address."
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__flagged
+msgid "Flagged"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_box__folder
+msgid "Folder"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.actions.server,name:kh_mail_inbox.ir_cron_kh_mail_fetch_ir_actions_server
+msgid "Follow-up Dashboard: read the mailboxes"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model_terms:ir.ui.view,arch_db:kh_mail_inbox.view_task_form_kh_mail
+msgid "Follow-up of an email to"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__followed
+msgid "Followed Up"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__from_email
+msgid "From Email"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__from_name
+msgid "From Name"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model_terms:ir.ui.view,arch_db:kh_mail_inbox.view_kh_mail_message_search
+msgid "Gone from the Mailbox"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_box__history_done
+msgid "History Done"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_box__history_since
+msgid "History Since"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_box__port
+msgid "IMAP Port"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_box__host
+msgid "IMAP Server"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model_terms:ir.actions.act_window,help:kh_mail_inbox.action_kh_mail_box
+msgid "Its inbox shows on the follow-up dashboard, read-only."
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_box__last_error
+msgid "Last Error"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_box__last_fetch_at
+msgid "Last Fetch At"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_box__login
+msgid "Login"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__box_id
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_project_task__kh_mail_box_email
+#: model_terms:ir.ui.view,arch_db:kh_mail_inbox.view_kh_mail_box_form
+#: model_terms:ir.ui.view,arch_db:kh_mail_inbox.view_kh_mail_message_search
+msgid "Mailbox"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_project_task__kh_mail_message_id
+msgid "Mailbox Message"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.actions.act_window,name:kh_mail_inbox.action_kh_mail_message
+#: model_terms:ir.ui.view,arch_db:kh_mail_inbox.view_kh_mail_message_list
+#: model_terms:ir.ui.view,arch_db:kh_mail_inbox.view_kh_mail_message_search
+msgid "Mailbox Messages"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.actions.act_window,name:kh_mail_inbox.action_kh_mail_box
+#: model:ir.ui.menu,name:kh_mail_inbox.menu_kh_mail_box
+#: model_terms:ir.ui.view,arch_db:kh_mail_inbox.view_kh_mail_box_list
+msgid "Mailboxes"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__answered
+msgid "Marked Answered"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_box__message_ids
+#: model_terms:ir.ui.view,arch_db:kh_mail_inbox.view_kh_mail_box_form
+msgid "Messages"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_box__server_count
+msgid "Messages in the Folder"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_box__name
+msgid "Name"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__bulk
+msgid "Newsletter / Automatic"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model_terms:ir.ui.view,arch_db:kh_mail_inbox.view_kh_mail_message_search
+msgid "Not Newsletters"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,help:kh_mail_inbox.field_kh_mail_box__history_since
+msgid "Older messages are not imported. Empty: the whole folder."
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,help:kh_mail_inbox.field_kh_mail_message__body_truncated
+msgid "Only the beginning of a long message is kept."
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_box__password
+msgid "Password"
+msgstr ""
+
+#. module: kh_mail_inbox
+#. odoo-python
+#: code:addons/kh_mail_inbox/models/kh_mail_message.py:0
+msgid "Pick an employee to give the task to."
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__seen
+msgid "Read in the Mailbox"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model_terms:ir.ui.view,arch_db:kh_mail_inbox.view_kh_mail_box_form
+msgid "Read Now"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,help:kh_mail_inbox.field_kh_mail_box__sent_folder
+msgid ""
+"Read to know which messages were answered (empty: only the mail programs' "
+"'answered' flag)."
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model_terms:ir.ui.view,arch_db:kh_mail_inbox.view_kh_mail_box_form
+msgid ""
+"Read-only: the mailbox is read without marking anything as read, and nothing"
+" is moved, deleted or sent."
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model_terms:ir.ui.view,arch_db:kh_mail_inbox.view_kh_mail_box_form
+msgid "Reading"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_box__sent_folder
+msgid "Sent Folder"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_box__sequence
+msgid "Sequence"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,help:kh_mail_inbox.field_kh_mail_message__followed
+msgid "Set on the dashboard: needs nothing more."
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__size
+msgid "Size"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__snippet
+msgid "Snippet"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__subject
+msgid "Subject"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__task_ids
+msgid "Tasks"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__body_text
+msgid "Text"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model_terms:ir.ui.view,arch_db:kh_mail_inbox.view_kh_mail_box_form
+msgid "The email address"
+msgstr ""
+
+#. module: kh_mail_inbox
+#. odoo-python
+#: code:addons/kh_mail_inbox/models/kh_mail_message.py:0
+msgid "This attachment doesn't exist."
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.constraint,message:kh_mail_inbox.constraint_kh_mail_box_email_unique
+msgid "This mailbox is already on the dashboard."
+msgstr ""
+
+#. module: kh_mail_inbox
+#. odoo-python
+#: code:addons/kh_mail_inbox/controllers/main.py:0
+msgid "This message doesn't exist."
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.constraint,message:kh_mail_inbox.constraint_kh_mail_message_box_uid_unique
+msgid "This message is already read."
+msgstr ""
+
+#. module: kh_mail_inbox
+#. odoo-python
+#: code:addons/kh_mail_inbox/models/kh_mail_message.py:0
+msgid "This message is no longer in the mailbox."
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model:ir.model.fields,field_description:kh_mail_inbox.field_kh_mail_message__to_text
+msgid "To"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model_terms:ir.ui.view,arch_db:kh_mail_inbox.view_kh_mail_message_search
+msgid "Unread"
+msgstr ""
+
+#. module: kh_mail_inbox
+#: model_terms:ir.ui.view,arch_db:kh_mail_inbox.view_task_form_kh_mail
+msgid ""
+"· The email and its attachments are in the task. When you finish, write what"
+" was done in a comment, then press Done."
+msgstr ""

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_task_form_kh_mail" model="ir.ui.view">
+        <field name="name">project.task.form.kh_mail_inbox</field>
+        <field name="model">project.task</field>
+        <field name="inherit_id" ref="project.view_task_form2"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form/header" position="inside">
+                <button name="action_kh_wa_done" string="Done" type="object" class="btn-primary"
+                        invisible="not kh_mail_box_email or state in ('1_done', '1_canceled')"/>
+            </xpath>
+            <xpath expr="//t[@name='warning_section']" position="after">
+                <div class="alert alert-info mb-0 rounded-0 d-flex flex-wrap align-items-center gap-1" role="status"
+                     invisible="not kh_mail_box_email">
+                    <span>Follow-up of an email to</span>
+                    <field name="kh_mail_box_email" class="fw-bold" readonly="1"/>
+                    <span>· The email and its attachments are in the task. When you finish, write what was done in a comment, then press Done.</span>
+                </div>
+            </xpath>
+        </field>
+    </record>
+</odoo>
