@@ -140,8 +140,13 @@ class KhWaItem(models.Model):
         default="text",
         required=True,
     )
+    # bypass_search_access: without it, describing the field to a user who
+    # isn't an administrator ("can it be grouped by?") searches every
+    # attachment of the database with its access check, which is slow and
+    # crashed on production on another app's attachment (Knowledge).
     attachment_ids = fields.Many2many(
         "ir.attachment", "kh_wa_item_attachment_rel", "item_id", "attachment_id", string="Attachments",
+        bypass_search_access=True,
     )
     linked_ref = fields.Reference(selection="_selection_linked_ref", string="Linked Record")
     remind_on = fields.Date(string="Remind Me On")

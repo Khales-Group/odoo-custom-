@@ -575,6 +575,13 @@ class TestKhWaInbox(TransactionCase):
         self.env["kh.wa.item"]._cron_decision_activities()
         self.assertFalse(mine.activity_ids.filtered(lambda a: a.user_id == self.manager), "no longer waiting: gone")
 
+    def test_item_views_open_for_a_manager_who_isnt_an_administrator(self):
+        # Majed (no administrator rights) got an error opening an item: the
+        # attachments field made the views search every attachment.
+        self.assertTrue(self.Item._fields["attachment_ids"].bypass_search_access)
+        views = self.Item.get_views([(False, "form"), (False, "list"), (False, "search")])
+        self.assertIn("attachment_ids", views["models"]["kh.wa.item"]["fields"])
+
     def test_archived_group_with_open_items_keeps_its_card(self):
         self.upsert(self.row("a1"), self.row("a2", urgent=True))
         self.group.active = False
