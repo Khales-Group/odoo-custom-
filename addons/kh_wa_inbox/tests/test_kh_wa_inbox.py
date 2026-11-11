@@ -512,6 +512,69 @@ class TestKhWaInbox(TransactionCase):
         missing = self.Item.upsert_items([self.row("link3", linked_ref={"model": "project.project", "name": "nothing like it"})])
         self.assertTrue(missing["errors"] and missing["errors"][0]["saved"], "saved, with a warning")
 
+    # ------------------------------------------------------------------
+    # «بانتظار قرارك» as the decision maker's To-Dos
+    # ------------------------------------------------------------------
+
+    def set_decision_maker(self, user):
+        self.env["ir.config_parameter"].sudo().set_param("kh_wa_inbox.decision_user_id", str(user.id) if user else "")
+
+    def test_decision_todo_follows_the_wait(self):
+        self.set_decision_maker(self.manager)
+        self.upsert(self.row("dec1", needs_manager=True))
+        item = self.item("dec1")
+        todo = item.kh_decision_activity_id
+        self.assertEqual(todo.user_id, self.manager)
+        self.assertTrue(todo.summary.startswith("بانتظار قرارك"))
+        self.assertTrue(item._is_untouched(), "the decision To-Do is the item's own, not someone's touch")
+
+        # He decides: marks it done. The item no longer waits for him.
+        todo.with_user(self.manager).action_feedback(feedback="موافق")
+        self.assertFalse(item.needs_manager)
+        self.assertFalse(item.kh_decision_activity_id)
+        self.assertIn("needs_manager", item.manual_fields, "the bot won't flag it again")
+
+        # Flagged again by a person, then closed: the To-Do goes with it.
+        item.with_user(self.manager).write({"needs_manager": True})
+        self.assertTrue(item.kh_decision_activity_id)
+        item.with_user(self.manager).action_done(note="ok")
+        self.assertFalse(item.kh_decision_activity_id)
+        self.assertFalse(item.activity_ids.filtered(lambda a: (a.summary or "").startswith("بانتظار قرارك")))
+
+    def test_decision_todos_wait_for_a_decision_maker(self):
+        self.set_decision_maker(False)
+        self.upsert(self.row("dec2", needs_manager=True))
+        self.assertFalse(self.item("dec2").kh_decision_activity_id)
+        self.set_decision_maker(self.manager)
+        self.env["kh.wa.item"]._cron_decision_activities()
+        self.assertEqual(self.item("dec2").kh_decision_activity_id.user_id, self.manager, "the cron catches up")
+
+    def test_approvals_waiting_for_me(self):
+        if "kh.approval.request" not in self.env:
+            self.skipTest("kh_approvals is not installed")
+        Request, Line = self.env["kh.approval.request"], self.env["kh.approval.line"]
+        mine = Request.create({"title": "Buy cement (test)", "amount": 1500})
+        mine.write({"state": "in_review"})
+        Line.create({"request_id": mine.id, "approver_id": self.manager.id, "state": "pending"})
+        other = Request.create({"title": "Not mine (test)"})
+        other.write({"state": "in_review"})
+        Line.create({"request_id": other.id, "approver_id": self.user_a.id, "state": "pending"})
+
+        approvals = self.Item.get_dashboard()["approvals"]
+        self.assertEqual([a["request_id"] for a in approvals], [mine.id], "only what waits for this user")
+        self.assertEqual((approvals[0]["name"], approvals[0]["id"]), ("Buy cement (test)", f"approval-{mine.id}"))
+
+        self.set_decision_maker(self.manager)
+        self.env["kh.wa.item"]._cron_decision_activities()
+        self.env["kh.wa.item"]._cron_decision_activities()
+        todos = mine.activity_ids.filtered(lambda a: a.user_id == self.manager)
+        self.assertEqual(len(todos), 1, "one To-Do, not one per run")
+        self.assertTrue(todos.summary.startswith("بانتظار موافقتك"))
+
+        mine.approval_line_ids.write({"state": "approved"})
+        self.env["kh.wa.item"]._cron_decision_activities()
+        self.assertFalse(mine.activity_ids.filtered(lambda a: a.user_id == self.manager), "no longer waiting: gone")
+
     def test_archived_group_with_open_items_keeps_its_card(self):
         self.upsert(self.row("a1"), self.row("a2", urgent=True))
         self.group.active = False

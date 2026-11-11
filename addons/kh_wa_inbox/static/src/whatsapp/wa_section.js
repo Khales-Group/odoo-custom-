@@ -20,6 +20,8 @@ const REMIND_OPTIONS = [
     { key: "next_week", label: "الأسبوع القادم" },
 ];
 const KIND_LABELS = { request: "طلب", decision: "قرار مطلوب", deadline: "موعد", alert: "تنبيه" };
+// An approval request's steps (kh.approval.line states).
+const STEP_LABELS = { pending: "بانتظار", approved: "وافق", rejected: "رفض", waiting: "لاحقاً", withdrawn: "انسحب" };
 
 /** The WhatsApp part's entries in the dashboard's sidebar. */
 export class WhatsAppSidebar extends Component {
@@ -106,7 +108,8 @@ export class WhatsAppMain extends Component {
             const avg = this.store.data.kpis.avg_close.duration;
             return avg ? avg.value : "—";
         }
-        return this.store.data.kpis[tile.key].value;
+        const value = this.store.data.kpis[tile.key].value;
+        return tile.key === "needs_manager" ? value + this.store.approvals.length : value;
     }
 
     tileUnit(tile) {
@@ -116,7 +119,16 @@ export class WhatsAppMain extends Component {
 
     tileNote(tile) {
         const kpi = this.store.data.kpis[tile.key];
-        return kpi && kpi.oldest ? `أقدمها ${kpi.oldest}` : "";
+        const notes = kpi && kpi.oldest ? [`أقدمها ${kpi.oldest}`] : [];
+        const approvals = this.store.approvals.length;
+        if (tile.key === "needs_manager" && approvals) {
+            notes.unshift(approvals === 1 ? "منها طلب موافقة" : `منها ${approvals} طلبات موافقة`);
+        }
+        return notes.join(" · ");
+    }
+
+    stepLabel(state) {
+        return STEP_LABELS[state] || state;
     }
 
     openTile(tile) {

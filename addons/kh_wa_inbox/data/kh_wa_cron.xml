@@ -11,4 +11,15 @@
         <field name="interval_type">days</field>
         <field name="active" eval="True"/>
     </record>
+
+    <!-- «بانتظار قرارك» as the decision maker's To-Dos (items and approval requests). -->
+    <record id="ir_cron_kh_wa_decision_activities" model="ir.cron">
+        <field name="name">Follow-up Dashboard: decisions as activities</field>
+        <field name="model_id" ref="model_kh_wa_item"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_decision_activities()</field>
+        <field name="interval_number">10</field>
+        <field name="interval_type">minutes</field>
+        <field name="active" eval="True"/>
+    </record>
 </odoo>

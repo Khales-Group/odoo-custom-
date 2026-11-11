@@ -230,12 +230,17 @@ export class WhatsAppStore {
 
     // ---- what is shown -------------------------------------------------------
 
+    /** Approval requests waiting for the user's approval: also «بانتظار قرارك». */
+    get approvals() {
+        return (this.data && this.data.approvals) || [];
+    }
+
     /** Totals of every group (the sidebar's counts don't follow a picked group). */
     get totals() {
         const boxes = (this.data && this.data.boxes) || [];
         const sum = (key) => boxes.reduce((total, box) => total + box.counts[key], 0);
         return {
-            needs_manager: sum("needs_manager"),
+            needs_manager: sum("needs_manager") + this.approvals.length,
             urgent: sum("urgent"),
             overdue: sum("overdue"),
             open: sum("open"),
@@ -273,6 +278,9 @@ export class WhatsAppStore {
         const items = this.openItems.filter(VIEW[key].test);
         if (key === "needs_manager") {
             items.sort((a, b) => b.urgent - a.urgent || byAsked(a, b));
+            if (!this.groupId) {
+                return [...this.approvals, ...items];
+            }
         } else if (key === "overdue") {
             items.sort((a, b) => a.due_date.localeCompare(b.due_date) || byAsked(a, b));
         }
@@ -316,6 +324,7 @@ export class WhatsAppStore {
             d.closed_week.find((i) => i.id === id) ||
             d.sections.closed.find((i) => i.id === id) ||
             (d.search_results || []).find((i) => i.id === id) ||
+            this.approvals.find((i) => i.id === id) ||
             null
         );
     }
@@ -460,6 +469,34 @@ export class WhatsAppStore {
     async linkRecord(item) {
         const action = await this.services.orm.call("kh.wa.item", "action_link_record", [[item.id]]);
         await this.services.action.doAction(action, { onClose: () => this.load() });
+    }
+
+    // ---- an approval request ----------------------------------------------------
+
+    async approve(item) {
+        this.busy = true;
+        try {
+            await this.services.orm.call("kh.approval.request", "action_approve_request", [[item.request_id]]);
+            this.services.notification.add("تمت الموافقة", { type: "success" });
+        } finally {
+            this.busy = false;
+            await this.load();
+        }
+    }
+
+    async reject(item) {
+        const action = await this.services.orm.call("kh.approval.request", "action_reject_request", [[item.request_id]]);
+        await this.services.action.doAction(action, { onClose: () => this.load() });
+    }
+
+    openApproval(item) {
+        this.services.action.doAction({
+            type: "ir.actions.act_window",
+            res_model: "kh.approval.request",
+            res_id: item.request_id,
+            views: [[false, "form"]],
+            target: "current",
+        });
     }
 
     openLinked(item) {

@@ -14,6 +14,10 @@
                                 <field name="kh_wa_quick_done_minutes" class="oe_inline"/> minutes
                             </div>
                         </setting>
+                        <setting id="kh_wa_decision_user" string="Decision Maker"
+                                 help="Gets a To-Do for every item waiting for the manager's decision and every approval request waiting for his approval.">
+                            <field name="kh_wa_decision_user_id" options="{'no_create': True}"/>
+                        </setting>
                     </block>
                 </app>
             </xpath>

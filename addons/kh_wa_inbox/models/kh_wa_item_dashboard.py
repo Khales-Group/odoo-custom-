@@ -57,6 +57,8 @@ class KhWaItem(models.Model):
             ),
             "closed_week": closed_week[:CLOSED_WEEK_LIMIT],
             "group_days": self._dashboard_group_days(ctx) if ctx["group_id"] and ctx["is_manager"] else [],
+            # Approval requests waiting for this user's approval: also «بانتظار قرارك».
+            "approvals": self._kh_approval_payloads(self._kh_pending_approvals(self.env.user), now),
         })
         return result
 

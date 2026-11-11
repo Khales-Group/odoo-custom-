@@ -1088,3 +1088,29 @@ $kh-phone: 768px;
         }
     }
 }
+
+// An approval request (kh_approvals) in «بانتظار قرارك»: a ring, not a group colour.
+.o_kh_wa_approval_swatch {
+    background: transparent;
+    border: 2px solid var(--kh-amber);
+}
+
+.o_kh_wa_amount {
+    text-align: start;
+    font-weight: 600;
+}
+
+.o_kh_wa_steps {
+    margin: 0;
+    padding-inline-start: 1.2rem;
+
+    .o_kh_wa_step {
+        display: flex;
+        gap: 0.5rem;
+        padding: 0.15rem 0;
+    }
+
+    .o_kh_wa_step_pending {
+        font-weight: 700;
+    }
+}

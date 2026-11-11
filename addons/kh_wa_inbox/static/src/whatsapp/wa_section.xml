@@ -214,7 +214,8 @@
                     </t>
                     <t t-else="">
                         <t t-foreach="store.listItems" t-as="row" t-key="row.id">
-                            <t t-call="kh_wa_inbox.WaRow"><t t-set="hideGroup" t-value="store.groupId"/></t>
+                            <t t-if="row.approval" t-call="kh_wa_inbox.WaApprovalRow"/>
+                            <t t-else="" t-call="kh_wa_inbox.WaRow"><t t-set="hideGroup" t-value="store.groupId"/></t>
                         </t>
                     </t>
                 </div>
@@ -222,7 +223,8 @@
 
             <div class="o_kh_wa_detail_backdrop" t-on-click="() => this.store.closeDetail()"/>
             <section class="o_kh_wa_detailpane" aria-label="التفاصيل">
-                <t t-if="item" t-call="kh_wa_inbox.WaDetail"/>
+                <t t-if="item and item.approval" t-call="kh_wa_inbox.WaApprovalDetail"/>
+                <t t-elif="item" t-call="kh_wa_inbox.WaDetail"/>
                 <t t-elif="box" t-call="kh_wa_inbox.WaGroupSummary"/>
                 <div t-else="" class="o_kh_wa_detail_empty">
                     <div>اختر بنداً من القائمة لعرض تفاصيله</div>
@@ -257,6 +259,75 @@
                 <span t-if="closedRow and row.took">استغرق <t t-esc="row.took"/></span>
             </div>
         </div>
+    </t>
+
+    <!-- An approval request waiting for the user (kh_approvals) in «بانتظار قرارك». Expects `row`. -->
+    <t t-name="kh_wa_inbox.WaApprovalRow">
+        <div t-attf-class="o_kh_wa_row o_kh_wa_approval_row {{store.selectedId === row.id ? 'o_kh_wa_selected' : ''}}"
+             role="option" tabindex="0" t-att-aria-selected="store.selectedId === row.id ? 'true' : 'false'"
+             t-on-click="() => this.store.select(row)" t-on-keydown="(ev) => this.onRowKeydown(row, ev)">
+            <span class="o_kh_wa_row_swatch o_kh_wa_approval_swatch"/>
+            <div class="o_kh_wa_row_top">
+                <span class="o_kh_wa_row_title" t-esc="row.name"/>
+                <span class="o_kh_wa_row_when" t-esc="row.age"/>
+            </div>
+            <div class="o_kh_wa_row_meta">
+                <span class="o_kh_wa_flag">طلب موافقة</span>
+                <span t-if="row.requester" t-esc="row.requester"/>
+                <span t-if="row.amount" dir="ltr" t-esc="row.amount"/>
+            </div>
+        </div>
+    </t>
+
+    <!-- The selected approval request. Expects `item`. -->
+    <t t-name="kh_wa_inbox.WaApprovalDetail">
+        <article class="o_kh_wa_detail">
+            <header class="o_kh_wa_detail_head">
+                <button class="o_kh_wa_back" t-on-click="() => this.store.closeDetail()" aria-label="رجوع">رجوع</button>
+                <div class="o_kh_wa_chips">
+                    <span class="o_kh_wa_chip o_kh_wa_chip_strong">طلب موافقة</span>
+                    <span t-if="item.rule" class="o_kh_wa_chip" t-esc="item.rule"/>
+                    <span t-if="item.stage" class="o_kh_wa_chip" t-esc="item.stage"/>
+                </div>
+                <h2 class="o_kh_wa_detail_title" t-esc="item.name"/>
+                <div class="o_kh_wa_detail_sub">
+                    <span dir="ltr" t-esc="item.ref"/>
+                    <span t-if="item.asked_at" class="o_kh_wa_muted">· <t t-esc="dateTime(item.asked_at)"/> (<t t-esc="item.age"/>)</span>
+                </div>
+            </header>
+
+            <div class="o_kh_wa_actionbar">
+                <div class="o_kh_wa_actions">
+                    <button class="o_kh_wa_btn o_kh_wa_btn_primary" t-att-disabled="store.busy"
+                            t-on-click="() => this.store.approve(item)">موافقة</button>
+                    <button class="o_kh_wa_btn" t-att-disabled="store.busy" t-on-click="() => this.store.reject(item)">رفض</button>
+                    <span class="o_kh_wa_actions_gap"/>
+                    <button class="o_kh_wa_btn o_kh_wa_btn_quiet" t-on-click="() => this.store.openApproval(item)">فتح الطلب</button>
+                </div>
+            </div>
+
+            <dl class="o_kh_wa_facts">
+                <dt>مقدّم الطلب</dt>
+                <dd t-esc="item.requester or '—'"/>
+                <t t-if="item.amount"><dt>المبلغ</dt><dd dir="ltr" class="o_kh_wa_amount" t-esc="item.amount"/></t>
+                <t t-if="item.department"><dt>القسم</dt><dd t-esc="item.department"/></t>
+                <t t-if="item.vendor"><dt>المورد</dt><dd t-esc="item.vendor"/></t>
+                <t t-if="item.project"><dt>المشروع</dt><dd t-esc="item.project"/></t>
+                <t t-if="item.attachment_count"><dt>المرفقات</dt><dd><t t-esc="item.attachment_count"/> (في الطلب)</dd></t>
+            </dl>
+
+            <section t-if="item.steps.length" class="o_kh_wa_block">
+                <h3>خطوات الموافقة</h3>
+                <ol class="o_kh_wa_steps">
+                    <t t-foreach="item.steps" t-as="step" t-key="step_index">
+                        <li t-attf-class="o_kh_wa_step o_kh_wa_step_{{step.state}}">
+                            <span t-esc="step.name"/>
+                            <span class="o_kh_wa_muted" t-esc="stepLabel(step.state)"/>
+                        </li>
+                    </t>
+                </ol>
+            </section>
+        </article>
     </t>
 
     <!-- The selected item. Expects `item`. -->

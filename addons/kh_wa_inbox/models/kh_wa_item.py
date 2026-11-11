@@ -202,6 +202,7 @@ class KhWaItem(models.Model):
                 vals["done_at"] = now
         items = super().create(vals_list)
         items.filtered("assignee_id")._kh_sync_task()
+        items.filtered("needs_manager")._kh_sync_decision_activity()
         return items
 
     def write(self, vals):
@@ -225,6 +226,8 @@ class KhWaItem(models.Model):
         if vals.get("state") == "done":
             for item in self.sudo().filtered(lambda i: i.linked_ref and i.task_id):
                 item._kh_note_linked(item.task_id, done=True)
+        if {"needs_manager", "state"} & set(vals) and not self.env.context.get("kh_wa_decision_sync"):
+            self._kh_sync_decision_activity()
         return result
 
     def _manual_field_set(self):
@@ -235,7 +238,8 @@ class KhWaItem(models.Model):
         """Nobody has done anything with this item in Odoo yet."""
         self.ensure_one()
         item = self.sudo()
-        if item.manual_fields or item.remind_on or item.activity_ids or item.task_ids:
+        # The decision maker's To-Do is the item's own, not someone's touch.
+        if item.manual_fields or item.remind_on or (item.activity_ids - item.kh_decision_activity_id) or item.task_ids:
             return False
         if self.env["mail.message"].sudo().search_count([
             ("model", "=", self._name), ("res_id", "=", self.id), ("message_type", "in", ("comment", "email")),

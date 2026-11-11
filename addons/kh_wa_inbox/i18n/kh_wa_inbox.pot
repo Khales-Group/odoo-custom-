@@ -242,6 +242,17 @@ msgid "Deadline"
 msgstr ""
 
 #. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__kh_decision_activity_id
+msgid "Decision Activity"
+msgstr ""
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,field_description:kh_wa_inbox.field_res_config_settings__kh_wa_decision_user_id
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.res_config_settings_view_form
+msgid "Decision Maker"
+msgstr ""
+
+#. module: kh_wa_inbox
 #: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_item__kind__decision
 msgid "Decision needed"
 msgstr ""
@@ -338,6 +349,14 @@ msgstr ""
 #. module: kh_wa_inbox
 #: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__activity_type_icon
 msgid "Font awesome icon e.g. fa-tasks"
+msgstr ""
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_res_config_settings__kh_wa_decision_user_id
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.res_config_settings_view_form
+msgid ""
+"Gets a To-Do for every item waiting for the manager's decision and every "
+"approval request waiting for his approval."
 msgstr ""
 
 #. module: kh_wa_inbox
@@ -843,6 +862,13 @@ msgstr ""
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_memo__text
 #: model:ir.model.fields.selection,name:kh_wa_inbox.selection__kh_wa_item__source_kind__text
 msgid "Text"
+msgstr ""
+
+#. module: kh_wa_inbox
+#: model:ir.model.fields,help:kh_wa_inbox.field_kh_wa_item__kh_decision_activity_id
+msgid ""
+"The decision maker's To-Do while the item waits for his decision. Marking it"
+" done ends the wait."
 msgstr ""
 
 #. module: kh_wa_inbox
