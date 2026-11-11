@@ -357,6 +357,11 @@ msgid "Font awesome icon e.g. fa-tasks"
 msgstr "أيقونة من Font awesome مثال: fa-tasks"
 
 #. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_search
+msgid "Future Activities"
+msgstr "الأنشطة المستقبلية"
+
+#. module: kh_wa_inbox
 #: model:ir.model.fields,help:kh_wa_inbox.field_res_config_settings__kh_wa_decision_user_id
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.res_config_settings_view_form
 msgid ""
@@ -477,6 +482,11 @@ msgid "Last Updated On"
 msgstr "آخر تحديث في"
 
 #. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_search
+msgid "Late Activities"
+msgstr "الأنشطة المتأخرة"
+
+#. module: kh_wa_inbox
 #. odoo-python
 #: code:addons/kh_wa_inbox/models/kh_wa_item.py:0
 msgid "Lead / Opportunity"
@@ -543,6 +553,11 @@ msgstr "الرسائل"
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.res_config_settings_view_form
 msgid "minutes"
 msgstr "دقيقة"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_search
+msgid "My Activities"
+msgstr "أنشطتي"
 
 #. module: kh_wa_inbox
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_item__my_activity_date_deadline
@@ -952,6 +967,11 @@ msgstr "رسالة الواتساب هذه محسوبة بالفعل."
 
 #. module: kh_wa_inbox
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_search
+msgid "Today Activities"
+msgstr "أنشطة اليوم"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_search
 msgid "Type"
 msgstr "النوع"
 
@@ -1030,6 +1050,13 @@ msgstr "بانتظار المدير"
 #: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_kanban
 msgid "Waiting for the manager"
 msgstr "بانتظار المدير"
+
+#. module: kh_wa_inbox
+#: model_terms:ir.ui.view,arch_db:kh_wa_inbox.view_kh_wa_item_form
+msgid ""
+"Waiting for the manager's decision. Decided? Press Done, or choose an "
+"Assignee to hand it over."
+msgstr "بانتظار قرار المدير. إذا قررت: اضغط «تم»، أو اختر المسؤول لتسليمه له."
 
 #. module: kh_wa_inbox
 #: model:ir.model.fields,field_description:kh_wa_inbox.field_kh_wa_group__wa_chat_id

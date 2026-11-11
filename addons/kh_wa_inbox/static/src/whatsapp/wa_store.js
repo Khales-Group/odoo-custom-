@@ -171,6 +171,9 @@ export class WhatsAppStore {
     }
 
     navigate(view) {
+        if (!VIEW[view]) {
+            return;
+        }
         const leavingGroup = Boolean(this.groupId);
         this.view = view;
         this.groupId = null;
@@ -439,6 +442,7 @@ export class WhatsAppStore {
         this.panel = null;
         this.busy = true;
         try {
+            // Handing it to someone ends «بانتظار قرارك» (done by the server).
             await this.services.orm.write("kh.wa.item", [item.id], { assignee_id: userId || false });
         } finally {
             this.busy = false;

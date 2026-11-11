@@ -44,8 +44,15 @@ export class FollowupDashboard extends Component {
                 const store = part.makeStore(services);
                 return { key, part, store, view: useState(store) };
             });
+        // Opened on a given list (the activity menu asks for «بانتظار قرارك»):
+        // context { kh_dashboard_part, kh_dashboard_view }.
+        const context = (this.props.action && this.props.action.context) || {};
+        const start = this.parts.find((part) => part.key === context.kh_dashboard_part);
+        if (start && context.kh_dashboard_view && start.store.navigate) {
+            start.store.navigate(context.kh_dashboard_view);
+        }
         this.state = useState({
-            active: this.parts.length ? this.parts[0].key : null,
+            active: start ? start.key : this.parts.length ? this.parts[0].key : null,
             date: null, // null = today
             search: "", // what the parts search for (after a short pause)
             searchInput: "",

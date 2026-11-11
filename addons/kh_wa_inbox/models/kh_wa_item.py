@@ -212,6 +212,12 @@ class KhWaItem(models.Model):
 
     def write(self, vals):
         vals = mask_vals(dict(vals), MASKED_FIELDS)
+        context = self.env.context
+        if vals.get("assignee_id") and "needs_manager" not in vals and not (
+            context.get("kh_wa_upsert") or context.get("kh_wa_task_sync") or context.get("kh_wa_decision_sync")
+        ):
+            # A person handing it to someone has decided: it leaves «بانتظار قرارك».
+            self.filtered("needs_manager").write({"needs_manager": False})
         result = super().write(vals)
         if "state" in vals and "done_at" not in vals:
             if vals["state"] in CLOSED_STATES:

@@ -1,6 +1,6 @@
 {
     "name": "Khales Follow-up Dashboard: WhatsApp Groups",
-    "version": "19.0.1.6.0",
+    "version": "19.0.1.6.1",
     "summary": "لوحة المتابعة: what is asked, decided and promised in the company's WhatsApp groups",
     "description": """
 Khales Follow-up Dashboard: WhatsApp Groups (لوحة المتابعة)
@@ -89,6 +89,7 @@ numbers, no day pages). No users are added by the module.
             "kh_wa_inbox/static/src/whatsapp/wa_store.js",
             "kh_wa_inbox/static/src/whatsapp/wa_section.js",
             "kh_wa_inbox/static/src/whatsapp/wa_section.xml",
+            "kh_wa_inbox/static/src/whatsapp/activity_menu.js",
         ],
     },
     "installable": True,

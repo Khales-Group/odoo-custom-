@@ -541,6 +541,23 @@ class TestKhWaInbox(TransactionCase):
         self.assertFalse(item.kh_decision_activity_id)
         self.assertFalse(item.activity_ids.filtered(lambda a: (a.summary or "").startswith("بانتظار قرارك")))
 
+    def test_assigning_someone_is_the_decision(self):
+        self.set_decision_maker(self.manager)
+        self.upsert(self.row("dec3", needs_manager=True))
+        item = self.item("dec3")
+        self.assertTrue(item.kh_decision_activity_id)
+
+        # The bot naming an assignee doesn't decide for the manager.
+        self.upsert(self.row("dec3", needs_manager=True, assignee_login=self.user_a.login))
+        self.assertTrue(item.needs_manager)
+        self.assertTrue(item.kh_decision_activity_id)
+
+        # The manager hands it to someone: decided, and the task goes out.
+        item.with_user(self.manager).write({"assignee_id": self.user_b.id})
+        self.assertFalse(item.needs_manager)
+        self.assertFalse(item.kh_decision_activity_id)
+        self.assertEqual(item.task_id.user_ids, self.user_b)
+
     def test_decision_todos_wait_for_a_decision_maker(self):
         self.set_decision_maker(False)
         self.upsert(self.row("dec2", needs_manager=True))

@@ -89,6 +89,10 @@
                                 string="Task" invisible="not task_id"/>
                     </div>
                     <widget name="web_ribbon" title="Overdue" bg_color="text-bg-danger" invisible="not is_overdue"/>
+                    <div class="alert alert-warning mb-3" role="status"
+                         invisible="not needs_manager or state not in ('open', 'waiting')">
+                        Waiting for the manager's decision. Decided? Press Done, or choose an Assignee to hand it over.
+                    </div>
                     <div class="oe_title">
                         <label for="name"/>
                         <h1><field name="name" placeholder="Short summary"/></h1>
@@ -107,8 +111,6 @@
                         </group>
                         <group>
                             <field name="requester_name"/>
-                            <field name="requester_phone"/>
-                            <field name="requester_user_id"/>
                             <field name="asked_at"/>
                             <field name="age_label"/>
                             <field name="project_id"/>
@@ -123,7 +125,6 @@
                     <notebook>
                         <page string="Message" name="message">
                             <group>
-                                <field name="source_kind"/>
                                 <field name="source_text" nolabel="1" colspan="2" readonly="id"/>
                             </group>
                             <separator string="Context"/>
@@ -136,6 +137,9 @@
                         </page>
                         <page string="Technical" name="technical" groups="kh_wa_inbox.group_kh_wa_manager">
                             <group>
+                                <field name="requester_phone"/>
+                                <field name="requester_user_id"/>
+                                <field name="source_kind"/>
                                 <field name="source_msg_id"/>
                                 <field name="manual_fields"/>
                             </group>
@@ -188,6 +192,16 @@
                 <filter string="Closed" name="filter_closed" domain="[('state', 'in', ('done', 'cancel'))]"/>
                 <separator/>
                 <filter string="Assigned to Me" name="filter_mine" domain="[('assignee_id', '=', uid)]"/>
+                <!-- What the activity menu filters on. -->
+                <filter invisible="1" string="My Activities" name="filter_activities_my"
+                        domain="[('activity_user_id', '=', uid)]"/>
+                <separator invisible="1"/>
+                <filter invisible="1" string="Late Activities" name="activities_overdue"
+                        domain="[('my_activity_date_deadline', '&lt;', 'today')]"/>
+                <filter invisible="1" string="Today Activities" name="activities_today"
+                        domain="[('my_activity_date_deadline', '=', 'today')]"/>
+                <filter invisible="1" string="Future Activities" name="activities_upcoming_all"
+                        domain="[('my_activity_date_deadline', '&gt;', 'today')]"/>
                 <group>
                     <filter string="Group" name="groupby_group" context="{'group_by': 'group_id'}"/>
                     <filter string="Assignee" name="groupby_assignee" context="{'group_by': 'assignee_id'}"/>
