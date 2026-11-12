@@ -1,6 +1,6 @@
 {
     "name": "Khales Follow-up Dashboard: WhatsApp Groups",
-    "version": "19.0.1.6.1",
+    "version": "19.0.1.6.2",
     "summary": "لوحة المتابعة: what is asked, decided and promised in the company's WhatsApp groups",
     "description": """
 Khales Follow-up Dashboard: WhatsApp Groups (لوحة المتابعة)

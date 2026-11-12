@@ -47,6 +47,10 @@ const TASK_STATES = {
 const SYNC_ALERT = "البيانات متأخرة";
 
 const byAsked = (a, b) => (a.asked_at || "").localeCompare(b.asked_at || "") || a.id - b.id;
+// Newest first; ids are numbers for items, "approval-<id>" for approval requests.
+const byNewest = (a, b) =>
+    (b.asked_at || "").localeCompare(a.asked_at || "") ||
+    String(b.id).localeCompare(String(a.id), undefined, { numeric: true });
 const byDone = (a, b) => (b.done_at || "").localeCompare(a.done_at || "") || b.id - a.id;
 const tookMs = (item) => luxon.DateTime.fromSQL(item.done_at) - luxon.DateTime.fromSQL(item.asked_at);
 
@@ -280,10 +284,8 @@ export class WhatsAppStore {
         }
         const items = this.openItems.filter(VIEW[key].test);
         if (key === "needs_manager") {
-            items.sort((a, b) => b.urgent - a.urgent || byAsked(a, b));
-            if (!this.groupId) {
-                return [...this.approvals, ...items];
-            }
+            // «بانتظار قرارك»: approvals and items together, newest first.
+            return (this.groupId ? items : [...this.approvals, ...items]).sort(byNewest);
         } else if (key === "overdue") {
             items.sort((a, b) => a.due_date.localeCompare(b.due_date) || byAsked(a, b));
         }
