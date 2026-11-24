@@ -66,6 +66,7 @@ def _generate_json(client, model, prompt, temperature):
 
 NOTE_SOURCE_LABELS = {
     "chatter": "AI-written summary of the visit's site photos",
+    "site_visit": "visit note filed in the project's Site Visits (summary of the visit's site photos)",
     "drive_txt": "site engineer's own notes, typed on site",
 }
 

@@ -1,6 +1,6 @@
 {
     "name": "Site Progress Reports",
-    "version": "19.0.1.0.0",
+    "version": "19.0.1.0.1",
     "summary": "One-click monthly site-progress Word report, generated in the background",
     "description": """
 Site Progress Reports

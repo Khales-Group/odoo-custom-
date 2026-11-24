@@ -4,6 +4,9 @@ import os
 import re
 
 from odoo import _, fields, models
+from lxml import html as lxml_html
+
+from odoo.tools import html2plaintext
 
 _logger = logging.getLogger(__name__)
 
@@ -17,6 +20,8 @@ DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
 PHOTOS_PER_VISIT = 4
 # Guards the Gemini prompt against a stray huge .txt dropped in a visit folder.
 MAX_TXT_NOTE_CHARS = 20000
+# The site-visit bot's footer under a visit note: photo count / Drive link, dedup reference.
+VISIT_NOTE_FOOTER = re.compile(r"photo\(s\)|Photos no longer available|wa-ref:", re.IGNORECASE)
 
 ARABIC_MONTHS = [
     "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
@@ -68,6 +73,37 @@ class Project(models.Model):
             % (period_label, self.env.user.name)
         )
         self._generate_site_report(period_start, period_end, period_label, self.env.user.id, language)
+
+    def _fetch_site_visit_note(self, visit_date):
+        """The visit's note from the project's Site Visits (kh_project_visits),
+        where the site-visit bot files each visit's photo analysis."""
+        self.ensure_one()
+        if "project.site.visit" not in self.env:
+            return None
+        visits = self.env["project.site.visit"].sudo().search(
+            [("project_id", "=", self.id), ("visit_date", "=", visit_date)], order="id"
+        )
+        notes = [text for text in (self._visit_note_text(visit.note) for visit in visits) if text]
+        return "\n\n".join(notes) or None
+
+    @staticmethod
+    def _visit_note_text(note):
+        """A visit note's points, one per line, without the bot's footer
+        (photo count / Drive link, wa-ref)."""
+        if not note or not str(note).strip():
+            return ""
+        root = lxml_html.fragment_fromstring(str(note), create_parent="div")
+        lines = []
+        for element in root.iter("li", "p", "h1", "h2", "h3", "h4"):
+            if element.tag != "li" and any(True for _ in element.iterancestors("li")):
+                continue  # a paragraph inside a point: read with its point
+            text = " ".join(element.text_content().split())
+            if text and not VISIT_NOTE_FOOTER.search(text):
+                lines.append(f"- {text}" if element.tag == "li" else text)
+        if not lines:  # no paragraphs or points: plain text
+            text = " ".join(html2plaintext(str(note), include_references=False).split())
+            lines = [text] if text and not VISIT_NOTE_FOOTER.search(text) else []
+        return "\n".join(lines)
 
     def _fetch_visit_note(self, folder_date_label):
         self.ensure_one()
@@ -172,6 +208,9 @@ class Project(models.Model):
                 # the chatter note posted by project-watcher.js — the .txt wins when present.
                 narrative = google_drive.read_visit_notes(drive, folder["id"])[:MAX_TXT_NOTE_CHARS]
                 note_source = "drive_txt"
+                if not narrative:
+                    narrative = self._fetch_site_visit_note(visit_date)
+                    note_source = "site_visit"
                 if not narrative:
                     narrative = self._fetch_visit_note(folder["name"])
                     note_source = "chatter"
@@ -292,8 +331,8 @@ class Project(models.Model):
                 self.message_post(body=_("Skipped visit folder(s) with no photos: %s") % ", ".join(skipped))
             if no_note:
                 self.message_post(
-                    body=_("Visit folder(s) included with photos only (no .txt note in the folder and no "
-                           "chatter note found, so not reflected in the written summary): %s")
+                    body=_("Visit folder(s) included with photos only (no .txt note in the folder, no Site "
+                           "Visit note and no chatter note found, so not reflected in the written summary): %s")
                     % ", ".join(no_note)
                 )
             self._notify_done(
