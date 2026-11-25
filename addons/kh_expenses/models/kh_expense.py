@@ -8,8 +8,21 @@ MAJID_ID = 369  # Majed - the manager; every payment needs his approval (same as
 
 EXPENSE_TYPES = [
     ("rent", "Rent"),
+    ("salary", "Salary"),
+    ("eos", "End of Service"),
     ("employee", "Employee Expense"),
+    ("owner_payment", "Owner Payment"),
+    ("internet", "Internet"),
+    ("telephone", "Telephone"),
     ("utilities", "Water & Electricity"),
+    ("connection", "FEWA / DEWA Connection"),
+    ("ac_payment", "AC Payment"),
+    ("lawyer_fees", "Lawyer Fees"),
+    ("interior_design", "Interior Design"),
+    ("contractor_payment", "Contractor Payment"),
+    ("supplier", "Supplier"),
+    ("subcontractor", "Sub Contractor"),
+    ("finish_work", "Finish Work"),
     ("government", "Government Fees"),
     ("other", "Other"),
 ]
@@ -25,8 +38,17 @@ class KhExpense(models.Model):
     expense_type = fields.Selection(
         EXPENSE_TYPES, string="Type", default="other", required=True, tracking=True,
     )
+    category = fields.Selection(
+        [("company", "Company"), ("project", "Projects")],
+        string="Section", default="company", required=True, tracking=True,
+        help="Company: the office's own expenses. Projects: what is owed on the projects.",
+    )
+    company_id = fields.Many2one(
+        "res.company", string="Company", default=lambda self: self.env.company, tracking=True,
+    )
+    creditor = fields.Char(string="Vendor / Creditor", tracking=True)
     partner_id = fields.Many2one(
-        "res.partner", string="Pay To", tracking=True,
+        "res.partner", string="Contact", tracking=True,
         help="Landlord, supplier, authority... who receives the money.",
     )
     employee_id = fields.Many2one(
@@ -42,7 +64,14 @@ class KhExpense(models.Model):
     balance_amount = fields.Monetary(
         string="Remaining", compute="_compute_balance_amount", store=True
     )
-    due_date = fields.Date(string="Due Date", tracking=True, default=fields.Date.context_today)
+    month_amount = fields.Monetary(
+        string="This Month", tracking=True, help="What has to be paid this month.",
+    )
+    due_date = fields.Date(string="Due Date", tracking=True)
+    pdc_issued = fields.Boolean(string="PDC Issued", tracking=True)
+    pdc_cheque_no = fields.Char(string="PDC Cheque No.", tracking=True)
+    pdc_date = fields.Date(string="PDC Date", tracking=True)
+    followup = fields.Char(string="With / Project", help="Who follows it up, or the project's owner.")
     is_overdue = fields.Boolean(compute="_compute_is_overdue")
     recurring = fields.Boolean(
         string="Every Month", tracking=True,

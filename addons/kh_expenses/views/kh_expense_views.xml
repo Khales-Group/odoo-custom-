@@ -26,21 +26,29 @@
                         <span class="badge rounded-pill text-bg-danger fs-6 mb-2" invisible="not is_overdue">
                             <i class="fa fa-clock-o me-1" title="Overdue"/>Overdue
                         </span>
-                        <h1><field name="name" placeholder="e.g. Office rent - December"/></h1>
+                        <h1><field name="name" placeholder="e.g. Rent - Dubai Design District"/></h1>
                     </div>
                     <group>
                         <group>
-                            <field name="expense_type" widget="radio"/>
+                            <field name="category" widget="radio" options="{'horizontal': true}"/>
+                            <field name="company_id"/>
+                            <field name="expense_type"/>
+                            <field name="creditor"/>
                             <field name="partner_id"/>
-                            <field name="employee_id" required="expense_type == 'employee'"/>
+                            <field name="employee_id" required="expense_type in ('employee', 'eos')"/>
                             <field name="project_id"/>
+                            <field name="followup"/>
                         </group>
                         <group>
                             <field name="amount"/>
                             <field name="paid_amount"/>
                             <field name="balance_amount"/>
+                            <field name="month_amount"/>
                             <field name="currency_id" invisible="1"/>
                             <field name="due_date"/>
+                            <field name="pdc_issued"/>
+                            <field name="pdc_cheque_no" invisible="not pdc_issued"/>
+                            <field name="pdc_date" invisible="not pdc_issued"/>
                             <field name="recurring"/>
                             <field name="next_expense_id" invisible="not next_expense_id"/>
                             <field name="accountant_id"/>
@@ -60,13 +68,13 @@
         <field name="model">kh.expense</field>
         <field name="arch" type="xml">
             <list string="Expenses" decoration-danger="is_overdue">
-                <field name="name"/>
+                <field name="company_id" optional="show"/>
                 <field name="expense_type" widget="badge"
-                       decoration-info="expense_type == 'employee'"
                        decoration-warning="expense_type == 'rent'"
-                       decoration-muted="expense_type == 'other'"/>
-                <field name="partner_id" optional="show"/>
-                <field name="employee_id" optional="show"/>
+                       decoration-info="expense_type in ('salary', 'eos', 'employee')"/>
+                <field name="creditor"/>
+                <field name="name" optional="hide"/>
+                <field name="employee_id" optional="hide"/>
                 <field name="project_id" optional="hide"/>
                 <field name="due_date"/>
                 <field name="recurring" optional="hide"/>
@@ -76,6 +84,11 @@
                 <field name="amount" sum="Total"/>
                 <field name="paid_amount" sum="Total"/>
                 <field name="balance_amount" sum="Total"/>
+                <field name="month_amount" sum="Total"/>
+                <field name="pdc_issued" optional="show"/>
+                <field name="pdc_cheque_no" optional="hide"/>
+                <field name="pdc_date" optional="hide"/>
+                <field name="followup" optional="show"/>
                 <field name="state" widget="badge"
                        decoration-success="state == 'paid'"
                        decoration-warning="state == 'pending_approval'"
@@ -90,6 +103,8 @@
         <field name="arch" type="xml">
             <search string="Expenses">
                 <field name="name"/>
+                <field name="creditor"/>
+                <field name="company_id"/>
                 <field name="partner_id"/>
                 <field name="employee_id"/>
                 <field name="project_id"/>
@@ -102,12 +117,18 @@
                 <separator/>
                 <filter name="rent" string="Rent" domain="[('expense_type', '=', 'rent')]"/>
                 <filter name="employee" string="Employee Expenses" domain="[('expense_type', '=', 'employee')]"/>
-                <filter name="utilities" string="Water &amp; Electricity" domain="[('expense_type', '=', 'utilities')]"/>
-                <filter name="government" string="Government Fees" domain="[('expense_type', '=', 'government')]"/>
-                <filter name="other" string="Other" domain="[('expense_type', '=', 'other')]"/>
+                <filter name="salary" string="Salaries" domain="[('expense_type', 'in', ('salary', 'eos'))]"/>
+                <filter name="bills" string="Internet, Phone, Water &amp; Electricity"
+                        domain="[('expense_type', 'in', ('internet', 'telephone', 'utilities', 'connection'))]"/>
+                <separator/>
+                <filter name="section_company" string="Company" domain="[('category', '=', 'company')]"/>
+                <filter name="section_project" string="Projects" domain="[('category', '=', 'project')]"/>
+                <filter name="pdc" string="PDC Issued" domain="[('pdc_issued', '=', True)]"/>
                 <separator/>
                 <filter name="due_date" string="Due Date" date="due_date"/>
                 <group>
+                    <filter name="group_section" string="Section" context="{'group_by': 'category'}"/>
+                    <filter name="group_company" string="Company" context="{'group_by': 'company_id'}"/>
                     <filter name="group_type" string="Type" context="{'group_by': 'expense_type'}"/>
                     <filter name="group_employee" string="Employee" context="{'group_by': 'employee_id'}"/>
                     <filter name="group_partner" string="Pay To" context="{'group_by': 'partner_id'}"/>
@@ -123,7 +144,7 @@
         <field name="res_model">kh.expense</field>
         <field name="view_mode">list,form</field>
         <field name="search_view_id" ref="view_kh_expense_search"/>
-        <field name="context">{'search_default_not_paid': 1}</field>
+        <field name="context">{'search_default_not_paid': 1, 'group_by': ['category']}</field>
     </record>
 
     <record id="action_kh_expense_overdue" model="ir.actions.act_window">
@@ -135,11 +156,11 @@
     </record>
 
     <record id="action_kh_expense_by_employee" model="ir.actions.act_window">
-        <field name="name">By Employee</field>
+        <field name="name">By Company</field>
         <field name="res_model">kh.expense</field>
         <field name="view_mode">list,form</field>
         <field name="search_view_id" ref="view_kh_expense_search"/>
-        <field name="context">{'search_default_employee': 1, 'search_default_not_paid': 1, 'group_by': ['employee_id']}</field>
+        <field name="context">{'search_default_not_paid': 1, 'group_by': ['company_id', 'expense_type']}</field>
     </record>
 
     <record id="action_kh_expense_by_type" model="ir.actions.act_window">
@@ -147,7 +168,7 @@
         <field name="res_model">kh.expense</field>
         <field name="view_mode">list,form</field>
         <field name="search_view_id" ref="view_kh_expense_search"/>
-        <field name="context">{'search_default_not_paid': 1, 'group_by': ['expense_type']}</field>
+        <field name="context">{'search_default_not_paid': 1, 'group_by': ['category', 'expense_type']}</field>
     </record>
 
     <menuitem id="menu_kh_expenses_root" name="Expenses Tracker" sequence="61" action="action_kh_expense"
@@ -157,7 +178,7 @@
               action="action_kh_expense" sequence="10"/>
     <menuitem id="menu_kh_expenses_overdue" name="Overdue" parent="menu_kh_expenses_root"
               action="action_kh_expense_overdue" sequence="15"/>
-    <menuitem id="menu_kh_expenses_by_employee" name="By Employee" parent="menu_kh_expenses_root"
+    <menuitem id="menu_kh_expenses_by_employee" name="By Company" parent="menu_kh_expenses_root"
               action="action_kh_expense_by_employee" sequence="20"/>
     <menuitem id="menu_kh_expenses_by_type" name="By Type" parent="menu_kh_expenses_root"
               action="action_kh_expense_by_type" sequence="30"/>

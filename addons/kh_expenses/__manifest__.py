@@ -1,6 +1,6 @@
 {
     "name": "Khales Expenses",
-    "version": "19.0.1.0.0",
+    "version": "19.0.1.1.0",
     "summary": "Company expenses to pay (rent, employee expenses, water and electricity, fees), with manager approval",
     "description": """
 Khales Expenses
@@ -15,7 +15,7 @@ the accountant who handles it. The accountant asks for payment approval,
 Majed approves (or rejects) it, then the accountant marks it paid. A monthly
 expense (rent, water...) creates next month's expense when it is paid.
 
-Menus: Expenses (all), Overdue, By Employee (employee expenses per employee)
+Menus: Expenses (Company / Projects), Overdue, By Company
 and By Type, with Amount / Paid / Remaining totals.
     """,
     "author": "Khales Group",
