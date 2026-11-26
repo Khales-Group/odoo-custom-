@@ -6,18 +6,9 @@
         <field name="arch" type="xml">
             <form string="Collection Case">
                 <header>
-                    <button name="action_request_pro_escalation" type="object"
-                            string="Couldn't Collect - Escalate to PRO" class="btn-primary"
-                            invisible="state != 'accountant'"/>
-                    <button name="action_approve_pro_escalation" type="object"
-                            string="Approve Escalation to PRO" class="btn-primary"
-                            invisible="state != 'pending_pro_approval' or not is_manager"/>
-                    <button name="action_reject_pro_escalation" type="object"
-                            string="Reject Escalation"
-                            invisible="state != 'pending_pro_approval' or not is_manager"/>
                     <button name="action_request_law_escalation" type="object"
                             string="Couldn't Collect - Escalate to Lawyer" class="btn-primary"
-                            invisible="state != 'pro'"/>
+                            invisible="state != 'accountant'"/>
                     <button name="action_approve_law_escalation" type="object"
                             string="Approve Escalation to Lawyer" class="btn-primary"
                             invisible="state != 'pending_law_approval' or not is_manager"/>
@@ -28,7 +19,7 @@
                             string="Mark Collected" class="btn-success"
                             invisible="state == 'collected'"/>
                     <field name="state" widget="statusbar"
-                           statusbar_visible="accountant,pending_pro_approval,pro,pending_law_approval,law,collected"/>
+                           statusbar_visible="accountant,pending_law_approval,law,collected"/>
                 </header>
                 <sheet>
                     <div class="oe_title">
@@ -55,13 +46,12 @@
                             <field name="balance_amount"/>
                             <field name="currency_id" invisible="1"/>
                             <field name="accountant_id"/>
-                            <field name="handler_role"/>
                             <field name="handler_id"/>
                         </group>
                     </group>
                     <group string="Linked File &amp; Tasks" invisible="not report_id">
                         <field name="report_id" readonly="1"/>
-                        <field name="pro_task_id" readonly="1"/>
+                        <field name="pro_task_id" readonly="1" invisible="not pro_task_id"/>
                         <field name="law_task_id" readonly="1"/>
                     </group>
                     <field name="note" placeholder="Notes..."/>
@@ -85,7 +75,6 @@
                 <field name="client_id"/>
                 <field name="contractor_id" optional="show"/>
                 <field name="project_id" optional="show"/>
-                <field name="handler_role"/>
                 <field name="handler_id" widget="many2one_avatar_user"/>
                 <field name="currency_id" column_invisible="1"/>
                 <field name="amount" sum="Total"/>
@@ -93,7 +82,7 @@
                 <field name="balance_amount" sum="Total"/>
                 <field name="state" widget="badge"
                        decoration-success="state == 'collected'"
-                       decoration-warning="state in ('pending_pro_approval', 'pending_law_approval')"/>
+                       decoration-warning="state == 'pending_law_approval'"/>
             </list>
         </field>
     </record>
@@ -117,10 +106,8 @@
                 <filter name="vat_refund" string="VAT Refunds" domain="[('collection_type', '=', 'vat_refund')]"/>
                 <separator/>
                 <filter name="with_accountant" string="With Accountant" domain="[('handler_role', '=', '1_accountant')]"/>
-                <filter name="with_pro" string="With PRO" domain="[('handler_role', '=', '2_pro')]"/>
                 <filter name="with_lawyer" string="With Lawyer" domain="[('handler_role', '=', '3_lawyer')]"/>
                 <group>
-                    <filter name="group_handler_role" string="Handled By" context="{'group_by': 'handler_role'}"/>
                     <filter name="group_handler" string="Responsible" context="{'group_by': 'handler_id'}"/>
                     <filter name="group_type" string="Type" context="{'group_by': 'collection_type'}"/>
                     <filter name="group_state" string="Status" context="{'group_by': 'state'}"/>
@@ -136,15 +123,15 @@
         <field name="search_view_id" ref="view_kh_collection_case_search"/>
     </record>
 
-    <!-- Manager's overview: Accountant, then PRO, then Lawyer, and under each
-         the person handling the cases, with Balance / Collected / Remaining
-         totals on every group line. -->
+    <!-- Manager's overview: the person handling the cases (the accountant or
+         the lawyer), with Balance / Collected / Remaining totals on every
+         group line. -->
     <record id="action_kh_collection_case_by_employee" model="ir.actions.act_window">
         <field name="name">By Employee</field>
         <field name="res_model">kh.collection.case</field>
         <field name="view_mode">list,form</field>
         <field name="search_view_id" ref="view_kh_collection_case_search"/>
-        <field name="context">{'group_by': ['handler_role', 'handler_id']}</field>
+        <field name="context">{'group_by': ['handler_id']}</field>
     </record>
 
     <menuitem id="menu_kh_collection_root" name="Collection" sequence="60" action="action_kh_collection_case"
